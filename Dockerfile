@@ -1,27 +1,29 @@
-# Stage 1: Frontend build
+# Build frontend
 FROM node:18 as frontend
 WORKDIR /app
 COPY kcls-app/ ./
 RUN npm install && npm run build
 
-# Stage 2: Final stage with backend and nginx
+# Final image
 FROM python:3.11-slim
 
-# Install nginx
-RUN apt-get update && apt-get install -y nginx && rm -rf /var/lib/apt/lists/*
+# Install Nginx and curl
+RUN apt-get update && apt-get install -y nginx curl && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
+# Set working dir
 WORKDIR /app
 
-# Copy backend and install dependencies
+# Install Python dependencies
 COPY server/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy Flask app
 COPY server/ .
 
-# Copy built frontend
+# Copy frontend build output
 COPY --from=frontend /app/dist /var/www/html
 
-# Copy configuration
+# Copy Nginx config and start script
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
