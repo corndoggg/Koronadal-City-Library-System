@@ -1,9 +1,7 @@
 #!/bin/bash
 
-# Start nginx in the background
-service nginx start
+# Start Flask in the background
+python3 server.py &
 
-# Start the Flask server
-cd /app
-# You can change this to gunicorn if needed
-python server.py
+# Start Nginx in the foreground
+nginx -g 'daemon off;'
