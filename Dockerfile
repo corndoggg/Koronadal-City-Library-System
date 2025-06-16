@@ -5,7 +5,7 @@ COPY kcls-app/ ./
 RUN npm install && npm run build
 
 # backend + nginx stage
-FROM python:3.11-slim
+FROM python:3.11 as stage-1
 WORKDIR /app
 
 # Install nginx and curl
