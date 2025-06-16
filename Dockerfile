@@ -1,38 +1,30 @@
-# Backend build stage
-FROM python:3.11-slim as backend
-
-WORKDIR /app
-COPY server/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY server/ .
-
-# Frontend build stage
+# Stage 1: Frontend build
 FROM node:18 as frontend
-
 WORKDIR /app
 COPY kcls-app/ ./
 RUN npm install && npm run build
 
-# Final stage
+# Stage 2: Final stage with backend and nginx
 FROM python:3.11-slim
 
 # Install nginx
 RUN apt-get update && apt-get install -y nginx && rm -rf /var/lib/apt/lists/*
 
-# Copy backend app
-COPY --from=backend /app /app
+# Set working directory
+WORKDIR /app
 
-# Copy frontend build to nginx
+# Copy backend and install dependencies
+COPY server/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY server/ .
+
+# Copy built frontend
 COPY --from=frontend /app/dist /var/www/html
 
-# Copy nginx config
+# Copy configuration
 COPY nginx.conf /etc/nginx/nginx.conf
-
-# Copy startup script
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
 
 EXPOSE 80
-
 CMD ["/start.sh"]
