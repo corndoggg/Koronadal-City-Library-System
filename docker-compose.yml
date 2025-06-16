@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ./kcls-app
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://localhost:5000
+    networks:
+      - kcls-net
+
+  backend:
+    build:
+      context: ./server
+    ports:
+      - "5000:5000"
+    networks:
+      - kcls-net
+
+networks:
+  kcls-net:
