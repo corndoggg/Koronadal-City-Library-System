@@ -9,10 +9,10 @@ CORS(app)
 
 # Database configuration
 DB_CONFIG = {
-    'host': os.getenv('DB_HOST', 'coc40owcw8sogg08gkoccoo4'), 
-    'port': int(os.getenv('DB_PORT', 3306)),
-    'user': os.getenv('DB_USER', 'root'),
-    'password': os.getenv('DB_PASSWORD', 'Apecxz@101'),
+    'host': os.getenv('DB_HOST', '31.97.106.60'), 
+    'port': int(os.getenv('DB_PORT', 5432)),
+    'user': os.getenv('DB_USER', 'admin'),
+    'password': os.getenv('DB_PASSWORD', 'password'),
     'database': os.getenv('DB_NAME', 'default')
 }
 

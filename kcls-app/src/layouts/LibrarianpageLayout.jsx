@@ -1,5 +1,6 @@
 import React from 'react';
 import { Outlet } from 'react-router-dom';
+import Sidebar from '../components/sidebar';
 
 const containerStyle = {
   display: 'flex',
@@ -25,7 +26,7 @@ const LibrarianpageLayout = () => {
   return (
     <div style={containerStyle}>
       <div style={sidebarStyle}>
-      
+        <Sidebar/>
       </div>
       <main style={mainStyle}>
         <Outlet />
