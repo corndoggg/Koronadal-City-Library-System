@@ -11,8 +11,8 @@ CORS(app)
 DB_CONFIG = {
     'host': os.getenv('DB_HOST', 'coc40owcw8sogg08gkoccoo4'),  # Use Docker service name in Compose
     'port': int(os.getenv('DB_PORT', 3306)),
-    'user': os.getenv('DB_USER', 'mariadb'),
-    'password': os.getenv('DB_PASSWORD', 'mypassword'),
+    'user': os.getenv('DB_USER', 'root'),
+    'password': os.getenv('DB_PASSWORD', 'Apecxz@101'),
     'database': os.getenv('DB_NAME', 'default')
 }
 
