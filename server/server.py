@@ -1,15 +1,45 @@
 from flask import Flask, jsonify
 from flask_cors import CORS
+import mysql.connector
+from mysql.connector import Error
+import os
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for frontend API calls
+CORS(app)
 
-# Sample route
+# Database configuration
+DB_CONFIG = {
+    'host': os.getenv('DB_HOST', 'mariadb'),  # Use Docker service name in Compose
+    'port': int(os.getenv('DB_PORT', 3306)),
+    'user': os.getenv('DB_USER', 'root'),
+    'password': os.getenv('DB_PASSWORD', 'Apecxz@101'),
+    'database': os.getenv('DB_NAME', 'default')
+}
+
+def get_db_connection():
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        return conn
+    except Error as e:
+        print(f"Error connecting to MariaDB: {e}")
+        return None
+
 @app.route('/api/hello', methods=['GET'])
 def hello():
     return jsonify({"message": "Hello from Flask API!"})
 
-# More routes here...
+@app.route('/api/test-db', methods=['GET'])
+def test_db():
+    conn = get_db_connection()
+    if conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT DATABASE();")
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        return jsonify({"database": result[0]})
+    else:
+        return jsonify({"error": "Could not connect to database"}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
