@@ -1,0 +1,41 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Install Python Dependencies",
+            "type": "shell",
+            "command": "cmd.exe /C \"${workspaceFolder}\\venv\\Scripts\\activate.bat && pip install -r requirements.txt\"",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Start React Dev Server",
+            "type": "shell",
+            "command": "npm run dev",
+            "options": {
+                "cwd": "${workspaceFolder}/kcls-app"
+            },
+            "isBackground": true, 
+            "problemMatcher": {
+                "pattern": [],
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "Serving Vite",
+                    "endsPattern": "ready in"
+                }
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "showReuseMessage": false
+            }
+        }
+    ]
+}
