@@ -21,7 +21,7 @@ services:
       PMA_PORT: 3306
       MYSQL_ROOT_PASSWORD: Apecxz@101
     ports:
-      - "8080:80"
+      - "8081:80"
     restart: always
 
 volumes:
