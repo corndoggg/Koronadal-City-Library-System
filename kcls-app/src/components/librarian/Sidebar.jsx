@@ -28,7 +28,7 @@ const navLinks = [
   { href: '/storage', icon: Package, label: 'Storage' },
 ];
 
-const Sidebar = ({ collapsed = false, drawerWidth = 240 }) => {
+const Sidebar = ({ collapsed = false, drawerWidth = 240, collapsedWidth=64 }) => {
   const theme = useTheme();
   const isDarkMode = theme.palette.mode === 'dark';
 
@@ -36,10 +36,10 @@ const Sidebar = ({ collapsed = false, drawerWidth = 240 }) => {
     <Drawer
       variant="permanent"
       sx={{
-        width: collapsed ? 72 : drawerWidth,
+        width: collapsed ? collapsedWidth : drawerWidth,
         flexShrink: 0,
         '& .MuiDrawer-paper': {
-          width: collapsed ? 72 : drawerWidth,
+          width: collapsed ? collapsedWidth : drawerWidth,
           boxSizing: 'border-box',
           bgcolor: 'background.paper',
           borderRight: `1px solid ${theme.palette.divider}`,

@@ -7,7 +7,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import Footer from '../components/common/Footer';
 
 const drawerWidth = 180;
-const collapsedWidth = 72;
+const collapsedWidth = 52;
 
 const LibrarianpageLayout = () => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -39,7 +39,7 @@ const LibrarianpageLayout = () => {
             overflow: 'hidden',
           }}
         >
-          <Sidebar collapsed={isSidebarCollapsed} drawerWidth={drawerWidth} />
+          <Sidebar collapsed={isSidebarCollapsed} drawerWidth={drawerWidth} collapsedWidth={collapsedWidth} />
         </motion.div>
       ) : (
         <AnimatePresence>
