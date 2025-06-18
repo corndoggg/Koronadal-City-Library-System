@@ -1,38 +1,102 @@
-import React from 'react';
-import { Button, Dropdown } from 'react-bootstrap';
-import { Menu, User, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import React, { useState } from 'react';
+import {
+  AppBar,
+  Toolbar,
+  IconButton,
+  Typography,
+  Menu,
+  MenuItem,
+  Avatar,
+  Tooltip,
+  Box
+} from '@mui/material';
+import {
+  Menu as MenuIcon,
+  AccountCircle,
+  ChevronLeft,
+  ChevronRight
+} from '@mui/icons-material';
 
 const Topbar = ({ toggleMobileSidebar, isSidebarCollapsed, toggleCollapse }) => {
+  const [anchorEl, setAnchorEl] = useState(null);
+  const open = Boolean(anchorEl);
+
+  const handleMenuOpen = (event) => setAnchorEl(event.currentTarget);
+  const handleMenuClose = () => setAnchorEl(null);
+
   return (
-    <div className="d-flex justify-content-between align-items-center px-3 py-2 bg-white shadow-sm sticky-top" style={{ zIndex: 1050 }}>
-      <div className="d-flex align-items-center gap-2">
-        {/* Mobile Toggle */}
-        <Button variant="outline-primary" className="d-md-none" onClick={toggleMobileSidebar}>
-          <Menu size={20} />
-        </Button>
+    <AppBar
+      position="sticky"
+      elevation={1}
+      sx={{
+        backgroundColor: 'white',
+        color: 'black',
+        zIndex: (theme) => theme.zIndex.drawer + 1,
+      }}
+    >
+      <Toolbar sx={{ justifyContent: 'space-between' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {/* Mobile Toggle */}
+          <IconButton
+            color="primary"
+            edge="start"
+            sx={{ display: { xs: 'inline-flex', md: 'none' } }}
+            onClick={toggleMobileSidebar}
+          >
+            <MenuIcon />
+          </IconButton>
 
-        {/* Desktop Collapse Toggle */}
-        <Button variant="outline-secondary" className="d-none d-md-inline" onClick={toggleCollapse}>
-          {isSidebarCollapsed ? <ChevronsRight size={20} /> : <ChevronsLeft size={20} />}
-        </Button>
+          {/* Desktop Sidebar Collapse Toggle */}
+          <IconButton
+            color="secondary"
+            sx={{ display: { xs: 'none', md: 'inline-flex' } }}
+            onClick={toggleCollapse}
+          >
+            {isSidebarCollapsed ? <ChevronRight /> : <ChevronLeft />}
+          </IconButton>
 
-        <h5 className="mb-0 ms-2 d-none d-md-block">📚 Librarian Panel</h5>
-      </div>
+          <Typography
+            variant="h6"
+            component="div"
+            sx={{ display: { xs: 'none', md: 'block' }, fontWeight: 600 }}
+          >
+            📚 Librarian Panel
+          </Typography>
+        </Box>
 
-      {/* User Dropdown */}
-      <Dropdown align="end">
-        <Dropdown.Toggle variant="light" id="dropdown-user" className="d-flex align-items-center gap-2 border-0">
-          <User size={20} />
-          <span className="d-none d-sm-inline">Librarian</span>
-        </Dropdown.Toggle>
-        <Dropdown.Menu>
-          <Dropdown.Item href="#/profile">Profile</Dropdown.Item>
-          <Dropdown.Item href="#/settings">Settings</Dropdown.Item>
-          <Dropdown.Divider />
-          <Dropdown.Item href="#/logout">Logout</Dropdown.Item>
-        </Dropdown.Menu>
-      </Dropdown>
-    </div>
+        {/* User Dropdown */}
+        <Box>
+          <Tooltip title="Open settings">
+            <IconButton onClick={handleMenuOpen} size="small" sx={{ ml: 2 }}>
+              <Avatar sx={{ width: 32, height: 32 }}>
+                <AccountCircle />
+              </Avatar>
+            </IconButton>
+          </Tooltip>
+
+          <Menu
+            anchorEl={anchorEl}
+            open={open}
+            onClose={handleMenuClose}
+            onClick={handleMenuClose}
+            PaperProps={{
+              elevation: 2,
+              sx: {
+                mt: 1.5,
+                minWidth: 180,
+              },
+            }}
+            transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+            anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+          >
+            <MenuItem>Profile</MenuItem>
+            <MenuItem>Settings</MenuItem>
+            <MenuItem divider />
+            <MenuItem>Logout</MenuItem>
+          </Menu>
+        </Box>
+      </Toolbar>
+    </AppBar>
   );
 };
 

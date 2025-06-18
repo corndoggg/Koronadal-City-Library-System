@@ -1,5 +1,15 @@
 import React from 'react';
-import { Nav, OverlayTrigger, Tooltip } from 'react-bootstrap';
+import { useLocation, useNavigate } from 'react-router-dom';
+import {
+  Drawer,
+  List,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Tooltip,
+  Box,
+  Typography
+} from '@mui/material';
 import {
   LayoutDashboard,
   BookOpen,
@@ -7,9 +17,7 @@ import {
   Handshake,
   Package
 } from 'lucide-react';
-import { useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import 'bootstrap/dist/css/bootstrap.min.css';
 
 const navLinks = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -19,64 +27,78 @@ const navLinks = [
   { href: '/storage', icon: Package, label: 'Storage' },
 ];
 
-const Sidebar = ({ collapsed = false }) => {
+const Sidebar = ({ collapsed = false, drawerWidth = 240 }) => {
   const location = useLocation();
   const navigate = useNavigate();
 
   return (
-    <div
-      className="bg-white d-flex flex-column align-items-start pt-4 h-100 shadow-sm"
-      style={{
-        minHeight: '100vh',
-        paddingLeft: collapsed ? '0.5rem' : '1rem',
-        paddingRight: collapsed ? '0.5rem' : '1rem',
+    <Drawer
+      variant="permanent"
+      sx={{
+        width: collapsed ? 72 : drawerWidth,
+        flexShrink: 0,
+        [`& .MuiDrawer-paper`]: {
+          width: collapsed ? 72 : drawerWidth,
+          boxSizing: 'border-box',
+          bgcolor: '#fff',
+          borderRight: '1px solid #e0e0e0',
+        },
       }}
     >
-      {/* Sidebar Title */}
-      {!collapsed && (
-        <div className="w-100 mb-4 ps-2">
-          <h5 className="text-primary fw-bold">📚 Librarian</h5>
-        </div>
-      )}
+      <Box sx={{ px: collapsed ? 1 : 2, py: 3 }}>
+        {!collapsed && (
+          <Typography variant="h6" fontWeight="bold" color="primary" noWrap>
+            📚 Librarian
+          </Typography>
+        )}
+      </Box>
 
-      <Nav className="flex-column w-100">
+      <List>
         {navLinks.map(({ href, icon: Icon, label }) => {
           const isActive = location.pathname === href;
 
-          const navItem = (
+          const listItem = (
             <motion.div
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.97 }}
               key={href}
-              className={`w-100 mb-2`}
               onClick={() => navigate(href)}
-              style={{ cursor: 'pointer' }}
             >
-              <div
-                className={`d-flex align-items-center gap-2 py-3 px-3 rounded ${
-                  isActive ? 'bg-primary text-white' : 'text-dark'
-                }`}
+              <ListItemButton
+                selected={isActive}
+                sx={{
+                  px: collapsed ? 1 : 2,
+                  py: 1.5,
+                  borderRadius: 1,
+                  mx: 1,
+                  mb: 1,
+                  backgroundColor: isActive ? 'primary.main' : 'transparent',
+                  color: isActive ? '#fff' : 'inherit',
+                  '&:hover': {
+                    backgroundColor: isActive ? 'primary.dark' : 'grey.100',
+                  },
+                }}
               >
-                <Icon size={20} />
-                {!collapsed && <span className="fw-medium">{label}</span>}
-              </div>
+                <ListItemIcon sx={{ color: isActive ? '#fff' : 'inherit', minWidth: 0, mr: collapsed ? 0 : 2 }}>
+                  <Icon size={20} />
+                </ListItemIcon>
+                {!collapsed && (
+                  <ListItemText primary={label} primaryTypographyProps={{ fontWeight: 500 }} />
+                )}
+              </ListItemButton>
             </motion.div>
           );
 
           return collapsed ? (
-            <OverlayTrigger
-              key={href}
-              placement="right"
-              overlay={<Tooltip>{label}</Tooltip>}
-            >
-              {navItem}
-            </OverlayTrigger>
+            <Tooltip key={href} title={label} placement="right">
+              {listItem}
+            </Tooltip>
           ) : (
-            navItem
+            listItem
           );
         })}
-      </Nav>
-    </div>
+      </List>
+    </Drawer>
   );
 };
 

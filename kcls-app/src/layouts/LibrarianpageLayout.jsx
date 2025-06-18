@@ -2,70 +2,97 @@ import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from '../components/librarian/Sidebar';
 import Topbar from '../components/librarian/Topbar';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Box, CssBaseline, useMediaQuery } from '@mui/material';
+import { AnimatePresence, motion } from 'framer-motion';
+
+const drawerWidth = 240;
+const collapsedWidth = 72;
 
 const LibrarianpageLayout = () => {
-  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
+  const isMobile = useMediaQuery('(max-width:768px)');
 
-  const toggleMobileSidebar = () => setShowMobileSidebar(!showMobileSidebar);
-  const toggleCollapse = () => setIsSidebarCollapsed(!isSidebarCollapsed);
+  const toggleCollapse = () => setIsSidebarCollapsed(prev => !prev);
+  const toggleMobileSidebar = () => setShowMobileSidebar(prev => !prev);
 
   return (
-    <div className="d-flex" style={{ minHeight: '100vh', backgroundColor: '#f0f2f5' }}>
-      {/* Sidebar on Desktop */}
-      <motion.div
-        className="d-none d-md-block"
-        animate={{ width: isSidebarCollapsed ? 80 : 260 }}
-        transition={{ duration: 0.3 }}
-        style={{
-          overflow: 'hidden',
-          backgroundColor: '#fff',
-          boxShadow: '2px 0 10px rgba(0, 0, 0, 0.05)',
-          zIndex: 1000
+    <>
+      <CssBaseline />
+
+      {/* Sidebar */}
+      {!isMobile ? (
+        <motion.div
+          animate={{ width: isSidebarCollapsed ? collapsedWidth : drawerWidth }}
+          transition={{ duration: 0.3 }}
+          style={{
+            height: '100vh',
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            backgroundColor: '#fff',
+            boxShadow: '2px 0 10px rgba(0, 0, 0, 0.05)',
+            zIndex: 1100,
+          }}
+        >
+          <Sidebar collapsed={isSidebarCollapsed} drawerWidth={drawerWidth} />
+        </motion.div>
+      ) : (
+        <AnimatePresence>
+          {showMobileSidebar && (
+            <motion.div
+              key="mobile-sidebar"
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', stiffness: 260, damping: 30 }}
+              style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                width: drawerWidth,
+                height: '100vh',
+                backgroundColor: '#fff',
+                boxShadow: '2px 0 10px rgba(0,0,0,0.1)',
+                zIndex: 1200,
+              }}
+            >
+              <Sidebar collapsed={false} drawerWidth={drawerWidth} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      )}
+
+      {/* Main Area */}
+      <Box
+        sx={{
+          ml: isMobile ? 0 : isSidebarCollapsed ? `${collapsedWidth}px` : `${drawerWidth}px`,
+          transition: 'margin-left 0.3s ease',
         }}
       >
-        <Sidebar collapsed={isSidebarCollapsed} />
-      </motion.div>
-
-      {/* Mobile Sidebar Drawer */}
-      <AnimatePresence>
-        {showMobileSidebar && (
-          <motion.div
-            className="position-fixed top-0 start-0 bg-white shadow-lg"
-            style={{ width: '240px', height: '100vh', zIndex: 1100 }}
-            initial={{ x: '-100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '-100%' }}
-            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-          >
-            <Sidebar />
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Main Layout */}
-      <div className="flex-grow-1 d-flex flex-column w-100">
         <Topbar
           toggleMobileSidebar={toggleMobileSidebar}
           toggleCollapse={toggleCollapse}
           isSidebarCollapsed={isSidebarCollapsed}
         />
 
-        <main className="p-4 pt-3" style={{ flexGrow: 1 }}>
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '12px',
-            padding: '24px',
-            boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
-            minHeight: 'calc(100vh - 72px)',
-            transition: 'all 0.3s ease'
-          }}>
+        <Box component="main" sx={{ p: 3, minHeight: '100vh', bgcolor: '#f5f6fa' }}>
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+            style={{
+              backgroundColor: 'white',
+              borderRadius: 12,
+              padding: 24,
+              boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+            }}
+          >
             <Outlet />
-          </div>
-        </main>
-      </div>
-    </div>
+          </motion.div>
+        </Box>
+      </Box>
+    </>
   );
 };
 
