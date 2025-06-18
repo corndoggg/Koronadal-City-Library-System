@@ -40,10 +40,11 @@ const Topbar = ({ toggleMobileSidebar, isSidebarCollapsed, toggleCollapse }) => 
         backgroundColor: 'background.paper',
         color: 'text.primary',
         zIndex: (theme) => theme.zIndex.drawer + 1,
-        borderBottom: `1px solid ${theme.palette.divider}`
+        borderBottom: `1px solid ${theme.palette.divider}`,
+        height: 64
       }}
     >
-      <Toolbar sx={{ justifyContent: 'space-between', minHeight: 64 }}>
+      <Toolbar sx={{ justifyContent: 'space-between', minHeight: 48 }}>
         {/* Left side controls */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <IconButton
@@ -75,7 +76,7 @@ const Topbar = ({ toggleMobileSidebar, isSidebarCollapsed, toggleCollapse }) => 
           {/* User dropdown */}
           <Tooltip title="Account settings">
             <IconButton onClick={handleMenuOpen} size="small" sx={{ ml: 1 }}>
-              <Avatar sx={{ width: 36, height: 36, bgcolor: 'primary.main' }}>
+              <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main' }}>
                 <UserCircle size={24} />
               </Avatar>
             </IconButton>

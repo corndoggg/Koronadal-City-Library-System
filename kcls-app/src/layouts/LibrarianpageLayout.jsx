@@ -4,7 +4,6 @@ import Sidebar from '../components/librarian/Sidebar';
 import Topbar from '../components/librarian/Topbar';
 import { Box, CssBaseline, useMediaQuery, useTheme } from '@mui/material';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useThemeContext } from '../contexts/ThemeContext'; // ⬅️ custom context for toggling
 import Footer from '../components/common/Footer';
 
 const drawerWidth = 180;
@@ -18,6 +17,7 @@ const LibrarianpageLayout = () => {
 
   const toggleCollapse = () => setIsSidebarCollapsed(prev => !prev);
   const toggleMobileSidebar = () => setShowMobileSidebar(prev => !prev);
+  const closeMobileSidebar = () => setShowMobileSidebar(false);
 
   return (
     <>
@@ -44,25 +44,41 @@ const LibrarianpageLayout = () => {
       ) : (
         <AnimatePresence>
           {showMobileSidebar && (
-            <motion.div
-              key="mobile-sidebar"
-              initial={{ x: '-100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '-100%' }}
-              transition={{ type: 'spring', stiffness: 260, damping: 30 }}
-              style={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                width: drawerWidth,
-                height: '100vh',
-                backgroundColor: theme.palette.background.paper,
-                boxShadow: theme.shadows[3],
-                zIndex: 1200,
-              }}
-            >
-              <Sidebar collapsed={false} drawerWidth={drawerWidth} />
-            </motion.div>
+            <>
+              {/* Backdrop */}
+              <Box
+                onClick={closeMobileSidebar}
+                sx={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  width: '100vw',
+                  height: '100vh',
+                  bgcolor: 'rgba(0, 0, 0, 0.4)',
+                  zIndex: 1250, // Below sidebar, above topbar
+                }}
+              />
+              {/* Sidebar */}
+              <motion.div
+                key="mobile-sidebar"
+                initial={{ x: '-100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '-100%' }}
+                transition={{ type: 'spring', stiffness: 260, damping: 30 }}
+                style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  width: drawerWidth,
+                  height: '100vh',
+                  backgroundColor: theme.palette.background.paper,
+                  boxShadow: theme.shadows[3],
+                  zIndex: 1300,
+                }}
+              >
+                <Sidebar collapsed={false} drawerWidth={drawerWidth} />
+              </motion.div>
+            </>
           )}
         </AnimatePresence>
       )}
@@ -74,11 +90,14 @@ const LibrarianpageLayout = () => {
           transition: 'margin-left 0.3s ease',
         }}
       >
-        <Topbar
-          toggleMobileSidebar={toggleMobileSidebar}
-          toggleCollapse={toggleCollapse}
-          isSidebarCollapsed={isSidebarCollapsed}
-        />
+        {/* Topbar */}
+        <Box sx={{ position: 'sticky', top: 0, zIndex: 1200 }}>
+          <Topbar
+            toggleMobileSidebar={toggleMobileSidebar}
+            toggleCollapse={toggleCollapse}
+            isSidebarCollapsed={isSidebarCollapsed}
+          />
+        </Box>
 
         <Box
           component="main"
@@ -103,7 +122,7 @@ const LibrarianpageLayout = () => {
           >
             <Outlet />
           </motion.div>
-          <Footer/>
+          <Footer />
         </Box>
       </Box>
     </>

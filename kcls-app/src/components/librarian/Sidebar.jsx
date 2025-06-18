@@ -44,6 +44,7 @@ const Sidebar = ({ collapsed = false, drawerWidth = 240 }) => {
           bgcolor: 'background.paper',
           borderRight: `1px solid ${theme.palette.divider}`,
           transition: 'width 0.3s ease',
+          zIndex: 1300,
         },
       }}
     >
@@ -59,8 +60,8 @@ const Sidebar = ({ collapsed = false, drawerWidth = 240 }) => {
       >
         <Box
           sx={{
-            width: 52,
-            height: 52,
+            width: 40,
+            height: 40,
             mb: collapsed ? 0 : 1,
             transition: 'all 0.3s ease',
             display: 'flex',
@@ -82,11 +83,12 @@ const Sidebar = ({ collapsed = false, drawerWidth = 240 }) => {
         {!collapsed && (
           <Typography
             variant="subtitle1"
+            fontSize={13}
             fontWeight="bold"
             color="primary"
             sx={{ textAlign: 'center', whiteSpace: 'nowrap' }}
           >
-            Koronadal City
+            Koronadal City Library
           </Typography>
         )}
       </Box>
@@ -106,11 +108,11 @@ const Sidebar = ({ collapsed = false, drawerWidth = 240 }) => {
                   selected={isActive}
                   sx={{
                     justifyContent: collapsed ? 'center' : 'flex-start',
-                    px: collapsed ? 1.5 : 3,
-                    py: 1.5,
+                    px: collapsed ? 1.5 : 2,
+                    py: 0.2,
                     my: 0.5,
-                    borderRadius: 2,
-                    mx: 1,
+                    borderRadius: 0.2,
+                    mx: 0.8,
                     backgroundColor: isActive ? activeBg : 'transparent',
                     color: isActive ? activeColor : 'text.primary',
                     '&:hover': {
@@ -128,12 +130,12 @@ const Sidebar = ({ collapsed = false, drawerWidth = 240 }) => {
                       justifyContent: 'center',
                     }}
                   >
-                    <Icon size={20} />
+                    <Icon size={24} />
                   </ListItemIcon>
                   {!collapsed && (
                     <ListItemText
                       primary={label}
-                      primaryTypographyProps={{ fontWeight: 500 }}
+                      primaryTypographyProps={{ fontWeight: 300, fontSize: 16, }}
                     />
                   )}
                 </ListItemButton>
