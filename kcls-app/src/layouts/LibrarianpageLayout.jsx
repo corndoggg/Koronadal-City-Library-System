@@ -7,7 +7,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useThemeContext } from '../contexts/ThemeContext'; // ⬅️ custom context for toggling
 import Footer from '../components/common/Footer';
 
-const drawerWidth = 240;
+const drawerWidth = 180;
 const collapsedWidth = 72;
 
 const LibrarianpageLayout = () => {
@@ -15,9 +15,6 @@ const LibrarianpageLayout = () => {
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const isMobile = useMediaQuery('(max-width:768px)');
   const theme = useTheme();
-  const { mode } = useThemeContext();
-
-  const isDark = mode === 'dark';
 
   const toggleCollapse = () => setIsSidebarCollapsed(prev => !prev);
   const toggleMobileSidebar = () => setShowMobileSidebar(prev => !prev);
@@ -86,8 +83,8 @@ const LibrarianpageLayout = () => {
         <Box
           component="main"
           sx={{
-            p: 3,
-            pb: 6,
+            p: 1,
+            pb: 2,
             minHeight: '100vh',
             bgcolor: theme.palette.background.default,
           }}

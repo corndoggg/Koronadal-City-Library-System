@@ -40,7 +40,7 @@ const Topbar = ({ toggleMobileSidebar, isSidebarCollapsed, toggleCollapse }) => 
         backgroundColor: 'background.paper',
         color: 'text.primary',
         zIndex: (theme) => theme.zIndex.drawer + 1,
-        borderBottom: '1px solid #e0e0e0',
+        borderBottom: `1px solid ${theme.palette.divider}`
       }}
     >
       <Toolbar sx={{ justifyContent: 'space-between', minHeight: 64 }}>
