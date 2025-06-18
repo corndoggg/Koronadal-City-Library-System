@@ -10,7 +10,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "bootstrap": "^5.3.6",
+    "bootstrap": "^5.3.7",
+    "framer-motion": "^12.18.1",
+    "lucide-react": "^0.517.0",
     "react": "^19.1.0",
     "react-bootstrap": "^2.10.10",
     "react-dom": "^19.1.0",
