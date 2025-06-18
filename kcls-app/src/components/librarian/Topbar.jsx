@@ -15,12 +15,19 @@ import {
   Menu as MenuIcon,
   ChevronLeft,
   ChevronRight,
+  LightMode,
+  DarkMode,
 } from '@mui/icons-material';
 import { UserCircle } from 'lucide-react';
+import { useTheme } from '@mui/material/styles';
+import { useThemeContext } from '../../contexts/ThemeContext'; // adjust the path if needed
 
 const Topbar = ({ toggleMobileSidebar, isSidebarCollapsed, toggleCollapse }) => {
   const [anchorEl, setAnchorEl] = useState(null);
   const open = Boolean(anchorEl);
+
+  const theme = useTheme();
+  const { toggleColorMode } = useThemeContext(); // from context
 
   const handleMenuOpen = (event) => setAnchorEl(event.currentTarget);
   const handleMenuClose = () => setAnchorEl(null);
@@ -54,22 +61,22 @@ const Topbar = ({ toggleMobileSidebar, isSidebarCollapsed, toggleCollapse }) => 
           >
             {isSidebarCollapsed ? <ChevronRight /> : <ChevronLeft />}
           </IconButton>
-
-          <Typography
-            variant="h6"
-            fontWeight={600}
-            sx={{ display: { xs: 'none', md: 'block' } }}
-          >
-            📚 Librarian Panel
-          </Typography>
         </Box>
 
-        {/* User dropdown */}
-        <Box>
+        {/* Right side: Dark Mode Toggle + User */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {/* Dark Mode Toggle */}
+          <Tooltip title={`Switch to ${theme.palette.mode === 'light' ? 'dark' : 'light'} mode`}>
+            <IconButton color="inherit" onClick={toggleColorMode}>
+              {theme.palette.mode === 'light' ? <DarkMode /> : <LightMode />}
+            </IconButton>
+          </Tooltip>
+
+          {/* User dropdown */}
           <Tooltip title="Account settings">
             <IconButton onClick={handleMenuOpen} size="small" sx={{ ml: 1 }}>
               <Avatar sx={{ width: 36, height: 36, bgcolor: 'primary.main' }}>
-                 <UserCircle size={24} />
+                <UserCircle size={24} />
               </Avatar>
             </IconButton>
           </Tooltip>

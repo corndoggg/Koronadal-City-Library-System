@@ -12,7 +12,7 @@ const theme = createTheme({
     },
   },
   typography: {
-    fontFamily: 'Inter, sans-serif',
+    fontFamily: 'Roboto, sans-serif',
     fontWeightMedium: 600,
   },
 });

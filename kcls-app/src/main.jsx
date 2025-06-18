@@ -1,20 +1,18 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { CssBaseline, ThemeProvider } from '@mui/material';
-import theme from './theme/theme.jsx';
 import LibrarianLayout from './layouts/LibrarianpageLayout.jsx';
+import ThemeContextProvider from './contexts/ThemeContext.jsx';
+import './global.css';
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
+      <ThemeContextProvider>
         <Routes>
-          <Route path="/" element={<LibrarianLayout />}>
-          </Route>
+          <Route path="/" element={<LibrarianLayout />} />
         </Routes>
-      </ThemeProvider>
+      </ThemeContextProvider>
     </BrowserRouter>
   </StrictMode>
 );

@@ -2,14 +2,10 @@ import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from '../components/librarian/Sidebar';
 import Topbar from '../components/librarian/Topbar';
-import {
-  Box,
-  CssBaseline,
-  useMediaQuery,
-  ThemeProvider,
-  createTheme,
-} from '@mui/material';
+import { Box, CssBaseline, useMediaQuery, useTheme } from '@mui/material';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useThemeContext } from '../contexts/ThemeContext'; // ⬅️ custom context for toggling
+import Footer from '../components/common/Footer';
 
 const drawerWidth = 240;
 const collapsedWidth = 72;
@@ -18,6 +14,10 @@ const LibrarianpageLayout = () => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const isMobile = useMediaQuery('(max-width:768px)');
+  const theme = useTheme();
+  const { mode } = useThemeContext();
+
+  const isDark = mode === 'dark';
 
   const toggleCollapse = () => setIsSidebarCollapsed(prev => !prev);
   const toggleMobileSidebar = () => setShowMobileSidebar(prev => !prev);
@@ -36,8 +36,8 @@ const LibrarianpageLayout = () => {
             position: 'fixed',
             top: 0,
             left: 0,
-            backgroundColor: '#fff',
-            boxShadow: '2px 0 10px rgba(0, 0, 0, 0.05)',
+            backgroundColor: theme.palette.background.paper,
+            boxShadow: theme.shadows[2],
             zIndex: 1100,
             overflow: 'hidden',
           }}
@@ -59,8 +59,8 @@ const LibrarianpageLayout = () => {
                 left: 0,
                 width: drawerWidth,
                 height: '100vh',
-                backgroundColor: '#fff',
-                boxShadow: '2px 0 10px rgba(0,0,0,0.1)',
+                backgroundColor: theme.palette.background.paper,
+                boxShadow: theme.shadows[3],
                 zIndex: 1200,
               }}
             >
@@ -83,21 +83,30 @@ const LibrarianpageLayout = () => {
           isSidebarCollapsed={isSidebarCollapsed}
         />
 
-        <Box component="main" sx={{ p: 3, minHeight: '100vh', bgcolor: '#f5f6fa' }}>
+        <Box
+          component="main"
+          sx={{
+            p: 3,
+            pb: 6,
+            minHeight: '100vh',
+            bgcolor: theme.palette.background.default,
+          }}
+        >
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
             style={{
-              backgroundColor: '#ffffff',
+              backgroundColor: theme.palette.background.paper,
               borderRadius: 12,
               padding: 24,
-              boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+              boxShadow: theme.shadows[2],
               minHeight: 'calc(100vh - 72px)',
             }}
           >
             <Outlet />
           </motion.div>
+          <Footer/>
         </Box>
       </Box>
     </>

@@ -46,10 +46,45 @@ const Sidebar = ({ collapsed = false, drawerWidth = 240 }) => {
         },
       }}
     >
-      <Box sx={{ p: collapsed ? 1 : 2, display: 'flex', justifyContent: collapsed ? 'center' : 'flex-start', alignItems: 'center', minHeight: 64 }}>
+      <Box
+        sx={{
+          p: collapsed ? 1 : 2,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          minHeight: 96,
+        }}
+      >
+        <Box
+          sx={{
+            width: collapsed ? 52 : 52,
+            height: collapsed ? 52 : 52,
+            mb: collapsed ? 0 : 1,
+            transition: 'all 0.3s ease',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Box
+            component="img"
+            src="/logo.png"
+            alt="Koronadal City Logo"
+            sx={{
+              maxWidth: '100%',
+              maxHeight: '100%',
+              objectFit: 'contain',
+            }}
+          />
+        </Box>
         {!collapsed && (
-          <Typography variant="h6" fontWeight="bold" color="primary">
-            📚 Librarian
+          <Typography
+            variant="subtitle1"
+            fontWeight="bold"
+            color="primary"
+            sx={{ textAlign: 'center', whiteSpace: 'nowrap' }}
+          >
+            Koronadal City
           </Typography>
         )}
       </Box>
