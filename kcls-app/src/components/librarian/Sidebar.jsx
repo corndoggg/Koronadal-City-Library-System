@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 
 const navLinks = [
-  { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { href: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/books', icon: BookOpen, label: 'Books' },
   { href: '/documents', icon: FileText, label: 'Documents' },
   { href: '/borrow', icon: Handshake, label: 'Borrow' },
@@ -29,7 +29,6 @@ const navLinks = [
 ];
 
 const Sidebar = ({ collapsed = false, drawerWidth = 240 }) => {
-  const location = useLocation();
   const theme = useTheme();
   const isDarkMode = theme.palette.mode === 'dark';
 

@@ -11,7 +11,7 @@ createRoot(document.getElementById('root')).render(
     <BrowserRouter>
       <ThemeContextProvider>
         <Routes>
-        <Route path="/dashboard" element={<LibrarianLayout />}>
+        <Route path="/" element={<LibrarianLayout />}>
           <Route index element={<DashboardPage />} />
         </Route>
         </Routes>
