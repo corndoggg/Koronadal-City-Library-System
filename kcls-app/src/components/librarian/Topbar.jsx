@@ -8,14 +8,15 @@ import {
   MenuItem,
   Avatar,
   Tooltip,
-  Box
+  Box,
+  Divider,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
-  AccountCircle,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
 } from '@mui/icons-material';
+import { UserCircle } from 'lucide-react';
 
 const Topbar = ({ toggleMobileSidebar, isSidebarCollapsed, toggleCollapse }) => {
   const [anchorEl, setAnchorEl] = useState(null);
@@ -29,47 +30,46 @@ const Topbar = ({ toggleMobileSidebar, isSidebarCollapsed, toggleCollapse }) => 
       position="sticky"
       elevation={1}
       sx={{
-        backgroundColor: 'white',
-        color: 'black',
+        backgroundColor: 'background.paper',
+        color: 'text.primary',
         zIndex: (theme) => theme.zIndex.drawer + 1,
+        borderBottom: '1px solid #e0e0e0',
       }}
     >
-      <Toolbar sx={{ justifyContent: 'space-between' }}>
+      <Toolbar sx={{ justifyContent: 'space-between', minHeight: 64 }}>
+        {/* Left side controls */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          {/* Mobile Toggle */}
           <IconButton
             color="primary"
-            edge="start"
-            sx={{ display: { xs: 'inline-flex', md: 'none' } }}
             onClick={toggleMobileSidebar}
+            sx={{ display: { xs: 'inline-flex', md: 'none' } }}
           >
             <MenuIcon />
           </IconButton>
 
-          {/* Desktop Sidebar Collapse Toggle */}
           <IconButton
-            color="secondary"
-            sx={{ display: { xs: 'none', md: 'inline-flex' } }}
+            color="primary"
             onClick={toggleCollapse}
+            sx={{ display: { xs: 'none', md: 'inline-flex' } }}
           >
             {isSidebarCollapsed ? <ChevronRight /> : <ChevronLeft />}
           </IconButton>
 
           <Typography
             variant="h6"
-            component="div"
-            sx={{ display: { xs: 'none', md: 'block' }, fontWeight: 600 }}
+            fontWeight={600}
+            sx={{ display: { xs: 'none', md: 'block' } }}
           >
             📚 Librarian Panel
           </Typography>
         </Box>
 
-        {/* User Dropdown */}
+        {/* User dropdown */}
         <Box>
-          <Tooltip title="Open settings">
-            <IconButton onClick={handleMenuOpen} size="small" sx={{ ml: 2 }}>
-              <Avatar sx={{ width: 32, height: 32 }}>
-                <AccountCircle />
+          <Tooltip title="Account settings">
+            <IconButton onClick={handleMenuOpen} size="small" sx={{ ml: 1 }}>
+              <Avatar sx={{ width: 36, height: 36, bgcolor: 'primary.main' }}>
+                 <UserCircle size={24} />
               </Avatar>
             </IconButton>
           </Tooltip>
@@ -91,7 +91,7 @@ const Topbar = ({ toggleMobileSidebar, isSidebarCollapsed, toggleCollapse }) => 
           >
             <MenuItem>Profile</MenuItem>
             <MenuItem>Settings</MenuItem>
-            <MenuItem divider />
+            <Divider />
             <MenuItem>Logout</MenuItem>
           </Menu>
         </Box>

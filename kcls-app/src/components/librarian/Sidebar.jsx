@@ -8,16 +8,16 @@ import {
   ListItemText,
   Tooltip,
   Box,
-  Typography
+  Typography,
+  Divider,
 } from '@mui/material';
 import {
   LayoutDashboard,
   BookOpen,
   FileText,
   Handshake,
-  Package
+  Package,
 } from 'lucide-react';
-import { motion } from 'framer-motion';
 
 const navLinks = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -37,61 +37,70 @@ const Sidebar = ({ collapsed = false, drawerWidth = 240 }) => {
       sx={{
         width: collapsed ? 72 : drawerWidth,
         flexShrink: 0,
-        [`& .MuiDrawer-paper`]: {
+        '& .MuiDrawer-paper': {
           width: collapsed ? 72 : drawerWidth,
           boxSizing: 'border-box',
-          bgcolor: '#fff',
+          bgcolor: 'background.paper',
           borderRight: '1px solid #e0e0e0',
+          transition: 'width 0.3s ease',
         },
       }}
     >
-      <Box sx={{ px: collapsed ? 1 : 2, py: 3 }}>
+      <Box sx={{ p: collapsed ? 1 : 2, display: 'flex', justifyContent: collapsed ? 'center' : 'flex-start', alignItems: 'center', minHeight: 64 }}>
         {!collapsed && (
-          <Typography variant="h6" fontWeight="bold" color="primary" noWrap>
+          <Typography variant="h6" fontWeight="bold" color="primary">
             📚 Librarian
           </Typography>
         )}
       </Box>
+
+      <Divider />
 
       <List>
         {navLinks.map(({ href, icon: Icon, label }) => {
           const isActive = location.pathname === href;
 
           const listItem = (
-            <motion.div
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
+            <ListItemButton
               key={href}
+              selected={isActive}
               onClick={() => navigate(href)}
+              sx={{
+                justifyContent: collapsed ? 'center' : 'flex-start',
+                px: collapsed ? 1.5 : 3,
+                py: 1.5,
+                my: 0.5,
+                borderRadius: 2,
+                mx: 1,
+                backgroundColor: isActive ? 'primary.main' : 'transparent',
+                color: isActive ? '#fff' : 'text.primary',
+                '&:hover': {
+                  backgroundColor: isActive ? 'primary.dark' : 'action.hover',
+                },
+              }}
             >
-              <ListItemButton
-                selected={isActive}
+              <ListItemIcon
                 sx={{
-                  px: collapsed ? 1 : 2,
-                  py: 1.5,
-                  borderRadius: 1,
-                  mx: 1,
-                  mb: 1,
-                  backgroundColor: isActive ? 'primary.main' : 'transparent',
                   color: isActive ? '#fff' : 'inherit',
-                  '&:hover': {
-                    backgroundColor: isActive ? 'primary.dark' : 'grey.100',
-                  },
+                  minWidth: 0,
+                  mr: collapsed ? 0 : 2,
+                  justifyContent: 'center',
                 }}
               >
-                <ListItemIcon sx={{ color: isActive ? '#fff' : 'inherit', minWidth: 0, mr: collapsed ? 0 : 2 }}>
-                  <Icon size={20} />
-                </ListItemIcon>
-                {!collapsed && (
-                  <ListItemText primary={label} primaryTypographyProps={{ fontWeight: 500 }} />
-                )}
-              </ListItemButton>
-            </motion.div>
+                <Icon size={20} />
+              </ListItemIcon>
+              {!collapsed && (
+                <ListItemText
+                  primary={label}
+                  primaryTypographyProps={{ fontWeight: 500 }}
+                />
+              )}
+            </ListItemButton>
           );
 
           return collapsed ? (
             <Tooltip key={href} title={label} placement="right">
-              {listItem}
+              <Box>{listItem}</Box>
             </Tooltip>
           ) : (
             listItem

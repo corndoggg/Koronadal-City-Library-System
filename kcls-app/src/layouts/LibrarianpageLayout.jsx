@@ -2,7 +2,13 @@ import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from '../components/librarian/Sidebar';
 import Topbar from '../components/librarian/Topbar';
-import { Box, CssBaseline, useMediaQuery } from '@mui/material';
+import {
+  Box,
+  CssBaseline,
+  useMediaQuery,
+  ThemeProvider,
+  createTheme,
+} from '@mui/material';
 import { AnimatePresence, motion } from 'framer-motion';
 
 const drawerWidth = 240;
@@ -20,7 +26,7 @@ const LibrarianpageLayout = () => {
     <>
       <CssBaseline />
 
-      {/* Sidebar */}
+      {/* Sidebar Section */}
       {!isMobile ? (
         <motion.div
           animate={{ width: isSidebarCollapsed ? collapsedWidth : drawerWidth }}
@@ -33,6 +39,7 @@ const LibrarianpageLayout = () => {
             backgroundColor: '#fff',
             boxShadow: '2px 0 10px rgba(0, 0, 0, 0.05)',
             zIndex: 1100,
+            overflow: 'hidden',
           }}
         >
           <Sidebar collapsed={isSidebarCollapsed} drawerWidth={drawerWidth} />
@@ -63,7 +70,7 @@ const LibrarianpageLayout = () => {
         </AnimatePresence>
       )}
 
-      {/* Main Area */}
+      {/* Main App Section */}
       <Box
         sx={{
           ml: isMobile ? 0 : isSidebarCollapsed ? `${collapsedWidth}px` : `${drawerWidth}px`,
@@ -82,10 +89,11 @@ const LibrarianpageLayout = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
             style={{
-              backgroundColor: 'white',
+              backgroundColor: '#ffffff',
               borderRadius: 12,
               padding: 24,
               boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+              minHeight: 'calc(100vh - 72px)',
             }}
           >
             <Outlet />
