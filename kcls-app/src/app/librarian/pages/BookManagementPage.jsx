@@ -37,6 +37,7 @@ const initialBookForm = {
 const initialCopyForm = {
   accessionNumber: '',
   availability: 'Available',
+  physicalStatus: '',
   condition: '',
   location: '',
 };
@@ -106,7 +107,11 @@ const BookManagementPage = () => {
   };
 
   const handleBookChange = (e) => {
-    setBookForm({ ...bookForm, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setBookForm({
+      ...bookForm,
+      [name]: name === 'year' ? parseInt(value) || '' : value,
+    });
   };
 
   const handleCopyChange = (e) => {
@@ -143,7 +148,7 @@ const BookManagementPage = () => {
       await fetchBooks();
       handleClose();
     } catch (error) {
-      console.error('Error saving book:', error);
+      console.error('Error saving book:', error.response?.data || error.message);
       alert('Failed to save book.');
     }
   };
