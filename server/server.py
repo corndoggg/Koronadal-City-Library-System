@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 import mysql.connector
 from mysql.connector import Error
@@ -23,25 +23,6 @@ def get_db_connection():
     except Error as e:
         print(f"Error connecting to MariaDB: {e}")
         return None
-
-@app.route('/api/hello', methods=['GET'])
-def hello():
-    return jsonify({"message": "Hello from Flask API!"})
-
-@app.route('/api/test-db', methods=['GET'])
-def test_db():
-    conn = get_db_connection()
-    if conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT DATABASE();")
-        result = cursor.fetchone()
-        cursor.close()
-        conn.close()
-        return jsonify({"database": result[0]})
-    else:
-        return jsonify({"error": "Could not connect to database"}), 500
-
-from flask import request
 
 # Get all books with inventory
 @app.route('/api/books', methods=['GET'])
