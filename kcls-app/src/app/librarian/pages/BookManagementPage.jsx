@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import {
   Box,
   Typography,
@@ -40,53 +41,12 @@ const initialCopyForm = {
   location: '',
 };
 
-const sampleBooks = [
-  {
-    id: 1,
-    title: 'Fundamentals of Soil',
-    author: 'J. Smith',
-    edition: '2nd',
-    publisher: 'AgriPub',
-    year: 2018,
-    subject: 'Agriculture',
-    language: 'English',
-    isbn: '97801234567',
-    inventory: [
-      {
-        accessionNumber: 'B1001',
-        availability: 'Available',
-        condition: 'Shelf-worn',
-        location: 'Shelf A1',
-      },
-    ],
-  },
-  {
-    id: 2,
-    title: 'Farming Basics',
-    author: 'L. Gomez',
-    edition: '1st',
-    publisher: 'GreenBooks',
-    year: 2020,
-    subject: 'Farming',
-    language: 'English',
-    isbn: '97809876543',
-    inventory: [
-      {
-        accessionNumber: 'B1002',
-        availability: 'Borrowed',
-        condition: 'None',
-        location: 'Shelf A2',
-      },
-    ],
-  },
-];
-
 const BookManagementPage = () => {
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
 
   const [search, setSearch] = useState('');
-  const [books, setBooks] = useState(sampleBooks);
+  const [books, setBooks] = useState([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [isEdit, setIsEdit] = useState(false);
   const [editId, setEditId] = useState(null);
@@ -94,6 +54,21 @@ const BookManagementPage = () => {
   const [copyForm, setCopyForm] = useState(initialCopyForm);
   const [copies, setCopies] = useState([]);
   const [editCopyIndex, setEditCopyIndex] = useState(null);
+
+  const API_BASE = 'https://api.koronadal-library.site/api';
+
+  useEffect(() => {
+    fetchBooks();
+  }, []);
+
+  const fetchBooks = async () => {
+    try {
+      const res = await axios.get(`${API_BASE}/books`);
+      setBooks(res.data);
+    } catch (error) {
+      console.error('Failed to fetch books:', error);
+    }
+  };
 
   const openAddModal = () => {
     setIsEdit(false);
@@ -105,8 +80,17 @@ const BookManagementPage = () => {
 
   const openEditModal = (book) => {
     setIsEdit(true);
-    setEditId(book.id);
-    setBookForm({ ...book });
+    setEditId(book.Book_ID || book.id);
+    setBookForm({
+      title: book.title,
+      author: book.author,
+      edition: book.edition,
+      publisher: book.publisher,
+      year: book.year,
+      subject: book.subject,
+      language: book.language,
+      isbn: book.isbn,
+    });
     setCopies(book.inventory || []);
     setCopyForm(initialCopyForm);
     setModalOpen(true);
@@ -118,6 +102,7 @@ const BookManagementPage = () => {
     setBookForm(initialBookForm);
     setCopyForm(initialCopyForm);
     setCopies([]);
+    setEditCopyIndex(null);
   };
 
   const handleBookChange = (e) => {
@@ -142,22 +127,25 @@ const BookManagementPage = () => {
     }
   };
 
-  const handleSaveBook = () => {
+  const handleSaveBook = async () => {
     const bookData = {
       ...bookForm,
-      id: isEdit ? editId : books.length + 1,
       inventory: copies,
     };
 
-    if (isEdit) {
-      setBooks((prev) =>
-        prev.map((book) => (book.id === editId ? bookData : book))
-      );
-    } else {
-      setBooks([...books, bookData]);
-    }
+    try {
+      if (isEdit) {
+        await axios.put(`${API_BASE}/books/${editId}`, bookData);
+      } else {
+        await axios.post(`${API_BASE}/books`, bookData);
+      }
 
-    handleClose();
+      await fetchBooks();
+      handleClose();
+    } catch (error) {
+      console.error('Error saving book:', error);
+      alert('Failed to save book.');
+    }
   };
 
   const filteredBooks = books.filter((book) =>
@@ -206,20 +194,20 @@ const BookManagementPage = () => {
           </TableHead>
           <TableBody>
             {filteredBooks.map((book) => (
-              <React.Fragment key={book.id}>
+              <React.Fragment key={book.Book_ID || book.id}>
                 <TableRow>
                   <TableCell>{book.title}</TableCell>
                   <TableCell>{book.author}</TableCell>
                   <TableCell>{book.publisher}</TableCell>
                   <TableCell>{book.year}</TableCell>
-                  <TableCell>{book.inventory.length}</TableCell>
+                  <TableCell>{book.inventory?.length || 0}</TableCell>
                   <TableCell align="center">
                     <IconButton color="primary" onClick={() => openEditModal(book)}>
                       <Edit />
                     </IconButton>
                   </TableCell>
                 </TableRow>
-                {book.inventory.map((copy, index) => (
+                {book.inventory?.map((copy, index) => (
                   <TableRow
                     key={index}
                     sx={{
