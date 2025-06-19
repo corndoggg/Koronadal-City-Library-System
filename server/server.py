@@ -5,7 +5,7 @@ from mysql.connector import Error
 import os
 
 app = Flask(__name__)
-CORS(app)
+CORS(app,origins=["https://koronadal-library.site"])
 
 # Database configuration
 DB_CONFIG = {
