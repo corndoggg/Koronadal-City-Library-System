@@ -33,11 +33,11 @@ def get_books():
 
     cursor = conn.cursor(dictionary=True)
 
-    cursor.execute("SELECT * FROM books")
+    cursor.execute("SELECT * FROM Books")
     books = cursor.fetchall()
 
     for book in books:
-        cursor.execute("SELECT AccessionNumber, Availability, PhysicalStatus, BookCondition, BookLocation FROM book_inventory WHERE Book_ID = %s", (book['Book_ID'],))
+        cursor.execute("SELECT AccessionNumber, Availability, PhysicalStatus, BookCondition, BookLocation FROM Book_Inventory WHERE Book_ID = %s", (book['Book_ID'],))
         inventory = cursor.fetchall()
         book['inventory'] = [
             {
@@ -66,14 +66,14 @@ def add_book():
     cursor = conn.cursor()
     try:
         cursor.execute("""
-            INSERT INTO books (Title, Author, Edition, Publisher, Year, Subject, Language, ISBN)
+            INSERT INTO Books (Title, Author, Edition, Publisher, Year, Subject, Language, ISBN)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """, (book['title'], book['author'], book['edition'], book['publisher'], book['year'], book['subject'], book['language'], book['isbn']))
         book_id = cursor.lastrowid
 
         for copy in book.get('inventory', []):
             cursor.execute("""
-                INSERT INTO book_inventory (Book_ID, AccessionNumber, Availability, PhysicalStatus, BookCondition, BookLocation)
+                INSERT INTO Book_Inventory (Book_ID, AccessionNumber, Availability, PhysicalStatus, BookCondition, BookLocation)
                 VALUES (%s, %s, %s, %s, %s, %s)
             """, (book_id, copy['accessionNumber'], copy['availability'], 'Good', copy['condition'], copy['location']))
 
@@ -97,14 +97,14 @@ def update_book(book_id):
     cursor = conn.cursor()
     try:
         cursor.execute("""
-            UPDATE books SET Title=%s, Author=%s, Edition=%s, Publisher=%s, Year=%s, Subject=%s, Language=%s, ISBN=%s
+            UPDATE Books SET Title=%s, Author=%s, Edition=%s, Publisher=%s, Year=%s, Subject=%s, Language=%s, ISBN=%s
             WHERE Book_ID=%s
         """, (data['title'], data['author'], data['edition'], data['publisher'], data['year'], data['subject'], data['language'], data['isbn'], book_id))
 
-        cursor.execute("DELETE FROM book_inventory WHERE Book_ID = %s", (book_id,))
+        cursor.execute("DELETE FROM Book_Inventory WHERE Book_ID = %s", (book_id,))
         for copy in data.get('inventory', []):
             cursor.execute("""
-                INSERT INTO book_inventory (Book_ID, AccessionNumber, Availability, PhysicalStatus, BookCondition, BookLocation)
+                INSERT INTO Book_Inventory (Book_ID, AccessionNumber, Availability, PhysicalStatus, BookCondition, BookLocation)
                 VALUES (%s, %s, %s, %s, %s, %s)
             """, (book_id, copy['accessionNumber'], copy['availability'], 'Good', copy['condition'], copy['location']))
 
