@@ -1,4 +1,3 @@
-// Same imports as before
 import React, { useState } from 'react';
 import {
   Box,
@@ -19,6 +18,7 @@ import {
   DialogActions,
   Grid,
   Divider,
+  useTheme,
 } from '@mui/material';
 import { Edit, Add } from '@mui/icons-material';
 
@@ -82,12 +82,14 @@ const sampleBooks = [
 ];
 
 const BookManagementPage = () => {
+  const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
+
   const [search, setSearch] = useState('');
   const [books, setBooks] = useState(sampleBooks);
   const [modalOpen, setModalOpen] = useState(false);
   const [isEdit, setIsEdit] = useState(false);
   const [editId, setEditId] = useState(null);
-
   const [bookForm, setBookForm] = useState(initialBookForm);
   const [copyForm, setCopyForm] = useState(initialCopyForm);
   const [copies, setCopies] = useState([]);
@@ -138,7 +140,7 @@ const BookManagementPage = () => {
       }
       setCopyForm(initialCopyForm);
     }
-  }
+  };
 
   const handleSaveBook = () => {
     const bookData = {
@@ -168,7 +170,6 @@ const BookManagementPage = () => {
         <Typography variant="h5" fontWeight={600}>
           Book Management
         </Typography>
-
         <Button
           variant="contained"
           color="primary"
@@ -193,7 +194,7 @@ const BookManagementPage = () => {
 
       <TableContainer component={Paper}>
         <Table size="small">
-          <TableHead sx={{ backgroundColor: 'primary.light' }}>
+          <TableHead sx={{ backgroundColor: theme.palette.primary.light }}>
             <TableRow>
               <TableCell>Title</TableCell>
               <TableCell>Author</TableCell>
@@ -213,16 +214,18 @@ const BookManagementPage = () => {
                   <TableCell>{book.year}</TableCell>
                   <TableCell>{book.inventory.length}</TableCell>
                   <TableCell align="center">
-                    <IconButton
-                      color="primary"
-                      onClick={() => openEditModal(book)}
-                    >
+                    <IconButton color="primary" onClick={() => openEditModal(book)}>
                       <Edit />
                     </IconButton>
                   </TableCell>
                 </TableRow>
                 {book.inventory.map((copy, index) => (
-                  <TableRow key={index} sx={{ backgroundColor: '#f9f9f9' }}>
+                  <TableRow
+                    key={index}
+                    sx={{
+                      backgroundColor: isDark ? theme.palette.action.hover : '#f9f9f9',
+                    }}
+                  >
                     <TableCell colSpan={2} sx={{ pl: 4 }}>
                       Accession: {copy.accessionNumber}
                     </TableCell>
@@ -245,7 +248,6 @@ const BookManagementPage = () => {
         </Table>
       </TableContainer>
 
-      {/* Shared Modal for Add/Edit */}
       <Dialog open={modalOpen} onClose={handleClose} maxWidth="md" fullWidth>
         <DialogTitle>{isEdit ? 'Edit Book' : 'Add New Book'}</DialogTitle>
         <DialogContent dividers>
@@ -264,56 +266,58 @@ const BookManagementPage = () => {
           </Grid>
 
           <Divider sx={{ my: 2 }} />
-
-            <Typography variant="subtitle1" gutterBottom>
+          <Typography variant="subtitle1" gutterBottom>
             {editCopyIndex !== null ? 'Edit Copy' : 'Add Book Copy'}
-            </Typography>
-
-            <Grid container spacing={2}>
+          </Typography>
+          <Grid container spacing={2}>
             {Object.entries(initialCopyForm).map(([key]) => (
-                <Grid item xs={12} sm={6} key={key}>
+              <Grid item xs={12} sm={6} key={key}>
                 <TextField
-                    label={key.charAt(0).toUpperCase() + key.slice(1)}
-                    name={key}
-                    value={copyForm[key]}
-                    onChange={handleCopyChange}
-                    fullWidth
+                  label={key.charAt(0).toUpperCase() + key.slice(1)}
+                  name={key}
+                  value={copyForm[key]}
+                  onChange={handleCopyChange}
+                  fullWidth
                 />
-                </Grid>
+              </Grid>
             ))}
             <Grid item xs={12}>
-                <Button
+              <Button
                 variant={editCopyIndex !== null ? 'contained' : 'outlined'}
                 onClick={handleAddCopy}
-                >
+              >
                 {editCopyIndex !== null ? 'Update Copy' : 'Add Copy'}
-                </Button>
+              </Button>
             </Grid>
-            </Grid>
-            {copies.length > 0 && (
+          </Grid>
+
+          {copies.length > 0 && (
             <Box mt={2}>
-                <Typography fontWeight={600}>Book Copies:</Typography>
-                {copies.map((copy, idx) => (
+              <Typography fontWeight={600}>Book Copies:</Typography>
+              {copies.map((copy, idx) => (
                 <Box
-                    key={idx}
-                    display="flex"
-                    justifyContent="space-between"
-                    alignItems="center"
-                    mt={1}
+                  key={idx}
+                  display="flex"
+                  justifyContent="space-between"
+                  alignItems="center"
+                  mt={1}
                 >
-                    <Typography variant="body2">
+                  <Typography variant="body2">
                     • {copy.accessionNumber} – {copy.location}, {copy.availability}
-                    </Typography>
-                    <Button size="small" onClick={() => {
-                    setCopyForm(copy);
-                    setEditCopyIndex(idx);
-                    }}>
+                  </Typography>
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      setCopyForm(copy);
+                      setEditCopyIndex(idx);
+                    }}
+                  >
                     Edit
-                    </Button>
+                  </Button>
                 </Box>
-                ))}
+              ))}
             </Box>
-            )}
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={handleClose}>Cancel</Button>
