@@ -43,7 +43,7 @@ def get_books():
             {
                 'accessionNumber': i['AccessionNumber'],
                 'availability': i['Availability'],
-                'physicalStatus': i['PhysicalStatus']
+                'physicalStatus': i['PhysicalStatus'],
                 'condition': i['BookCondition'],
                 'location': i['BookLocation']
             } for i in inventory
