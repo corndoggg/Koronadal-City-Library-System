@@ -83,14 +83,14 @@ const BookManagementPage = () => {
     setIsEdit(true);
     setEditId(book.Book_ID || book.id);
     setBookForm({
-      title: book.title,
-      author: book.author,
-      edition: book.edition,
-      publisher: book.publisher,
-      year: book.year,
-      subject: book.subject,
-      language: book.language,
-      isbn: book.isbn,
+      Title: book.Title,
+      Author: book.Author,
+      Edition: book.Edition,
+      Publisher: book.Publisher,
+      Year: book.Year,
+      Subject: book.Subject,
+      language: book.Language,
+      ISBN: book.ISBN,
     });
     setCopies(book.inventory || []);
     setCopyForm(initialCopyForm);
