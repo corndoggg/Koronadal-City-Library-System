@@ -43,6 +43,7 @@ def get_books():
             {
                 'accessionNumber': i['AccessionNumber'],
                 'availability': i['Availability'],
+                'physicalStatus': i['PhysicalStatus']
                 'condition': i['BookCondition'],
                 'location': i['BookLocation']
             } for i in inventory
@@ -75,7 +76,7 @@ def add_book():
             cursor.execute("""
                 INSERT INTO Book_Inventory (Book_ID, Accession_Number, Availability, Physical_Status, BookCondition, BookLocation)
                 VALUES (%s, %s, %s, %s, %s, %s)
-            """, (book_id, copy['accessionNumber'], copy['availability'], 'Good', copy['condition'], copy['location'], copy['physicalStatus']))
+            """, (book_id, copy['accessionNumber'], copy['availability'], copy['physicalStatus'], copy['condition'], copy['location']))
 
         conn.commit()
         return jsonify({'message': 'Book added successfully', 'book_id': book_id})
