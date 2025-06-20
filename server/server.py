@@ -37,13 +37,16 @@ def get_books():
     books = cursor.fetchall()
 
     for book in books:
-        cursor.execute("SELECT AccessionNumber, Availability, PhysicalStatus, BookCondition, BookLocation FROM Book_Inventory WHERE Book_ID = %s", (book['Book_ID'],))
+        cursor.execute("""
+            SELECT Accession_Number, Availability, Physical_Status, BookCondition, BookLocation 
+            FROM Book_Inventory WHERE Book_ID = %s
+        """, (book['Book_ID'],))
         inventory = cursor.fetchall()
         book['inventory'] = [
             {
-                'accessionNumber': i['AccessionNumber'],
+                'accessionNumber': i['Accession_Number'],
                 'availability': i['Availability'],
-                'physicalStatus': i['PhysicalStatus'],
+                'physicalStatus': i['Physical_Status'],
                 'condition': i['BookCondition'],
                 'location': i['BookLocation']
             } for i in inventory
