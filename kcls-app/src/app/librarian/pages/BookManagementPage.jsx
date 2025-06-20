@@ -24,14 +24,14 @@ import {
 import { Edit, Add } from '@mui/icons-material';
 
 const initialBookForm = {
-  title: '',
-  author: '',
-  edition: '',
-  publisher: '',
-  year: '',
-  subject: '',
-  language: '',
-  isbn: '',
+  Title: '',
+  Author: '',
+  Edition: '',
+  Publisher: '',
+  Year: '',
+  Subject: '',
+  Language: '',
+  ISBN: '',
 };
 
 const initialCopyForm = {
@@ -201,10 +201,10 @@ const BookManagementPage = () => {
             {filteredBooks.map((book) => (
               <React.Fragment key={book.Book_ID || book.id}>
                 <TableRow>
-                  <TableCell>{book.title}</TableCell>
-                  <TableCell>{book.author}</TableCell>
-                  <TableCell>{book.publisher}</TableCell>
-                  <TableCell>{book.year}</TableCell>
+                  <TableCell>{book.Title}</TableCell>
+                  <TableCell>{book.Author}</TableCell>
+                  <TableCell>{book.Publisher}</TableCell>
+                  <TableCell>{book.Year}</TableCell>
                   <TableCell>{book.inventory?.length || 0}</TableCell>
                   <TableCell align="center">
                     <IconButton color="primary" onClick={() => openEditModal(book)}>
