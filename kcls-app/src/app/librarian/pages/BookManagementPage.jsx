@@ -13,15 +13,10 @@ import {
   TableRow,
   Paper,
   IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Grid,
-  Divider,
   useTheme,
 } from '@mui/material';
 import { Edit, Add } from '@mui/icons-material';
+import BookFormModal from '../../../components/librarian/books/BookFormModal';
 
 const initialBookForm = {
   title: '',
@@ -45,6 +40,7 @@ const initialCopyForm = {
 const BookManagementPage = () => {
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
+  const API_BASE = 'https://api.koronadal-library.site/api';
 
   const [search, setSearch] = useState('');
   const [books, setBooks] = useState([]);
@@ -55,8 +51,6 @@ const BookManagementPage = () => {
   const [copyForm, setCopyForm] = useState(initialCopyForm);
   const [copies, setCopies] = useState([]);
   const [editCopyIndex, setEditCopyIndex] = useState(null);
-
-  const API_BASE = 'https://api.koronadal-library.site/api';
 
   useEffect(() => {
     fetchBooks();
@@ -120,14 +114,14 @@ const BookManagementPage = () => {
 
   const handleAddCopy = () => {
     if (copyForm.accessionNumber && copyForm.location) {
+      const updatedCopies = [...copies];
       if (editCopyIndex !== null) {
-        const updated = [...copies];
-        updated[editCopyIndex] = copyForm;
-        setCopies(updated);
+        updatedCopies[editCopyIndex] = copyForm;
         setEditCopyIndex(null);
       } else {
-        setCopies([...copies, copyForm]);
+        updatedCopies.push(copyForm);
       }
+      setCopies(updatedCopies);
       setCopyForm(initialCopyForm);
     }
   };
@@ -144,7 +138,6 @@ const BookManagementPage = () => {
       } else {
         await axios.post(`${API_BASE}/books`, bookData);
       }
-
       await fetchBooks();
       handleClose();
     } catch (error) {
@@ -155,7 +148,7 @@ const BookManagementPage = () => {
 
   const filteredBooks = books.filter((book) =>
     (book.Title || '').toLowerCase().includes(search.toLowerCase())
-  );  
+  );
 
   return (
     <Box>
@@ -241,84 +234,23 @@ const BookManagementPage = () => {
         </Table>
       </TableContainer>
 
-      <Dialog open={modalOpen} onClose={handleClose} maxWidth="md" fullWidth>
-        <DialogTitle>{isEdit ? 'Edit Book' : 'Add New Book'}</DialogTitle>
-        <DialogContent dividers>
-          <Grid container spacing={2}>
-            {Object.entries(initialBookForm).map(([key]) => (
-              <Grid item xs={12} sm={6} key={key}>
-                <TextField
-                  label={key.charAt(0).toUpperCase() + key.slice(1)}
-                  name={key}
-                  value={bookForm[key]}
-                  onChange={handleBookChange}
-                  fullWidth
-                />
-              </Grid>
-            ))}
-          </Grid>
-
-          <Divider sx={{ my: 2 }} />
-          <Typography variant="subtitle1" gutterBottom>
-            {editCopyIndex !== null ? 'Edit Copy' : 'Add Book Copy'}
-          </Typography>
-          <Grid container spacing={2}>
-            {Object.entries(initialCopyForm).map(([key]) => (
-              <Grid item xs={12} sm={6} key={key}>
-                <TextField
-                  label={key.charAt(0).toUpperCase() + key.slice(1)}
-                  name={key}
-                  value={copyForm[key]}
-                  onChange={handleCopyChange}
-                  fullWidth
-                />
-              </Grid>
-            ))}
-            <Grid item xs={12}>
-              <Button
-                variant={editCopyIndex !== null ? 'contained' : 'outlined'}
-                onClick={handleAddCopy}
-              >
-                {editCopyIndex !== null ? 'Update Copy' : 'Add Copy'}
-              </Button>
-            </Grid>
-          </Grid>
-
-          {copies.length > 0 && (
-            <Box mt={2}>
-              <Typography fontWeight={600}>Book Copies:</Typography>
-              {copies.map((copy, idx) => (
-                <Box
-                  key={idx}
-                  display="flex"
-                  justifyContent="space-between"
-                  alignItems="center"
-                  mt={1}
-                >
-                  <Typography variant="body2">
-                    • {copy.accessionNumber} – {copy.location}, {copy.availability}
-                  </Typography>
-                  <Button
-                    size="small"
-                    onClick={() => {
-                      setCopyForm(copy);
-                      setEditCopyIndex(idx);
-                    }}
-                  >
-                    Edit
-                  </Button>
-                </Box>
-              ))}
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleClose}>Cancel</Button>
-          <Button variant="contained" onClick={handleSaveBook}>
-            {isEdit ? 'Update Book' : 'Save Book'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <BookFormModal
+        open={modalOpen}
+        onClose={handleClose}
+        isEdit={isEdit}
+        bookForm={bookForm}
+        handleBookChange={handleBookChange}
+        initialBookForm={initialBookForm}
+        copyForm={copyForm}
+        handleCopyChange={handleCopyChange}
+        initialCopyForm={initialCopyForm}
+        handleAddCopy={handleAddCopy}
+        editCopyIndex={editCopyIndex}
+        copies={copies}
+        setCopyForm={setCopyForm}
+        setEditCopyIndex={setEditCopyIndex}
+        handleSaveBook={handleSaveBook}
+      />
     </Box>
   );
 };
