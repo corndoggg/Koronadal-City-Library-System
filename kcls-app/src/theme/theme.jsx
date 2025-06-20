@@ -1,20 +1,50 @@
 import { createTheme } from '@mui/material/styles';
 
-const theme = createTheme({
+const getDesignTokens = (mode) => ({
   palette: {
-    mode: 'light',
+    mode,
+
     primary: {
-      main: '#6366F1', // Indigo
+      main: '#aa001d',
+      light: '#ef5350',
+      dark: '#7a0014',
     },
-    background: {
-      default: '#F4F6F8',
-      paper: '#FFFFFF',
+
+    secondary: {
+      main: '#ff4081',
     },
+
+    ...(mode === 'light'
+      ? {
+          background: {
+            default: '#f9f9f9',
+            paper: '#ffffff',
+          },
+          text: {
+            primary: '#1a1a1a',
+            secondary: '#5c5c5c',
+          },
+        }
+      : {
+          background: {
+            default: '#121212',
+            paper: '#1e1e1e',
+          },
+          text: {
+            primary: '#ffffff',
+            secondary: '#cccccc',
+          },
+        }),
   },
+
   typography: {
-    fontFamily: 'Roboto, sans-serif',
-    fontWeightMedium: 600,
+    fontFamily: 'Inter, Roboto, sans-serif',
+    button: {
+      textTransform: 'none',
+    },
   },
 });
 
-export default theme;
+const getTheme = (mode = 'light') => createTheme(getDesignTokens(mode));
+
+export default getTheme;

@@ -1,57 +1,23 @@
-import React, { createContext, useContext, useMemo, useState } from 'react';
-import { createTheme, ThemeProvider } from '@mui/material/styles';
-import CssBaseline from '@mui/material/CssBaseline';
+import React, { createContext, useMemo, useState, useContext } from 'react';
+import { ThemeProvider } from '@mui/material/styles';
+import getTheme from '../theme/theme';
 
-export const ColorModeContext = createContext({ toggleColorMode: () => {} });
+const ThemeContext = createContext();
 
-export const useThemeContext = () => useContext(ColorModeContext); // ✅ Export this
+export const ThemeContextProvider = ({ children }) => {
+  const [mode, setMode] = useState('light'); // Or load from localStorage
 
-const ThemeContextProvider = ({ children }) => {
-  const [mode, setMode] = useState('light');
+  const toggleColorMode = () => {
+    setMode((prev) => (prev === 'light' ? 'dark' : 'light'));
+  };
 
-  const colorMode = useMemo(
-    () => ({
-      mode,
-      toggleColorMode: () =>
-        setMode((prevMode) => (prevMode === 'light' ? 'dark' : 'light')),
-    }),
-    [mode]
-  );
-
-  const theme = useMemo(
-    () =>
-      createTheme({
-        palette: {
-          mode,
-          ...(mode === 'dark'
-            ? {
-                background: {
-                  default: '#121212',
-                  paper: '#1e1e1e',
-                },
-              }
-            : {
-                background: {
-                  default: '#f5f6fa',
-                  paper: '#ffffff',
-                },
-              }),
-        },
-        shape: {
-          borderRadius: 12,
-        },
-      }),
-    [mode]
-  );
+  const theme = useMemo(() => getTheme(mode), [mode]);
 
   return (
-    <ColorModeContext.Provider value={colorMode}>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        {children}
-      </ThemeProvider>
-    </ColorModeContext.Provider>
+    <ThemeContext.Provider value={{ mode, toggleColorMode }}>
+      <ThemeProvider theme={theme}>{children}</ThemeProvider>
+    </ThemeContext.Provider>
   );
 };
 
-export default ThemeContextProvider;
+export const useThemeContext = () => useContext(ThemeContext);

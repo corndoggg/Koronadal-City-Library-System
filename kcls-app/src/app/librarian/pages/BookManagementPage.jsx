@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
   Box, Typography, TextField, Button, Table, TableBody, TableCell,
-  TableContainer, TableHead, TableRow, Paper, IconButton, useTheme, Pagination
+  TableContainer, TableHead, TableRow, Paper, IconButton, useTheme,
+  Pagination, Snackbar, Alert, Stack
 } from '@mui/material';
 import { Edit, Add } from '@mui/icons-material';
 import BookFormModal from '../../../components/librarian/books/BookFormModal';
@@ -45,6 +46,8 @@ const BookManagementPage = () => {
   const [copies, setCopies] = useState([]);
   const [editCopyIndex, setEditCopyIndex] = useState(null);
 
+  const [toast, setToast] = useState({ open: false, message: '', severity: 'success' });
+
   useEffect(() => {
     fetchBooks();
   }, []);
@@ -59,6 +62,7 @@ const BookManagementPage = () => {
       setBooks(res.data);
     } catch (error) {
       console.error('Failed to fetch books:', error);
+      showToast('Failed to load books', 'error');
     }
   };
 
@@ -66,15 +70,11 @@ const BookManagementPage = () => {
     const lowerSearch = search.toLowerCase();
     const filtered = books.filter(book =>
       Object.values(book).some(
-        value =>
-          typeof value === 'string' &&
-          value.toLowerCase().includes(lowerSearch)
+        value => typeof value === 'string' && value.toLowerCase().includes(lowerSearch)
       ) ||
       book.inventory?.some(copy =>
         Object.values(copy).some(
-          val =>
-            typeof val === 'string' &&
-            val.toLowerCase().includes(lowerSearch)
+          val => typeof val === 'string' && val.toLowerCase().includes(lowerSearch)
         )
       )
     );
@@ -97,11 +97,15 @@ const BookManagementPage = () => {
       if (editCopyIndex !== null) {
         updated[editCopyIndex] = copyForm;
         setEditCopyIndex(null);
+        showToast('Copy updated');
       } else {
         updated.push(copyForm);
+        showToast('Copy added');
       }
       setCopies(updated);
       setCopyForm(initialCopyForm);
+    } else {
+      showToast('Accession Number and Location are required', 'error');
     }
   };
 
@@ -114,14 +118,16 @@ const BookManagementPage = () => {
     try {
       if (isEdit) {
         await axios.put(`${API_BASE}/books/${editId}`, bookData);
+        showToast('Book updated');
       } else {
         await axios.post(`${API_BASE}/books`, bookData);
+        showToast('Book added');
       }
       await fetchBooks();
       handleClose();
     } catch (error) {
-      console.error('Error saving book:', error.response?.data || error.message);
-      alert('Failed to save book.');
+      console.error('Error saving book:', error);
+      showToast('Failed to save book', 'error');
     }
   };
 
@@ -160,35 +166,44 @@ const BookManagementPage = () => {
     setModalOpen(true);
   };
 
+  const showToast = (message, severity = 'success') => {
+    setToast({ open: true, message, severity });
+  };
+
   const indexOfLast = currentPage * rowsPerPage;
   const indexOfFirst = indexOfLast - rowsPerPage;
   const currentBooks = filteredBooks.slice(indexOfFirst, indexOfLast);
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-        <Typography variant="h5" fontWeight={600}>
+    <Box p={3}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+        <Typography variant="h4" fontWeight={700}>
           Book Management
         </Typography>
-        <Button variant="contained" color="primary" startIcon={<Add />} onClick={openAddModal}>
+        <Button
+          variant="contained"
+          startIcon={<Add />}
+          onClick={openAddModal}
+          sx={{ borderRadius: 2, fontWeight: 600 }}
+        >
           Add Book
         </Button>
       </Box>
 
-      <Box sx={{ mb: 2 }}>
+      <Stack direction="row" spacing={2} mb={3}>
         <TextField
-          label="Search books"
+          label="Search books..."
           variant="outlined"
           size="small"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           sx={{ width: 300 }}
         />
-      </Box>
+      </Stack>
 
-      <TableContainer component={Paper}>
+      <TableContainer component={Paper} variant="outlined">
         <Table size="small">
-          <TableHead sx={{ backgroundColor: theme.palette.primary.light }}>
+          <TableHead sx={{ backgroundColor: theme.palette.background.neutral }}>
             <TableRow>
               <TableCell>Title</TableCell>
               <TableCell>Author</TableCell>
@@ -201,22 +216,25 @@ const BookManagementPage = () => {
           <TableBody>
             {currentBooks.map((book) => (
               <React.Fragment key={book.Book_ID || book.id}>
-                <TableRow>
+                <TableRow hover>
                   <TableCell>{book.Title}</TableCell>
                   <TableCell>{book.Author}</TableCell>
                   <TableCell>{book.Publisher}</TableCell>
                   <TableCell>{book.Year}</TableCell>
                   <TableCell>{book.inventory?.length || 0}</TableCell>
                   <TableCell align="center">
-                    <IconButton color="primary" onClick={() => openEditModal(book)}>
-                      <Edit />
+                    <IconButton onClick={() => openEditModal(book)} color="primary">
+                      <Edit fontSize="small" />
                     </IconButton>
                   </TableCell>
                 </TableRow>
                 {book.inventory?.map((copy, index) => (
-                  <TableRow key={index} sx={{ backgroundColor: isDark ? theme.palette.action.hover : '#f9f9f9' }}>
+                  <TableRow
+                    key={index}
+                    sx={{ backgroundColor: isDark ? theme.palette.action.hover : '#f5f5f5' }}
+                  >
                     <TableCell colSpan={2} sx={{ pl: 4 }}>
-                      Accession: {copy.accessionNumber}
+                      Accession #: {copy.accessionNumber}
                     </TableCell>
                     <TableCell>Location: {copy.location}</TableCell>
                     <TableCell>Condition: {copy.condition}</TableCell>
@@ -228,14 +246,16 @@ const BookManagementPage = () => {
             ))}
             {currentBooks.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} align="center">No books found.</TableCell>
+                <TableCell colSpan={6} align="center">
+                  No books found.
+                </TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
       </TableContainer>
 
-      <Box display="flex" justifyContent="center" my={2}>
+      <Box display="flex" justifyContent="center" mt={3}>
         <Pagination
           count={Math.ceil(filteredBooks.length / rowsPerPage)}
           page={currentPage}
@@ -258,9 +278,25 @@ const BookManagementPage = () => {
         editCopyIndex={editCopyIndex}
         copies={copies}
         setCopyForm={setCopyForm}
+        setCopies={setCopies}
         setEditCopyIndex={setEditCopyIndex}
         handleSaveBook={handleSaveBook}
       />
+
+      <Snackbar
+        open={toast.open}
+        autoHideDuration={3000}
+        onClose={() => setToast({ ...toast, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert
+          onClose={() => setToast({ ...toast, open: false })}
+          severity={toast.severity}
+          variant="filled"
+        >
+          {toast.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

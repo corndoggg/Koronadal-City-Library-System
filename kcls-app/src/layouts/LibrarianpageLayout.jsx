@@ -1,17 +1,24 @@
 import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from '../components/librarian/Sidebar';
-import Topbar from '../components/librarian/Topbar';
-import { Box, CssBaseline, useMediaQuery, useTheme } from '@mui/material';
+import {
+  Box,
+  CssBaseline,
+  useMediaQuery,
+  useTheme,
+  IconButton,
+  Tooltip,
+} from '@mui/material';
+import { Menu as MenuIcon } from '@mui/icons-material';
 import { AnimatePresence, motion } from 'framer-motion';
-import Footer from '../components/common/Footer';
 
-const drawerWidth = 180;
-const collapsedWidth = 52;
+const drawerWidth = 240;
+const collapsedWidth = 64;
 
 const LibrarianpageLayout = () => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
+
   const isMobile = useMediaQuery('(max-width:768px)');
   const theme = useTheme();
 
@@ -23,7 +30,7 @@ const LibrarianpageLayout = () => {
     <>
       <CssBaseline />
 
-      {/* Sidebar Section */}
+      {/* Sidebar (desktop or mobile) */}
       {!isMobile ? (
         <motion.div
           animate={{ width: isSidebarCollapsed ? collapsedWidth : drawerWidth }}
@@ -39,7 +46,12 @@ const LibrarianpageLayout = () => {
             overflow: 'hidden',
           }}
         >
-          <Sidebar collapsed={isSidebarCollapsed} drawerWidth={drawerWidth} collapsedWidth={collapsedWidth} />
+          <Sidebar
+            collapsed={isSidebarCollapsed}
+            toggleCollapse={toggleCollapse}
+            drawerWidth={drawerWidth}
+            collapsedWidth={collapsedWidth}
+          />
         </motion.div>
       ) : (
         <AnimatePresence>
@@ -55,10 +67,10 @@ const LibrarianpageLayout = () => {
                   width: '100vw',
                   height: '100vh',
                   bgcolor: 'rgba(0, 0, 0, 0.4)',
-                  zIndex: 1250, // Below sidebar, above topbar
+                  zIndex: 1250,
                 }}
               />
-              {/* Sidebar */}
+              {/* Mobile Sidebar */}
               <motion.div
                 key="mobile-sidebar"
                 initial={{ x: '-100%' }}
@@ -76,34 +88,53 @@ const LibrarianpageLayout = () => {
                   zIndex: 1300,
                 }}
               >
-                <Sidebar collapsed={false} drawerWidth={drawerWidth} />
+                <Sidebar
+                  collapsed={false}
+                  toggleCollapse={toggleCollapse}
+                  drawerWidth={drawerWidth}
+                  collapsedWidth={collapsedWidth}
+                />
               </motion.div>
             </>
           )}
         </AnimatePresence>
       )}
 
-      {/* Main App Section */}
+      {/* Mobile toggle button */}
+      {isMobile && !showMobileSidebar && (
+        <Tooltip title="Open menu">
+          <IconButton
+            onClick={toggleMobileSidebar}
+            sx={{
+              position: 'fixed',
+              top: 12,
+              left: 12,
+              zIndex: 1400,
+              backgroundColor: theme.palette.background.paper,
+              boxShadow: theme.shadows[3],
+              '&:hover': {
+                backgroundColor: theme.palette.action.hover,
+              },
+            }}
+            size="small"
+          >
+            <MenuIcon />
+          </IconButton>
+        </Tooltip>
+      )}
+
+      {/* Main Content Area */}
       <Box
         sx={{
           ml: isMobile ? 0 : isSidebarCollapsed ? `${collapsedWidth}px` : `${drawerWidth}px`,
           transition: 'margin-left 0.3s ease',
         }}
       >
-        {/* Topbar */}
-        <Box sx={{ position: 'sticky', top: 0, zIndex: 1200 }}>
-          <Topbar
-            toggleMobileSidebar={toggleMobileSidebar}
-            toggleCollapse={toggleCollapse}
-            isSidebarCollapsed={isSidebarCollapsed}
-          />
-        </Box>
-
         <Box
           component="main"
           sx={{
-            p: 1,
-            pb: 2,
+            p: 2,
+            pt: 3,
             minHeight: '100vh',
             bgcolor: theme.palette.background.default,
           }}
@@ -117,12 +148,11 @@ const LibrarianpageLayout = () => {
               borderRadius: 12,
               padding: 24,
               boxShadow: theme.shadows[2],
-              minHeight: 'calc(100vh - 72px)',
+              minHeight: 'calc(100vh - 48px)',
             }}
           >
             <Outlet />
           </motion.div>
-          <Footer />
         </Box>
       </Box>
     </>
