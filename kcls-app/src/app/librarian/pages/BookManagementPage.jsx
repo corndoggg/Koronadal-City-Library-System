@@ -3,9 +3,9 @@ import axios from 'axios';
 import {
   Box, Typography, TextField, Button, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Paper, IconButton, useTheme,
-  Pagination, Snackbar, Alert, Stack
+  Pagination, Snackbar, Alert, Stack, Tooltip
 } from '@mui/material';
-import { Edit, Add } from '@mui/icons-material';
+import { Edit, Add, Book } from '@mui/icons-material';
 import BookFormModal from '../../../components/librarian/books/BookFormModal';
 
 const initialBookForm = {
@@ -176,10 +176,21 @@ const BookManagementPage = () => {
 
   return (
     <Box p={3}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-        <Typography variant="h4" fontWeight={700}>
-          Book Management
-        </Typography>
+      {/* Header Section */}
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          mb: 4,
+        }}
+      >
+        <Box display="flex" alignItems="center" gap={1}>
+          <Book fontSize="large" color="primary" />
+          <Typography variant="h4" fontWeight={700}>
+            Book Management
+          </Typography>
+        </Box>
         <Button
           variant="contained"
           startIcon={<Add />}
@@ -190,64 +201,89 @@ const BookManagementPage = () => {
         </Button>
       </Box>
 
-      <Stack direction="row" spacing={2} mb={3}>
+      {/* Search Field */}
+      <Stack direction="row" spacing={2} mb={2}>
         <TextField
-          label="Search books..."
+          label="Search by title, author, ISBN..."
           variant="outlined"
           size="small"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          sx={{ width: 300 }}
+          sx={{ width: 350 }}
         />
       </Stack>
 
-      <TableContainer component={Paper} variant="outlined">
+      {/* Book Table */}
+      <TableContainer component={Paper} elevation={3}>
         <Table size="small">
-          <TableHead sx={{ backgroundColor: theme.palette.background.neutral }}>
+          <TableHead sx={{ backgroundColor: theme.palette.primary.light, color: '#fff' }}>
             <TableRow>
-              <TableCell>Title</TableCell>
-              <TableCell>Author</TableCell>
-              <TableCell>Publisher</TableCell>
-              <TableCell>Year</TableCell>
-              <TableCell>Copies</TableCell>
-              <TableCell align="center">Actions</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Title</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Author</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Publisher</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Year</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Copies</TableCell>
+              <TableCell align="center" sx={{ fontWeight: 600 }}>
+                Actions
+              </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {currentBooks.map((book) => (
               <React.Fragment key={book.Book_ID || book.id}>
-                <TableRow hover>
+                <TableRow hover sx={{ transition: 'all 0.2s' }}>
                   <TableCell>{book.Title}</TableCell>
                   <TableCell>{book.Author}</TableCell>
                   <TableCell>{book.Publisher}</TableCell>
                   <TableCell>{book.Year}</TableCell>
                   <TableCell>{book.inventory?.length || 0}</TableCell>
                   <TableCell align="center">
-                    <IconButton onClick={() => openEditModal(book)} color="primary">
-                      <Edit fontSize="small" />
-                    </IconButton>
+                    <Tooltip title="Edit Book">
+                      <IconButton onClick={() => openEditModal(book)} color="primary">
+                        <Edit fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
                   </TableCell>
                 </TableRow>
+
+                {/* Inventory rows */}
                 {book.inventory?.map((copy, index) => (
-                  <TableRow
-                    key={index}
-                    sx={{ backgroundColor: isDark ? theme.palette.action.hover : '#f5f5f5' }}
-                  >
-                    <TableCell colSpan={2} sx={{ pl: 4 }}>
-                      Accession #: {copy.accessionNumber}
+                  <TableRow key={index} sx={{ backgroundColor: isDark ? '#2b2b2b' : '#f9f9f9' }}>
+                    <TableCell colSpan={2} sx={{ pl: 5 }}>
+                      <Typography variant="body2">
+                        <strong>Accession #:</strong> {copy.accessionNumber}
+                      </Typography>
                     </TableCell>
-                    <TableCell>Location: {copy.location}</TableCell>
-                    <TableCell>Condition: {copy.condition}</TableCell>
-                    <TableCell>Availability: {copy.availability}</TableCell>
+                    <TableCell>
+                      <Typography variant="body2">
+                        <strong>Location:</strong> {copy.location}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2">
+                        <strong>Condition:</strong> {copy.condition}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography
+                        variant="body2"
+                        color={copy.availability === 'Available' ? 'green' : 'orange'}
+                      >
+                        <strong>{copy.availability}</strong>
+                      </Typography>
+                    </TableCell>
                     <TableCell />
                   </TableRow>
                 ))}
               </React.Fragment>
             ))}
+
             {currentBooks.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} align="center">
-                  No books found.
+                <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    No books found. Try a different search.
+                  </Typography>
                 </TableCell>
               </TableRow>
             )}
@@ -255,7 +291,8 @@ const BookManagementPage = () => {
         </Table>
       </TableContainer>
 
-      <Box display="flex" justifyContent="center" mt={3}>
+      {/* Pagination */}
+      <Box display="flex" justifyContent="center" mt={4}>
         <Pagination
           count={Math.ceil(filteredBooks.length / rowsPerPage)}
           page={currentPage}
@@ -264,6 +301,7 @@ const BookManagementPage = () => {
         />
       </Box>
 
+      {/* Modals and Snackbar */}
       <BookFormModal
         open={modalOpen}
         onClose={handleClose}

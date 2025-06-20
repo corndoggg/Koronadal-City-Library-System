@@ -26,12 +26,7 @@ import {
   Package,
   UserCircle,
 } from 'lucide-react';
-import {
-  ChevronLeft,
-  ChevronRight,
-  LightMode,
-  DarkMode,
-} from '@mui/icons-material';
+import { LightMode, DarkMode } from '@mui/icons-material';
 import { useThemeContext } from '../../contexts/ThemeContext';
 
 const navLinks = [
@@ -42,12 +37,7 @@ const navLinks = [
   { href: '/storage', icon: Package, label: 'Storage' },
 ];
 
-const Sidebar = ({
-  collapsed = false,
-  drawerWidth = 240,
-  collapsedWidth = 64,
-  toggleCollapse,
-}) => {
+const Sidebar = ({ drawerWidth = 240 }) => {
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
   const { toggleColorMode } = useThemeContext();
@@ -69,101 +59,56 @@ const Sidebar = ({
       <Drawer
         variant="permanent"
         sx={{
-          width: collapsed ? collapsedWidth : drawerWidth,
+          width: drawerWidth,
           flexShrink: 0,
           '& .MuiDrawer-paper': {
-            width: collapsed ? collapsedWidth : drawerWidth,
+            width: drawerWidth,
             boxSizing: 'border-box',
             bgcolor: 'background.paper',
             borderRight: `1px solid ${theme.palette.divider}`,
-            transition: 'width 0.3s ease',
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'space-between',
           },
         }}
       >
-        {/* Top Controls */}
-        <Box>
+        {/* Logo and Title */}
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.5,
+            px: 2.5,
+            py: 2,
+            bgcolor: theme.palette.primary.main, // <--- theme-based background
+            color: theme.palette.primary.contrastText, // ensure text/logo contrast
+          }}
+        >
           <Box
+            component="img"
+            src="/logo.png"
+            alt="Logo"
             sx={{
-              display: 'flex',
-              justifyContent: collapsed ? 'center' : 'space-between',
-              alignItems: 'center',
-              px: 1,
-              py: 1.2,
+              width: 32,
+              height: 32,
+              objectFit: 'contain',
             }}
+          />
+          <Typography
+            variant="subtitle2"
+            fontWeight="bold"
+            fontSize={13}
+            noWrap
+            sx={{ color: theme.palette.primary.contrastText }}
           >
-            <Tooltip title="Toggle sidebar">
-              <IconButton
-                size="small"
-                onClick={toggleCollapse}
-                sx={{
-                  color: theme.palette.text.primary,
-                  '&:hover': {
-                    backgroundColor: alpha(theme.palette.primary.main, 0.1),
-                  },
-                }}
-              >
-                {collapsed ? <ChevronRight fontSize="small" /> : <ChevronLeft fontSize="small" />}
-              </IconButton>
-            </Tooltip>
+            Koronadal City Library
+          </Typography>
+        </Box>
 
-            {!collapsed && (
-              <Tooltip title={`Switch to ${isDark ? 'light' : 'dark'} mode`}>
-                <IconButton
-                  size="small"
-                  onClick={handleThemeToggle}
-                  sx={{
-                    color: theme.palette.text.primary,
-                    '&:hover': {
-                      backgroundColor: alpha(theme.palette.primary.main, 0.1),
-                    },
-                  }}
-                >
-                  {isDark ? <LightMode fontSize="small" /> : <DarkMode fontSize="small" />}
-                </IconButton>
-              </Tooltip>
-            )}
-          </Box>
+        <Divider />
 
-          {/* Logo + Title */}
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: collapsed ? 'center' : 'flex-start',
-              px: collapsed ? 1.5 : 2,
-              py: 1,
-              gap: 1,
-            }}
-          >
-            <Box
-              component="img"
-              src="/logo.png"
-              alt="Logo"
-              sx={{
-                width: 32,
-                height: 32,
-                objectFit: 'contain',
-              }}
-            />
-            {!collapsed && (
-              <Typography
-                variant="subtitle2"
-                fontWeight="bold"
-                color="primary"
-                fontSize={13}
-                noWrap
-              >
-                Koronadal City Library
-              </Typography>
-            )}
-          </Box>
-
-          <Divider sx={{ mb: 1 }} />
-
-          {/* Navigation */}
+        {/* Navigation */}
+        <Box sx={{ flexGrow: 1, mt: 1 }}>
           <List>
             {navLinks.map(({ href, icon: Icon, label }) => (
               <NavLink key={href} to={href} style={{ textDecoration: 'none' }}>
@@ -173,13 +118,15 @@ const Sidebar = ({
                     <ListItemButton
                       selected={isActive}
                       sx={{
-                        justifyContent: collapsed ? 'center' : 'flex-start',
-                        px: collapsed ? 1.5 : 2.5,
-                        py: 1,
-                        mx: 1,
+                        mx: 1.5,
+                        my: 0.5,
                         borderRadius: 2,
+                        px: 2.5,
+                        py: 1.25,
+                        color: isActive
+                          ? theme.palette.primary.main
+                          : theme.palette.text.secondary,
                         backgroundColor: isActive ? activeBg : 'transparent',
-                        color: isActive ? theme.palette.primary.main : theme.palette.text.secondary,
                         '&:hover': {
                           backgroundColor: theme.palette.action.hover,
                           transform: 'scale(1.02)',
@@ -190,7 +137,7 @@ const Sidebar = ({
                       <ListItemIcon
                         sx={{
                           minWidth: 0,
-                          mr: collapsed ? 0 : 2,
+                          mr: 2,
                           justifyContent: 'center',
                           color: isActive
                             ? theme.palette.primary.main
@@ -199,12 +146,7 @@ const Sidebar = ({
                       >
                         <Icon size={20} />
                       </ListItemIcon>
-                      {!collapsed && (
-                        <ListItemText
-                          primary={label}
-                          primaryTypographyProps={{ fontSize: 14 }}
-                        />
-                      )}
+                      <ListItemText primary={label} primaryTypographyProps={{ fontSize: 14 }} />
                     </ListItemButton>
                   );
                 }}
@@ -213,29 +155,49 @@ const Sidebar = ({
           </List>
         </Box>
 
-        {/* Account Settings Section */}
-        <Box sx={{ px: 1.5, py: 1 }}>
+        {/* Bottom Section: Profile and Theme Toggle */}
+        <Box sx={{ px: 2.5, py: 2 }}>
           <Box
             sx={{
               display: 'flex',
               alignItems: 'center',
-              justifyContent: collapsed ? 'center' : 'flex-start',
-              gap: 1,
-              cursor: 'pointer',
-              '&:hover': { opacity: 0.8 },
+              justifyContent: 'space-between',
             }}
-            onClick={(e) => setAnchorEl(e.currentTarget)}
           >
-            <Tooltip title="Account settings">
-              <Avatar sx={{ width: 28, height: 28, bgcolor: 'primary.main' }}>
-                <UserCircle size={20} />
-              </Avatar>
-            </Tooltip>
-            {!collapsed && (
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                cursor: 'pointer',
+                '&:hover': { opacity: 0.8 },
+              }}
+              onClick={(e) => setAnchorEl(e.currentTarget)}
+            >
+              <Tooltip title="Account settings">
+                <Avatar sx={{ width: 28, height: 28, bgcolor: 'primary.main' }}>
+                  <UserCircle size={20} />
+                </Avatar>
+              </Tooltip>
               <Typography variant="body2" fontWeight={500}>
                 Profile
               </Typography>
-            )}
+            </Box>
+
+            <Tooltip title={`Switch to ${isDark ? 'light' : 'dark'} mode`}>
+              <IconButton
+                size="small"
+                onClick={handleThemeToggle}
+                sx={{
+                  color: theme.palette.text.primary,
+                  '&:hover': {
+                    backgroundColor: alpha(theme.palette.primary.main, 0.1),
+                  },
+                }}
+              >
+                {isDark ? <LightMode fontSize="small" /> : <DarkMode fontSize="small" />}
+              </IconButton>
+            </Tooltip>
           </Box>
         </Box>
       </Drawer>

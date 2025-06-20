@@ -30,7 +30,7 @@ const LibrarianpageLayout = () => {
     <>
       <CssBaseline />
 
-      {/* Sidebar (desktop or mobile) */}
+      {/* Sidebar */}
       {!isMobile ? (
         <motion.div
           animate={{ width: isSidebarCollapsed ? collapsedWidth : drawerWidth }}
@@ -57,7 +57,6 @@ const LibrarianpageLayout = () => {
         <AnimatePresence>
           {showMobileSidebar && (
             <>
-              {/* Backdrop */}
               <Box
                 onClick={closeMobileSidebar}
                 sx={{
@@ -70,7 +69,6 @@ const LibrarianpageLayout = () => {
                   zIndex: 1250,
                 }}
               />
-              {/* Mobile Sidebar */}
               <motion.div
                 key="mobile-sidebar"
                 initial={{ x: '-100%' }}
@@ -123,7 +121,7 @@ const LibrarianpageLayout = () => {
         </Tooltip>
       )}
 
-      {/* Main Content Area */}
+      {/* Main Content */}
       <Box
         sx={{
           ml: isMobile ? 0 : isSidebarCollapsed ? `${collapsedWidth}px` : `${drawerWidth}px`,
@@ -134,7 +132,7 @@ const LibrarianpageLayout = () => {
           component="main"
           sx={{
             p: 2,
-            pt: 3,
+            pt: 2,
             minHeight: '100vh',
             bgcolor: theme.palette.background.default,
           }}
@@ -143,13 +141,6 @@ const LibrarianpageLayout = () => {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
-            style={{
-              backgroundColor: theme.palette.background.paper,
-              borderRadius: 12,
-              padding: 24,
-              boxShadow: theme.shadows[2],
-              minHeight: 'calc(100vh - 48px)',
-            }}
           >
             <Outlet />
           </motion.div>
