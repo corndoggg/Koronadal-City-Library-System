@@ -108,9 +108,9 @@ def update_book(book_id):
         cursor.execute("DELETE FROM Book_Inventory WHERE Book_ID = %s", (book_id,))
         for copy in data.get('inventory', []):
             cursor.execute("""
-                INSERT INTO Book_Inventory (Book_ID, AccessionNumber, Availability, PhysicalStatus, BookCondition, BookLocation)
+                INSERT INTO Book_Inventory (Book_ID, Accession_Number, Availability, Physical_Status, BookCondition, BookLocation)
                 VALUES (%s, %s, %s, %s, %s, %s)
-            """, (book_id, copy['accessionNumber'], copy['availability'], 'Good', copy['condition'], copy['location']))
+            """, (book_id, copy['accessionNumber'], copy['availability'], copy['physicalStatus'], copy['condition'], copy['location']))
 
         conn.commit()
         return jsonify({'message': 'Book updated successfully'})
