@@ -24,14 +24,14 @@ import {
 import { Edit, Add } from '@mui/icons-material';
 
 const initialBookForm = {
-  Title: '',
-  Author: '',
-  Edition: '',
-  Publisher: '',
-  Year: '',
-  Subject: '',
-  Language: '',
-  ISBN: '',
+  title: '',
+  author: '',
+  edition: '',
+  publisher: '',
+  year: '',
+  subject: '',
+  language: '',
+  isbn: '',
 };
 
 const initialCopyForm = {
@@ -83,14 +83,14 @@ const BookManagementPage = () => {
     setIsEdit(true);
     setEditId(book.Book_ID || book.id);
     setBookForm({
-      Title: book.Title,
-      Author: book.Author,
-      Edition: book.Edition,
-      Publisher: book.Publisher,
-      Year: book.Year,
-      Subject: book.Subject,
+      title: book.Title,
+      author: book.Author,
+      edition: book.Edition,
+      publisher: book.Publisher,
+      year: book.Year,
+      subject: book.Subject,
       language: book.Language,
-      ISBN: book.ISBN,
+      isbn: book.ISBN,
     });
     setCopies(book.inventory || []);
     setCopyForm(initialCopyForm);
@@ -154,7 +154,7 @@ const BookManagementPage = () => {
   };
 
   const filteredBooks = books.filter((book) =>
-    (book.title || '').toLowerCase().includes(search.toLowerCase())
+    (book.Title || '').toLowerCase().includes(search.toLowerCase())
   );  
 
   return (
