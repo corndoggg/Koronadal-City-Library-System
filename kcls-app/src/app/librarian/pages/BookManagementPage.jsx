@@ -154,8 +154,8 @@ const BookManagementPage = () => {
   };
 
   const filteredBooks = books.filter((book) =>
-    book.title.toLowerCase().includes(search.toLowerCase())
-  );
+    (book.title || '').toLowerCase().includes(search.toLowerCase())
+  );  
 
   return (
     <Box>
