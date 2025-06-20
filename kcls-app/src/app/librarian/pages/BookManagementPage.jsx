@@ -1,19 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
-  Box,
-  Typography,
-  TextField,
-  Button,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-  IconButton,
-  useTheme,
+  Box, Typography, TextField, Button, Table, TableBody, TableCell,
+  TableContainer, TableHead, TableRow, Paper, IconButton, useTheme, Pagination
 } from '@mui/material';
 import { Edit, Add } from '@mui/icons-material';
 import BookFormModal from '../../../components/librarian/books/BookFormModal';
@@ -44,6 +33,10 @@ const BookManagementPage = () => {
 
   const [search, setSearch] = useState('');
   const [books, setBooks] = useState([]);
+  const [filteredBooks, setFilteredBooks] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const rowsPerPage = 5;
+
   const [modalOpen, setModalOpen] = useState(false);
   const [isEdit, setIsEdit] = useState(false);
   const [editId, setEditId] = useState(null);
@@ -56,6 +49,10 @@ const BookManagementPage = () => {
     fetchBooks();
   }, []);
 
+  useEffect(() => {
+    handleSearch();
+  }, [search, books]);
+
   const fetchBooks = async () => {
     try {
       const res = await axios.get(`${API_BASE}/books`);
@@ -63,6 +60,78 @@ const BookManagementPage = () => {
     } catch (error) {
       console.error('Failed to fetch books:', error);
     }
+  };
+
+  const handleSearch = () => {
+    const lowerSearch = search.toLowerCase();
+    const filtered = books.filter(book =>
+      Object.values(book).some(
+        value =>
+          typeof value === 'string' &&
+          value.toLowerCase().includes(lowerSearch)
+      ) ||
+      book.inventory?.some(copy =>
+        Object.values(copy).some(
+          val =>
+            typeof val === 'string' &&
+            val.toLowerCase().includes(lowerSearch)
+        )
+      )
+    );
+    setFilteredBooks(filtered);
+    setCurrentPage(1);
+  };
+
+  const handleBookChange = (e) => {
+    const { name, value } = e.target;
+    setBookForm({ ...bookForm, [name]: name === 'year' ? parseInt(value) || '' : value });
+  };
+
+  const handleCopyChange = (e) => {
+    setCopyForm({ ...copyForm, [e.target.name]: e.target.value });
+  };
+
+  const handleAddCopy = () => {
+    if (copyForm.accessionNumber && copyForm.location) {
+      const updated = [...copies];
+      if (editCopyIndex !== null) {
+        updated[editCopyIndex] = copyForm;
+        setEditCopyIndex(null);
+      } else {
+        updated.push(copyForm);
+      }
+      setCopies(updated);
+      setCopyForm(initialCopyForm);
+    }
+  };
+
+  const handleSaveBook = async () => {
+    const bookData = {
+      ...bookForm,
+      inventory: copies,
+    };
+
+    try {
+      if (isEdit) {
+        await axios.put(`${API_BASE}/books/${editId}`, bookData);
+      } else {
+        await axios.post(`${API_BASE}/books`, bookData);
+      }
+      await fetchBooks();
+      handleClose();
+    } catch (error) {
+      console.error('Error saving book:', error.response?.data || error.message);
+      alert('Failed to save book.');
+    }
+  };
+
+  const handleClose = () => {
+    setModalOpen(false);
+    setIsEdit(false);
+    setBookForm(initialBookForm);
+    setCopyForm(initialCopyForm);
+    setCopies([]);
+    setEditCopyIndex(null);
   };
 
   const openAddModal = () => {
@@ -91,64 +160,9 @@ const BookManagementPage = () => {
     setModalOpen(true);
   };
 
-  const handleClose = () => {
-    setModalOpen(false);
-    setIsEdit(false);
-    setBookForm(initialBookForm);
-    setCopyForm(initialCopyForm);
-    setCopies([]);
-    setEditCopyIndex(null);
-  };
-
-  const handleBookChange = (e) => {
-    const { name, value } = e.target;
-    setBookForm({
-      ...bookForm,
-      [name]: name === 'year' ? parseInt(value) || '' : value,
-    });
-  };
-
-  const handleCopyChange = (e) => {
-    setCopyForm({ ...copyForm, [e.target.name]: e.target.value });
-  };
-
-  const handleAddCopy = () => {
-    if (copyForm.accessionNumber && copyForm.location) {
-      const updatedCopies = [...copies];
-      if (editCopyIndex !== null) {
-        updatedCopies[editCopyIndex] = copyForm;
-        setEditCopyIndex(null);
-      } else {
-        updatedCopies.push(copyForm);
-      }
-      setCopies(updatedCopies);
-      setCopyForm(initialCopyForm);
-    }
-  };
-
-  const handleSaveBook = async () => {
-    const bookData = {
-      ...bookForm,
-      inventory: copies,
-    };
-
-    try {
-      if (isEdit) {
-        await axios.put(`${API_BASE}/books/${editId}`, bookData);
-      } else {
-        await axios.post(`${API_BASE}/books`, bookData);
-      }
-      await fetchBooks();
-      handleClose();
-    } catch (error) {
-      console.error('Error saving book:', error.response?.data || error.message);
-      alert('Failed to save book.');
-    }
-  };
-
-  const filteredBooks = books.filter((book) =>
-    (book.Title || '').toLowerCase().includes(search.toLowerCase())
-  );
+  const indexOfLast = currentPage * rowsPerPage;
+  const indexOfFirst = indexOfLast - rowsPerPage;
+  const currentBooks = filteredBooks.slice(indexOfFirst, indexOfLast);
 
   return (
     <Box>
@@ -156,13 +170,7 @@ const BookManagementPage = () => {
         <Typography variant="h5" fontWeight={600}>
           Book Management
         </Typography>
-        <Button
-          variant="contained"
-          color="primary"
-          startIcon={<Add />}
-          sx={{ borderRadius: 2, fontWeight: 'bold', px: 3 }}
-          onClick={openAddModal}
-        >
+        <Button variant="contained" color="primary" startIcon={<Add />} onClick={openAddModal}>
           Add Book
         </Button>
       </Box>
@@ -174,7 +182,7 @@ const BookManagementPage = () => {
           size="small"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          sx={{ width: 250 }}
+          sx={{ width: 300 }}
         />
       </Box>
 
@@ -191,7 +199,7 @@ const BookManagementPage = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {filteredBooks.map((book) => (
+            {currentBooks.map((book) => (
               <React.Fragment key={book.Book_ID || book.id}>
                 <TableRow>
                   <TableCell>{book.Title}</TableCell>
@@ -206,12 +214,7 @@ const BookManagementPage = () => {
                   </TableCell>
                 </TableRow>
                 {book.inventory?.map((copy, index) => (
-                  <TableRow
-                    key={index}
-                    sx={{
-                      backgroundColor: isDark ? theme.palette.action.hover : '#f9f9f9',
-                    }}
-                  >
+                  <TableRow key={index} sx={{ backgroundColor: isDark ? theme.palette.action.hover : '#f9f9f9' }}>
                     <TableCell colSpan={2} sx={{ pl: 4 }}>
                       Accession: {copy.accessionNumber}
                     </TableCell>
@@ -223,16 +226,23 @@ const BookManagementPage = () => {
                 ))}
               </React.Fragment>
             ))}
-            {filteredBooks.length === 0 && (
+            {currentBooks.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} align="center">
-                  No books found.
-                </TableCell>
+                <TableCell colSpan={6} align="center">No books found.</TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
       </TableContainer>
+
+      <Box display="flex" justifyContent="center" my={2}>
+        <Pagination
+          count={Math.ceil(filteredBooks.length / rowsPerPage)}
+          page={currentPage}
+          onChange={(e, page) => setCurrentPage(page)}
+          color="primary"
+        />
+      </Box>
 
       <BookFormModal
         open={modalOpen}
