@@ -328,7 +328,6 @@ const BookManagementPage = () => {
         copyForm={copyForm}
         handleCopyChange={handleCopyChange}
         initialCopyForm={initialCopyForm}
-        handleAddCopy={handleAddCopy}
         editCopyIndex={editCopyIndex}
         copies={copies}
         setCopyForm={setCopyForm}

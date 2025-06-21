@@ -8,7 +8,8 @@ def get_inventory(book_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
-        SELECT Copy_ID, Accession_Number, Availability, Physical_Status, BookCondition, BookLocation
+        SELECT Copy_ID, Accession_Number AS accesionNumber, Availability AS availability, 
+        Physical_Status AS physicalStatus, BookCondition AS condition, BookLocation AS condition
         FROM Book_Inventory WHERE Book_ID = %s
     """, (book_id,))
     inventory = cursor.fetchall()

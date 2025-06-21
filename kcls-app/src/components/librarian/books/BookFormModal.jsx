@@ -36,16 +36,15 @@ const BookFormModal = ({
   setCopyForm,
   setEditCopyIndex,
   setCopies,
-  handleAddCopy,
 }) => {
   const [tabIndex, setTabIndex] = useState(0);
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' });
 
-  const handleTabChange = (event, newValue) => setTabIndex(newValue);
-
   const showToast = (message, severity = 'success') => {
     setToast({ open: true, message, severity });
   };
+
+  const handleTabChange = (e, newValue) => setTabIndex(newValue);
 
   const validateBookForm = () => {
     const requiredFields = ['title', 'author', 'year'];
@@ -56,6 +55,31 @@ const BookFormModal = ({
       }
     }
     return true;
+  };
+
+  const handleCopyAction = () => {
+    const required = ['accessionNumber', 'location'];
+    for (let key of required) {
+      if (!copyForm[key]) {
+        return showToast(`${key} is required.`, 'error');
+      }
+    }
+
+    if (editCopyIndex !== null) {
+      const updated = [...copies];
+      updated[editCopyIndex] = copyForm;
+      setCopies(updated);
+      setEditCopyIndex(null);
+      showToast('Copy updated.');
+    } else {
+      if (copies.some((c) => c.accessionNumber === copyForm.accessionNumber)) {
+        return showToast('Duplicate accession number.', 'error');
+      }
+      setCopies([...copies, copyForm]);
+      showToast('Copy added.');
+    }
+
+    setCopyForm(initialCopyForm);
   };
 
   const onSaveBook = () => {
@@ -116,7 +140,7 @@ const BookFormModal = ({
                 <Grid item xs={12}>
                   <Button
                     variant={editCopyIndex !== null ? 'contained' : 'outlined'}
-                    onClick={handleAddCopy}
+                    onClick={handleCopyAction}
                     size="small"
                   >
                     {editCopyIndex !== null ? 'Update Copy' : 'Add Copy'}
@@ -143,23 +167,16 @@ const BookFormModal = ({
                     <TableBody>
                       {copies.map((copy, idx) => (
                         <TableRow key={idx}>
-                          <TableCell>{copy.accessionNumber || copy.Accession_Number}</TableCell>
-                          <TableCell>{copy.location || copy.BookLocation}</TableCell>
-                          <TableCell>{copy.availability || copy.Availability}</TableCell>
-                          <TableCell>{copy.condition || copy.BookCondition}</TableCell>
-                          <TableCell>{copy.physicalStatus || copy.Physical_Status}</TableCell>
+                          <TableCell>{copy.accessionNumber}</TableCell>
+                          <TableCell>{copy.location}</TableCell>
+                          <TableCell>{copy.availability}</TableCell>
+                          <TableCell>{copy.condition}</TableCell>
+                          <TableCell>{copy.physicalStatus}</TableCell>
                           <TableCell align="center">
                             <Button
                               size="small"
                               onClick={() => {
-                                setCopyForm({
-                                  accessionNumber: copy.accessionNumber || copy.Accession_Number,
-                                  location: copy.location || copy.BookLocation,
-                                  availability: copy.availability || copy.Availability,
-                                  condition: copy.condition || copy.BookCondition,
-                                  physicalStatus: copy.physicalStatus || copy.Physical_Status,
-                                  Copy_ID: copy.Copy_ID || copy.ID,
-                                });
+                                setCopyForm({ ...copy });
                                 setEditCopyIndex(idx);
                               }}
                             >
