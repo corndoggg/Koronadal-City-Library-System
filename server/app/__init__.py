@@ -1,13 +1,15 @@
 from flask import Flask
-from flask_cors import CORS
 from .config import Config
+from .cors import init_cors
 from .routes import register_routes
+from .db import get_db_connection
 
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
-
-    CORS(app, origins=Config.CORS_ORIGINS)
+    # Modular CORS setup
+    init_cors(app, Config.CORS_ORIGINS)
+    # Modular route registration
     register_routes(app)
 
     return app
