@@ -1,5 +1,4 @@
 venv
-app/__pycache__
 
 .vscode/*
 !.vscode/extensions.json

@@ -59,12 +59,19 @@ const BookManagementPage = () => {
   const fetchBooks = async () => {
     try {
       const res = await axios.get(`${API_BASE}/books`);
-      setBooks(res.data);
+      const booksWithInventory = await Promise.all(
+        res.data.map(async (book) => {
+          const invRes = await axios.get(`${API_BASE}/books/${book.id}/inventory`);
+          return { ...book, inventory: invRes.data };
+        })
+      );
+      setBooks(booksWithInventory);
     } catch (error) {
       console.error('Failed to fetch books:', error);
       showToast('Failed to load books', 'error');
     }
   };
+
 
   const handleSearch = () => {
     const lowerSearch = search.toLowerCase();
@@ -110,19 +117,26 @@ const BookManagementPage = () => {
   };
 
   const handleSaveBook = async () => {
-    const bookData = {
-      ...bookForm,
-      inventory: copies,
-    };
-
     try {
+      let bookId;
       if (isEdit) {
-        await axios.put(`${API_BASE}/books/${editId}`, bookData);
+        await axios.put(`${API_BASE}/books/${editId}`, bookForm);
+        bookId = editId;
         showToast('Book updated');
       } else {
-        await axios.post(`${API_BASE}/books`, bookData);
+        const res = await axios.post(`${API_BASE}/books`, bookForm);
+        bookId = res.data.book_id;
         showToast('Book added');
       }
+
+      for (const copy of copies) {
+        if (copy.id) {
+          await axios.put(`${API_BASE}/books/${bookId}/inventory/${copy.id}`, copy);
+        } else {
+          await axios.post(`${API_BASE}/books/${bookId}/inventory`, copy);
+        }
+      }
+
       await fetchBooks();
       handleClose();
     } catch (error) {
@@ -130,6 +144,7 @@ const BookManagementPage = () => {
       showToast('Failed to save book', 'error');
     }
   };
+
 
   const handleClose = () => {
     setModalOpen(false);
@@ -150,21 +165,22 @@ const BookManagementPage = () => {
 
   const openEditModal = (book) => {
     setIsEdit(true);
-    setEditId(book.Book_ID || book.id);
+    setEditId(book.id);
     setBookForm({
-      title: book.Title,
-      author: book.Author,
-      edition: book.Edition,
-      publisher: book.Publisher,
-      year: book.Year,
-      subject: book.Subject,
-      language: book.Language,
-      isbn: book.ISBN,
+      title: book.title,
+      author: book.author,
+      edition: book.edition,
+      publisher: book.publisher,
+      year: book.year,
+      subject: book.subject,
+      language: book.language,
+      isbn: book.isbn,
     });
     setCopies(book.inventory || []);
     setCopyForm(initialCopyForm);
     setModalOpen(true);
   };
+
 
   const showToast = (message, severity = 'success') => {
     setToast({ open: true, message, severity });
