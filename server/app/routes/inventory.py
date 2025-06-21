@@ -18,7 +18,7 @@ def get_inventory(book_id):
     return jsonify(inventory)
 
 @inventory_bp.route('/inventory/copy/<int:copy_id>', methods=['GET'])
-def get_inventory(book_id):
+def get_inventory_copy(book_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""

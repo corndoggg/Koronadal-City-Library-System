@@ -10,5 +10,6 @@ class Config:
     }
     CORS_ORIGINS = [
         "https://koronadal-library.site",
-        "https://5173-firebase-kcls-app-1750170042887.cluster-w5vd22whf5gmav2vgkomwtc4go.cloudworkstations.dev"
+        "https://5173-firebase-kcls-app-1750170042887.cluster-w5vd22whf5gmav2vgkomwtc4go.cloudworkstations.dev",
+        "https://9000-firebase-kcls-app-1750170042887.cluster-w5vd22whf5gmav2vgkomwtc4go.cloudworkstations.dev"
     ]
