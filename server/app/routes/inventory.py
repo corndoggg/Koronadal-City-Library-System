@@ -17,6 +17,20 @@ def get_inventory(book_id):
     conn.close()
     return jsonify(inventory)
 
+@inventory_bp.route('/inventory/copy/<int:copy_id>', methods=['GET'])
+def get_inventory(book_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT Copy_ID, Accession_Number AS accesionNumber, Availability AS availability, 
+        Physical_Status AS physicalStatus, BookCondition AS condition, BookLocation AS condition
+        FROM Book_Inventory WHERE Copy_ID = %s
+    """, (book_id,))
+    inventory = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return jsonify(inventory)
+
 @inventory_bp.route('/inventory/<int:book_id>', methods=['POST'])
 def add_inventory(book_id):
     copies = request.json.get('copies', [])
