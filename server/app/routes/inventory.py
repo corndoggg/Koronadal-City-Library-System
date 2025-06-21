@@ -3,12 +3,12 @@ from ..db import get_db_connection
 
 inventory_bp = Blueprint('inventory', __name__)
 
-@inventory_bp.route('/books/<int:book_id>/inventory', methods=['GET'])
+@inventory_bp.route('/inventory/<int:book_id>', methods=['GET'])
 def get_inventory(book_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
-        SELECT ID, Accession_Number, Availability, Physical_Status, BookCondition, BookLocation
+        SELECT Copy_ID, Accession_Number, Availability, Physical_Status, BookCondition, BookLocation
         FROM Book_Inventory WHERE Book_ID = %s
     """, (book_id,))
     inventory = cursor.fetchall()
@@ -16,7 +16,7 @@ def get_inventory(book_id):
     conn.close()
     return jsonify(inventory)
 
-@inventory_bp.route('/books/<int:book_id>/inventory', methods=['POST'])
+@inventory_bp.route('/inventory/<int:book_id>', methods=['POST'])
 def add_inventory(book_id):
     copies = request.json.get('copies', [])
     conn = get_db_connection()
@@ -32,7 +32,7 @@ def add_inventory(book_id):
     conn.close()
     return jsonify({'message': 'Copies added'})
 
-@inventory_bp.route('/books/<int:book_id>/inventory/<int:copy_id>', methods=['PUT'])
+@inventory_bp.route('/inventory/<int:book_id>/<int:copy_id>', methods=['PUT'])
 def update_copy(book_id, copy_id):
     copy = request.json
     conn = get_db_connection()

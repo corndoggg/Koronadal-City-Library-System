@@ -61,7 +61,7 @@ const BookManagementPage = () => {
       const res = await axios.get(`${API_BASE}/books`);
       const booksWithInventory = await Promise.all(
         res.data.map(async (book) => {
-          const invRes = await axios.get(`${API_BASE}/books/${book.Book_ID}/inventory`);
+          const invRes = await axios.get(`${API_BASE}/inventory/${book.Book_ID}`);
           return { ...book, inventory: invRes.data };
         })
       );
@@ -130,10 +130,10 @@ const BookManagementPage = () => {
       } 
 
       for (const copy of copies) {
-        if (copy.id) {
-          await axios.put(`${API_BASE}/books/${bookId}/inventory/${copy.id}`, copy);
+        if (copy.Copy_ID) {
+          await axios.put(`${API_BASE}/inventory/${bookId}/${copy.Copy_ID}`, copy);
         } else {
-          await axios.post(`${API_BASE}/books/${bookId}/inventory`, copy);
+          await axios.post(`${API_BASE}/inventory/${bookId}`, copy);
         }
       }
 
@@ -267,7 +267,7 @@ const BookManagementPage = () => {
                   <TableRow key={index} sx={{ backgroundColor: isDark ? '#2b2b2b' : '#f9f9f9' }}>
                     <TableCell colSpan={2} sx={{ pl: 5 }}>
                       <Typography variant="body2">
-                        <strong>Accession #:</strong> {copy.accessionNumber}
+                        <strong>Accession #:</strong> {copy.Accession_Number}
                       </Typography>
                     </TableCell>
                     <TableCell>
@@ -277,15 +277,15 @@ const BookManagementPage = () => {
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2">
-                        <strong>Condition:</strong> {copy.condition}
+                        <strong>Condition:</strong> {copy.BookCondition}
                       </Typography>
                     </TableCell>
                     <TableCell>
                       <Typography
                         variant="body2"
-                        color={copy.availability === 'Available' ? 'green' : 'orange'}
+                        color={copy.Availability === 'Available' ? 'green' : 'orange'}
                       >
-                        <strong>{copy.availability}</strong>
+                        <strong>{copy.Availability}</strong>
                       </Typography>
                     </TableCell>
                     <TableCell />
