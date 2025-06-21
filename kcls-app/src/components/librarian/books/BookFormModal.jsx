@@ -166,11 +166,11 @@ const BookFormModal = ({
                     <TableBody>
                       {copies.map((copy, idx) => (
                         <TableRow key={idx}>
-                          <TableCell>{copy.accessionNumber}</TableCell>
-                          <TableCell>{copy.location}</TableCell>
-                          <TableCell>{copy.availability}</TableCell>
-                          <TableCell>{copy.condition}</TableCell>
-                          <TableCell>{copy.physicalStatus}</TableCell>
+                          <TableCell>{copy.Accession_Number}</TableCell>
+                          <TableCell>{copy.Booklocation}</TableCell>
+                          <TableCell>{copy.Availability}</TableCell>
+                          <TableCell>{copy.BookCondition}</TableCell>
+                          <TableCell>{copy.Physical_Status}</TableCell>
                           <TableCell align="center">
                             <Button
                               size="small"

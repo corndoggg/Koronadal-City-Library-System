@@ -272,7 +272,7 @@ const BookManagementPage = () => {
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2">
-                        <strong>Location:</strong> {copy.location}
+                        <strong>Location:</strong> {copy.BookLocation}
                       </Typography>
                     </TableCell>
                     <TableCell>
