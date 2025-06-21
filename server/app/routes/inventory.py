@@ -39,7 +39,7 @@ def update_copy(book_id, copy_id):
     cursor = conn.cursor()
     cursor.execute("""
         UPDATE Book_Inventory SET Accession_Number=%s, Availability=%s, Physical_Status=%s,
-        BookCondition=%s, BookLocation=%s WHERE ID=%s AND Book_ID=%s
+        BookCondition=%s, BookLocation=%s WHERE Copy_ID=%s AND Book_ID=%s
     """, (copy['accessionNumber'], copy['availability'], copy['physicalStatus'],
           copy['condition'], copy['location'], copy_id, book_id))
     conn.commit()
