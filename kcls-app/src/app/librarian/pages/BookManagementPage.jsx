@@ -30,7 +30,7 @@ const initialCopyForm = {
 const BookManagementPage = () => {
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
-  const API_BASE = 'https://5000-firebase-kcls-app-1750170042887.cluster-w5vd22whf5gmav2vgkomwtc4go.cloudworkstations.dev/api';
+  const API_BASE = import.meta.env.VITE_API_BASE;
 
   const [search, setSearch] = useState('');
   const [books, setBooks] = useState([]);
@@ -96,24 +96,6 @@ const BookManagementPage = () => {
 
   const handleCopyChange = (e) => {
     setCopyForm({ ...copyForm, [e.target.name]: e.target.value });
-  };
-
-  const handleAddCopy = () => {
-    if (copyForm.accessionNumber && copyForm.location) {
-      const updated = [...copies];
-      if (editCopyIndex !== null) {
-        updated[editCopyIndex] = copyForm;
-        setEditCopyIndex(null);
-        showToast('Copy updated');
-      } else {
-        updated.push(copyForm);
-        showToast('Copy added');
-      }
-      setCopies(updated);
-      setCopyForm(initialCopyForm);
-    } else {
-      showToast('Accession Number and Location are required', 'error');
-    }
   };
 
   const handleSaveBook = async () => {
@@ -267,25 +249,25 @@ const BookManagementPage = () => {
                   <TableRow key={index} sx={{ backgroundColor: isDark ? '#2b2b2b' : '#f9f9f9' }}>
                     <TableCell colSpan={2} sx={{ pl: 5 }}>
                       <Typography variant="body2">
-                        <strong>Accession #:</strong> {copy.Accession_Number}
+                        <strong>Accession #:</strong> {copy.accessionNumber}
                       </Typography>
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2">
-                        <strong>Location:</strong> {copy.BookLocation}
+                        <strong>Location:</strong> {copy.location}
                       </Typography>
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2">
-                        <strong>Condition:</strong> {copy.BookCondition}
+                        <strong>Condition:</strong> {copy.condition}
                       </Typography>
                     </TableCell>
                     <TableCell>
                       <Typography
                         variant="body2"
-                        color={copy.Availability === 'Available' ? 'green' : 'orange'}
+                        color={copy.availability === 'Available' ? 'green' : 'orange'}
                       >
-                        <strong>{copy.Availability}</strong>
+                        <strong>{copy.availability}</strong>
                       </Typography>
                     </TableCell>
                     <TableCell />

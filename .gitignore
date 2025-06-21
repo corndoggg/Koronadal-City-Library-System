@@ -1,4 +1,6 @@
 notes.txt
+__pycache__/
+*.pyc
 
 .vscode/*
 !.vscode/extensions.json
