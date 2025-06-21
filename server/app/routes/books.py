@@ -19,14 +19,6 @@ def get_book(book_id):
     cursor = conn.cursor(dictionary=True)
     cursor.execute("SELECT * FROM Books WHERE Book_ID = %s", (book_id,))
     book = cursor.fetchone()
-
-    if book:
-        cursor.execute("""
-            SELECT ID, Accession_Number, Availability, Physical_Status, BookCondition, BookLocation
-            FROM Book_Inventory WHERE Book_ID = %s
-        """, (book_id,))
-        book['inventory'] = cursor.fetchall()
-
     cursor.close()
     conn.close()
     return jsonify(book) if book else (jsonify({'error': 'Book not found'}), 404)

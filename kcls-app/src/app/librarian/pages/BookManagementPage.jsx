@@ -61,7 +61,7 @@ const BookManagementPage = () => {
       const res = await axios.get(`${API_BASE}/books`);
       const booksWithInventory = await Promise.all(
         res.data.map(async (book) => {
-          const invRes = await axios.get(`${API_BASE}/books/${book.id}/inventory`);
+          const invRes = await axios.get(`${API_BASE}/books/${book.Book_ID}/inventory`);
           return { ...book, inventory: invRes.data };
         })
       );
@@ -125,9 +125,9 @@ const BookManagementPage = () => {
         showToast('Book updated');
       } else {
         const res = await axios.post(`${API_BASE}/books`, bookForm);
-        bookId = res.data.book_id;
+        bookId = res.data.Book_ID;
         showToast('Book added');
-      }
+      } 
 
       for (const copy of copies) {
         if (copy.id) {
@@ -165,16 +165,16 @@ const BookManagementPage = () => {
 
   const openEditModal = (book) => {
     setIsEdit(true);
-    setEditId(book.id);
+    setEditId(book.Book_ID);
     setBookForm({
-      title: book.title,
-      author: book.author,
-      edition: book.edition,
-      publisher: book.publisher,
-      year: book.year,
-      subject: book.subject,
-      language: book.language,
-      isbn: book.isbn,
+      title: book.Title,
+      author: book.Author,
+      edition: book.Edition,
+      publisher: book.Publisher,
+      year: book.Year,
+      subject: book.Subject,
+      language: book.Language,
+      isbn: book.ISBN,
     });
     setCopies(book.inventory || []);
     setCopyForm(initialCopyForm);
@@ -246,7 +246,7 @@ const BookManagementPage = () => {
           </TableHead>
           <TableBody>
             {currentBooks.map((book) => (
-              <React.Fragment key={book.Book_ID || book.id}>
+              <React.Fragment key={book.Book_ID}>
                 <TableRow hover sx={{ transition: 'all 0.2s' }}>
                   <TableCell>{book.Title}</TableCell>
                   <TableCell>{book.Author}</TableCell>
