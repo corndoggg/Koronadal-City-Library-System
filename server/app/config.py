@@ -6,11 +6,11 @@ load_dotenv()
 
 class Config:
     DB_CONFIG = {
-        'host': os.getenv('DB_HOST', '31.97.106.60'),
-        'port': int(os.getenv('DB_PORT', 5432)),
-        'user': os.getenv('DB_USER', 'admin'),
-        'password': os.getenv('DB_PASSWORD', 'password'),
-        'database': os.getenv('DB_NAME', 'kcls_db'),
+        'host': os.getenv('DB_HOST'),
+        'port': int(os.getenv('DB_PORT')),
+        'user': os.getenv('DB_USER'),
+        'password': os.getenv('DB_PASSWORD'),
+        'database': os.getenv('DB_NAME'),
     }
     CORS_ORIGINS = [
         "https://koronadal-library.site",
