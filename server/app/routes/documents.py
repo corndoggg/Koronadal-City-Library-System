@@ -1,5 +1,9 @@
-from flask import Blueprint, request, jsonify
+import os
+import uuid
+from flask import Blueprint, request, jsonify, current_app
+from werkzeug.utils import secure_filename
 from ..db import get_db_connection
+from ..utils import allowed_file
 
 documents_bp = Blueprint('documents', __name__)
 
@@ -32,7 +36,7 @@ def create_document():
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO Documents (Document_ID, Title, Author, Category, Department, Classification, Year, Sensitivity, File_Path)
+        INSERT INTO Documents (Title, Author, Category, Department, Classification, Year, Sensitivity, File_Path)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
     """, (
         data['documentId'], data['title'], data.get('author'), data.get('category'),
@@ -75,3 +79,51 @@ def delete_document(doc_id):
     cursor.close()
     conn.close()
     return jsonify({'message': 'Document deleted'})
+
+@documents_bp.route('/documents/upload', methods=['POST'])
+def upload_document():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+
+    if not allowed_file(file.filename):
+        return jsonify({'error': 'File type not allowed. Only PDF supported.'}), 400
+
+    # Get metadata from the form
+    metadata = request.form.to_dict()
+    required_fields = ['title', 'author', 'category', 'department', 'classification', 'year', 'sensitivity']
+    if not all(field in metadata for field in required_fields):
+        return jsonify({'error': 'Missing required metadata fields.'}), 400
+
+    # Save the file
+    filename = secure_filename(file.filename)
+    unique_filename = f"{uuid.uuid4()}_{filename}"
+    save_path = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
+
+    os.makedirs(current_app.config['UPLOAD_FOLDER'], exist_ok=True)
+    file.save(save_path)
+
+    # Save to database
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO Documents (Title, Author, Category, Department, Classification, Year, Sensitivity, File_Path)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+    """, (
+        metadata['title'],
+        metadata['author'],
+        metadata['category'],
+        metadata['department'],
+        metadata['classification'],
+        int(metadata['year']),
+        metadata['sensitivity'],
+        save_path
+    ))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    return jsonify({'message': 'Document uploaded successfully'}), 201
