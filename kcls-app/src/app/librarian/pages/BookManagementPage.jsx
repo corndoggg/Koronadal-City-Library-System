@@ -107,7 +107,7 @@ const BookManagementPage = () => {
         showToast('Book updated');
       } else {
         const res = await axios.post(`${API_BASE}/books`, bookForm);
-        bookId = res.data.Book_ID;
+        bookId = res.data.book_id;
         showToast('Book added');
       } 
 
