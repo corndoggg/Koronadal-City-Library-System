@@ -18,4 +18,3 @@ class Config:
         "http://localhost:5173"
     ]
     UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', os.path.join(os.getcwd(), 'uploads'))
-

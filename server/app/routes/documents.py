@@ -87,6 +87,7 @@ def upload_document():
     upload_folder = current_app.config['UPLOAD_FOLDER']
     os.makedirs(upload_folder, exist_ok=True)
     save_path = os.path.join(upload_folder, unique_filename)
+    print(f"Saving file to {save_path}")S
     file.save(save_path)
 
     # Save only public URL path
