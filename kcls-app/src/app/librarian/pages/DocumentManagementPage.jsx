@@ -7,7 +7,6 @@ import {
   Snackbar,
   Alert,
   Pagination,
-  Stack,
   Button,
   useTheme,
   Card,
@@ -17,8 +16,9 @@ import {
   IconButton,
   Tooltip,
   Grid,
+  Dialog,
 } from '@mui/material';
-import { Article, Visibility, Edit, Add } from '@mui/icons-material';
+import { Article, Visibility, Edit } from '@mui/icons-material';
 import DocumentFormModal from '../../../components/librarian/documents/DocumentFormModal';
 
 const DocumentManagementPage = () => {
@@ -36,6 +36,9 @@ const DocumentManagementPage = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [isEdit, setIsEdit] = useState(false);
   const [editDoc, setEditDoc] = useState(null);
+
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerUrl, setViewerUrl] = useState('');
 
   useEffect(() => {
     fetchDocuments();
@@ -104,6 +107,16 @@ const DocumentManagementPage = () => {
     }
   };
 
+  const handleViewFile = (doc) => {
+    setViewerUrl(`${API_BASE}${doc.File_Path}`);
+    setViewerOpen(true);
+  };
+
+  const handleCloseViewer = () => {
+    setViewerOpen(false);
+    setViewerUrl('');
+  };
+
   const indexOfLast = currentPage * rowsPerPage;
   const indexOfFirst = indexOfLast - rowsPerPage;
   const currentDocs = filteredDocs.slice(indexOfFirst, indexOfLast);
@@ -114,7 +127,12 @@ const DocumentManagementPage = () => {
   return (
     <Box p={3} sx={{ position: 'relative', minHeight: '100vh' }}>
       {/* Header */}
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
+      <Box
+        display="flex"
+        justifyContent="space-between"
+        alignItems="center"
+        mb={4}
+      >
         <Box display="flex" alignItems="center" gap={1}>
           <Article fontSize="large" color="primary" />
           <Typography variant="h4" fontWeight={700}>
@@ -128,7 +146,7 @@ const DocumentManagementPage = () => {
           size="small"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          sx={{ width: 350 }}
+          sx={{ width: 350, background: theme.palette.background.paper, borderRadius: 1 }}
         />
       </Box>
 
@@ -186,7 +204,7 @@ const DocumentManagementPage = () => {
                 <Tooltip title="View File">
                   <IconButton
                     color="primary"
-                    onClick={() => window.open(`${API_BASE}${doc.File_Path}`, '_blank')}
+                    onClick={() => handleViewFile(doc)}
                   >
                     <Visibility fontSize="small" />
                   </IconButton>
@@ -254,6 +272,26 @@ const DocumentManagementPage = () => {
         isEdit={isEdit}
         documentData={editDoc}
       />
+
+      <Dialog
+        open={viewerOpen}
+        onClose={handleCloseViewer}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{ sx: { height: '90vh' } }}
+      >
+        <Box sx={{ height: '100%', width: '100%' }}>
+          {/* FlowPaper or PDF.js viewer iframe */}
+          <iframe
+            title="Document Viewer"
+            src={`https://flowpaper.com/flipbook/?pdf=${encodeURIComponent(viewerUrl)}`}
+            width="100%"
+            height="100%"
+            style={{ border: 'none', minHeight: 600 }}
+            allowFullScreen
+          />
+        </Box>
+      </Dialog>
 
       <Snackbar
         open={toast.open}

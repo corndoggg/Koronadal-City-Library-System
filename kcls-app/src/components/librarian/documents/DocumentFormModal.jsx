@@ -12,6 +12,7 @@ import {
   Snackbar,
   Box,
   LinearProgress,
+  useTheme,
 } from "@mui/material";
 import axios from "axios";
 
@@ -43,6 +44,7 @@ const sensitivities = [
 ];
 
 function DocumentFormModal({ open, onClose, onSave, isEdit, documentData }) {
+  const theme = useTheme();
   const [form, setForm] = useState(initialForm);
   const [fileUploading, setFileUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -150,8 +152,7 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData }) {
     setUploadProgress(0);
   };
 
-  // Change: "Change PDF File" directly opens file selection
-  // Remove showFileInput state and button, just trigger click on hidden input
+  // "Change PDF File" directly opens file selection
   const handleChangePdfClick = () => {
     if (fileInputRef.current) {
       fileInputRef.current.value = ""; // reset so same file can be selected again
@@ -161,9 +162,23 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData }) {
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>{isEdit ? "Edit Document" : "Add Document"}</DialogTitle>
+      <DialogTitle
+        sx={{
+          fontWeight: 700,
+          pb: 1,
+          background: theme.palette.background.default,
+          color: theme.palette.text.primary,
+        }}
+      >
+        {isEdit ? "Edit Document" : "Add Document"}
+      </DialogTitle>
       <form onSubmit={handleSubmit}>
-        <DialogContent>
+        <DialogContent
+          sx={{
+            background: theme.palette.mode === 'dark' ? theme.palette.background.paper : '#f9f9fb',
+            color: theme.palette.text.primary,
+          }}
+        >
           <Stack spacing={2}>
             <TextField
               label="Title"
@@ -172,6 +187,11 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData }) {
               onChange={handleChange}
               required
               fullWidth
+              size="small"
+              sx={{
+                background: theme.palette.background.paper,
+                borderRadius: 1,
+              }}
             />
             <TextField
               label="Author"
@@ -180,6 +200,11 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData }) {
               onChange={handleChange}
               required
               fullWidth
+              size="small"
+              sx={{
+                background: theme.palette.background.paper,
+                borderRadius: 1,
+              }}
             />
             <TextField
               label="Category"
@@ -189,6 +214,11 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData }) {
               select
               required
               fullWidth
+              size="small"
+              sx={{
+                background: theme.palette.background.paper,
+                borderRadius: 1,
+              }}
             >
               {categories.map((cat) => (
                 <MenuItem key={cat} value={cat}>{cat}</MenuItem>
@@ -201,6 +231,11 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData }) {
               onChange={handleChange}
               required
               fullWidth
+              size="small"
+              sx={{
+                background: theme.palette.background.paper,
+                borderRadius: 1,
+              }}
             />
             <TextField
               label="Classification"
@@ -209,6 +244,11 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData }) {
               onChange={handleChange}
               required
               fullWidth
+              size="small"
+              sx={{
+                background: theme.palette.background.paper,
+                borderRadius: 1,
+              }}
             />
             <TextField
               label="Year"
@@ -218,6 +258,11 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData }) {
               required
               type="number"
               fullWidth
+              size="small"
+              sx={{
+                background: theme.palette.background.paper,
+                borderRadius: 1,
+              }}
             />
             <TextField
               label="Sensitivity"
@@ -227,6 +272,11 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData }) {
               select
               required
               fullWidth
+              size="small"
+              sx={{
+                background: theme.palette.background.paper,
+                borderRadius: 1,
+              }}
             >
               {sensitivities.map((s) => (
                 <MenuItem key={s} value={s}>{s}</MenuItem>
@@ -287,9 +337,16 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData }) {
             )}
           </Stack>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={onClose}>Cancel</Button>
-          <Button type="submit" variant="contained" disabled={fileUploading}>
+        <DialogActions
+          sx={{
+            background: theme.palette.background.paper,
+            borderTop: `1px solid ${theme.palette.divider}`,
+          }}
+        >
+          <Button onClick={onClose} size="small" variant="outlined" color="secondary">
+            Cancel
+          </Button>
+          <Button type="submit" variant="contained" disabled={fileUploading} size="small" color="primary">
             {isEdit ? "Update" : "Add"}
           </Button>
         </DialogActions>
