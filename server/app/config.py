@@ -17,3 +17,5 @@ class Config:
         "https://5173-firebase-kcls-app-1750170042887.cluster-w5vd22whf5gmav2vgkomwtc4go.cloudworkstations.dev",
         "http://localhost:5173"
     ]
+    UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', os.path.join(os.getcwd(), 'uploads'))
+
