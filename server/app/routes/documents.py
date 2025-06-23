@@ -125,3 +125,38 @@ def serve_uploaded_file(filename):
         mimetype='application/pdf',
         as_attachment=False  # 👈 this is key
     )
+
+# API endpoint to change the file (PDF) of a document
+@documents_bp.route('/upload/edit/<int:doc_id>', methods=['PUT'])
+def update_document_file(doc_id):
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+
+    if not allowed_file(file.filename):
+        return jsonify({'error': 'File type not allowed. Only PDF supported.'}), 400
+
+    filename = secure_filename(file.filename)
+    unique_filename = f"{uuid.uuid4()}_{filename}"
+    upload_folder = current_app.config['UPLOAD_FOLDER']
+    os.makedirs(upload_folder, exist_ok=True)
+    save_path = os.path.join(upload_folder, unique_filename)
+    file.save(save_path)
+
+    public_url = f"/uploads/{unique_filename}"
+
+    # Update the file path in the database
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE Documents SET File_Path = %s WHERE Document_ID = %s",
+        (public_url, doc_id)
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    return jsonify({'message': 'Document file updated', 'filePath': public_url})

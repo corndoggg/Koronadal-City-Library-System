@@ -1,9 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import {
-  Box, Typography, TextField, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, Paper, IconButton, Snackbar, Alert, Pagination,
-  Tooltip, Stack, Button, useTheme
+  Box,
+  Typography,
+  TextField,
+  Snackbar,
+  Alert,
+  Pagination,
+  Stack,
+  Button,
+  useTheme,
+  Card,
+  CardContent,
+  CardActions,
+  CardMedia,
+  IconButton,
+  Tooltip,
+  Grid,
 } from '@mui/material';
 import { Article, Visibility, Edit, Add } from '@mui/icons-material';
 import DocumentFormModal from '../../../components/librarian/documents/DocumentFormModal';
@@ -11,13 +24,12 @@ import DocumentFormModal from '../../../components/librarian/documents/DocumentF
 const DocumentManagementPage = () => {
   const theme = useTheme();
   const API_BASE = import.meta.env.VITE_API_BASE;
-  const isDark = theme.palette.mode === 'dark';
 
   const [documents, setDocuments] = useState([]);
   const [filteredDocs, setFilteredDocs] = useState([]);
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const rowsPerPage = 5;
+  const rowsPerPage = 2;
 
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' });
 
@@ -38,8 +50,7 @@ const DocumentManagementPage = () => {
       const res = await axios.get(`${API_BASE}/documents`);
       setDocuments(res.data);
     } catch (error) {
-      console.error('Error fetching documents:', error);
-      showToast('Failed to load documents', 'error');
+      setToast({ open: true, message: 'Failed to load documents', severity: 'error' });
     }
   };
 
@@ -74,7 +85,11 @@ const DocumentManagementPage = () => {
   const handleSaveDocument = async (formData) => {
     try {
       if (isEdit) {
-        await axios.put(`${API_BASE}/documents/${editDoc.Document_ID}`, Object.fromEntries(formData));
+        const payload = {};
+        formData.forEach((value, key) => {
+          payload[key] = value;
+        });
+        await axios.put(`${API_BASE}/documents/${editDoc.Document_ID}`, payload);
         showToast('Document updated');
       } else {
         await axios.post(`${API_BASE}/documents/upload`, formData, {
@@ -85,7 +100,6 @@ const DocumentManagementPage = () => {
       fetchDocuments();
       setModalOpen(false);
     } catch (error) {
-      console.error(error);
       showToast('Failed to save document', 'error');
     }
   };
@@ -94,8 +108,11 @@ const DocumentManagementPage = () => {
   const indexOfFirst = indexOfLast - rowsPerPage;
   const currentDocs = filteredDocs.slice(indexOfFirst, indexOfLast);
 
+  // Placeholder image for PDF
+  const placeholderImg = 'https://placehold.co/400x180?text=PDF+Document';
+
   return (
-    <Box p={3}>
+    <Box p={3} sx={{ position: 'relative', minHeight: '100vh' }}>
       {/* Header */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
         <Box display="flex" alignItems="center" gap={1}>
@@ -104,18 +121,7 @@ const DocumentManagementPage = () => {
             Document Management
           </Typography>
         </Box>
-        <Button
-          variant="contained"
-          startIcon={<Add />}
-          onClick={handleOpenAdd}
-          sx={{ borderRadius: 2, fontWeight: 600 }}
-        >
-          Add Document
-        </Button>
-      </Box>
-
-      {/* Search */}
-      <Stack direction="row" spacing={2} mb={2}>
+        {/* Searchbar at top right */}
         <TextField
           label="Search by title, author, category..."
           variant="outlined"
@@ -124,57 +130,86 @@ const DocumentManagementPage = () => {
           onChange={(e) => setSearch(e.target.value)}
           sx={{ width: 350 }}
         />
-      </Stack>
+      </Box>
 
-      {/* Table */}
-      <TableContainer component={Paper} elevation={3}>
-        <Table size="small">
-          <TableHead sx={{ backgroundColor: theme.palette.primary.light }}>
-            <TableRow>
-              <TableCell sx={{ fontWeight: 600 }}>Title</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Author</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Category</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Year</TableCell>
-              <TableCell align="center" sx={{ fontWeight: 600 }}>Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {currentDocs.map((doc) => (
-              <TableRow key={doc.Document_ID} hover>
-                <TableCell>{doc.Title}</TableCell>
-                <TableCell>{doc.Author}</TableCell>
-                <TableCell>{doc.Category}</TableCell>
-                <TableCell>{doc.Year}</TableCell>
-                <TableCell align="center">
-                  <Tooltip title="View File">
-                    <IconButton
-                      color="primary"
-                      onClick={() => window.open(`${API_BASE}${doc.File_Path}`, '_blank')}
-                    >
-                      <Visibility fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Edit Document">
-                    <IconButton color="secondary" onClick={() => handleOpenEdit(doc)}>
-                      <Edit fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                </TableCell>
-              </TableRow>
-            ))}
+      {/* Cards Grid */}
+      <Grid container spacing={3}>
+        {currentDocs.map((doc) => (
+          <Grid item xs={12} sm={6} md={4} lg={3} key={doc.Document_ID}>
+            <Card
+              sx={{
+                borderRadius: 3,
+                boxShadow: 3,
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                background: theme.palette.background.paper,
+              }}
+            >
+              {/* Placeholder image */}
+              <CardMedia
+                component="img"
+                src={placeholderImg}
+                alt="PDF Placeholder"
+                sx={{
+                  width: '100%',
+                  height: 180,
+                  objectFit: 'cover',
+                  borderTopLeftRadius: 12,
+                  borderTopRightRadius: 12,
+                }}
+              />
 
-            {currentDocs.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={5} align="center" sx={{ py: 3 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    No documents found.
-                  </Typography>
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
+              <CardContent sx={{ flexGrow: 1 }}>
+                <Typography variant="h6" fontWeight={700} gutterBottom noWrap>
+                  {doc.Title}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" noWrap>
+                  {doc.Author}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  {doc.Category} &bull; {doc.Year}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Dept: {doc.Department}
+                </Typography>
+                <br />
+                <Typography variant="caption" color="text.secondary">
+                  Classification: {doc.Classification}
+                </Typography>
+                <br />
+                <Typography variant="caption" color="text.secondary">
+                  Sensitivity: {doc.Sensitivity}
+                </Typography>
+              </CardContent>
+              <CardActions sx={{ justifyContent: 'flex-end', pb: 2 }}>
+                <Tooltip title="View File">
+                  <IconButton
+                    color="primary"
+                    onClick={() => window.open(`${API_BASE}${doc.File_Path}`, '_blank')}
+                  >
+                    <Visibility fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Edit Document">
+                  <IconButton color="secondary" onClick={() => handleOpenEdit(doc)}>
+                    <Edit fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </CardActions>
+            </Card>
+          </Grid>
+        ))}
+        {currentDocs.length === 0 && (
+          <Grid item xs={12}>
+            <Box sx={{ textAlign: 'center', py: 6 }}>
+              <Typography variant="body2" color="text.secondary">
+                No documents found.
+              </Typography>
+            </Box>
+          </Grid>
+        )}
+      </Grid>
 
       {/* Pagination */}
       <Box display="flex" justifyContent="center" mt={4}>
@@ -186,7 +221,32 @@ const DocumentManagementPage = () => {
         />
       </Box>
 
-      {/* Modal */}
+      {/* Floating Add Document Button */}
+      <Button
+        variant="contained"
+        color="primary"
+        onClick={handleOpenAdd}
+        sx={{
+          position: 'fixed',
+          bottom: 32,
+          right: 32,
+          borderRadius: '50%',
+          minWidth: 0,
+          width: 64,
+          height: 64,
+          boxShadow: 6,
+          zIndex: 1201,
+          fontWeight: 700,
+          fontSize: 40,
+          p: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        +
+      </Button>
+
       <DocumentFormModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
@@ -195,7 +255,6 @@ const DocumentManagementPage = () => {
         documentData={editDoc}
       />
 
-      {/* Toast */}
       <Snackbar
         open={toast.open}
         autoHideDuration={3000}
