@@ -1,151 +1,93 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import {
-  Box,
-  Typography,
-  TextField,
-  Snackbar,
-  Alert,
-  Pagination,
-  Button,
-  useTheme,
-  Card,
-  CardContent,
-  CardActions,
-  CardMedia,
-  IconButton,
-  Tooltip,
-  Grid,
-  Dialog,
+  Box, Typography, TextField, Snackbar, Alert, Pagination, Button, useTheme,
+  Card, CardContent, CardActions, CardMedia, IconButton, Tooltip, Grid, Dialog, DialogTitle, DialogContent
 } from '@mui/material';
-import { Article, Visibility, Edit } from '@mui/icons-material';
+import { Article, Visibility, Edit, Close } from '@mui/icons-material';
 import DocumentFormModal from '../../../components/librarian/documents/DocumentFormModal';
+import { Worker, Viewer } from '@react-pdf-viewer/core';
+import '@react-pdf-viewer/core/lib/styles/index.css';
 
 const DocumentManagementPage = () => {
   const theme = useTheme();
   const API_BASE = import.meta.env.VITE_API_BASE;
-
   const [documents, setDocuments] = useState([]);
   const [filteredDocs, setFilteredDocs] = useState([]);
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 2;
-
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' });
-
   const [modalOpen, setModalOpen] = useState(false);
   const [isEdit, setIsEdit] = useState(false);
   const [editDoc, setEditDoc] = useState(null);
+  const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState('');
 
-  const [viewerOpen, setViewerOpen] = useState(false);
-  const [viewerUrl, setViewerUrl] = useState('');
-
-  useEffect(() => {
-    fetchDocuments();
-  }, []);
-
-  useEffect(() => {
-    handleSearch();
-  }, [search, documents]);
+  useEffect(() => { fetchDocuments(); }, []);
+  useEffect(() => { handleSearch(); }, [search, documents]);
 
   const fetchDocuments = async () => {
     try {
       const res = await axios.get(`${API_BASE}/documents`);
       setDocuments(res.data);
-    } catch (error) {
+    } catch {
       setToast({ open: true, message: 'Failed to load documents', severity: 'error' });
     }
   };
 
   const handleSearch = () => {
     const lower = search.toLowerCase();
-    const filtered = documents.filter(
-      (doc) =>
-        doc.Title?.toLowerCase().includes(lower) ||
-        doc.Author?.toLowerCase().includes(lower) ||
-        doc.Category?.toLowerCase().includes(lower)
+    setFilteredDocs(
+      documents.filter(
+        (doc) =>
+          doc.Title?.toLowerCase().includes(lower) ||
+          doc.Author?.toLowerCase().includes(lower) ||
+          doc.Category?.toLowerCase().includes(lower)
+      )
     );
-    setFilteredDocs(filtered);
     setCurrentPage(1);
   };
 
-  const showToast = (message, severity = 'success') => {
-    setToast({ open: true, message, severity });
-  };
-
-  const handleOpenAdd = () => {
-    setIsEdit(false);
-    setEditDoc(null);
-    setModalOpen(true);
-  };
-
-  const handleOpenEdit = (doc) => {
-    setIsEdit(true);
-    setEditDoc(doc);
-    setModalOpen(true);
-  };
-
+  const showToast = (message, severity = 'success') => setToast({ open: true, message, severity });
+  const handleOpenAdd = () => { setIsEdit(false); setEditDoc(null); setModalOpen(true); };
+  const handleOpenEdit = (doc) => { setIsEdit(true); setEditDoc(doc); setModalOpen(true); };
   const handleSaveDocument = async (formData) => {
     try {
       if (isEdit) {
-        const payload = {};
-        formData.forEach((value, key) => {
-          payload[key] = value;
-        });
+        const payload = {}; formData.forEach((v, k) => { payload[k] = v; });
         await axios.put(`${API_BASE}/documents/${editDoc.Document_ID}`, payload);
         showToast('Document updated');
       } else {
-        await axios.post(`${API_BASE}/documents/upload`, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
+        await axios.post(`${API_BASE}/documents/upload`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
         showToast('Document uploaded');
       }
-      fetchDocuments();
-      setModalOpen(false);
-    } catch (error) {
+      fetchDocuments(); setModalOpen(false);
+    } catch {
       showToast('Failed to save document', 'error');
     }
   };
-
-  const handleViewFile = (doc) => {
-    setViewerUrl(`${API_BASE}${doc.File_Path}`);
-    setViewerOpen(true);
-  };
-
-  const handleCloseViewer = () => {
-    setViewerOpen(false);
-    setViewerUrl('');
-  };
+  const handleViewPdf = (filePath) => { setPdfUrl(`${API_BASE}${filePath}`); setPdfDialogOpen(true); };
 
   const indexOfLast = currentPage * rowsPerPage;
   const indexOfFirst = indexOfLast - rowsPerPage;
   const currentDocs = filteredDocs.slice(indexOfFirst, indexOfLast);
-
-  // Placeholder image for PDF
   const placeholderImg = 'https://placehold.co/400x180?text=PDF+Document';
 
   return (
     <Box p={3} sx={{ position: 'relative', minHeight: '100vh' }}>
       {/* Header */}
-      <Box
-        display="flex"
-        justifyContent="space-between"
-        alignItems="center"
-        mb={4}
-      >
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
         <Box display="flex" alignItems="center" gap={1}>
           <Article fontSize="large" color="primary" />
-          <Typography variant="h4" fontWeight={700}>
-            Document Management
-          </Typography>
+          <Typography variant="h4" fontWeight={700}>Document Management</Typography>
         </Box>
-        {/* Searchbar at top right */}
         <TextField
           label="Search by title, author, category..."
           variant="outlined"
           size="small"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={e => setSearch(e.target.value)}
           sx={{ width: 350, background: theme.palette.background.paper, borderRadius: 1 }}
         />
       </Box>
@@ -154,58 +96,34 @@ const DocumentManagementPage = () => {
       <Grid container spacing={3}>
         {currentDocs.map((doc) => (
           <Grid item xs={12} sm={6} md={4} lg={3} key={doc.Document_ID}>
-            <Card
-              sx={{
-                borderRadius: 3,
-                boxShadow: 3,
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                background: theme.palette.background.paper,
-              }}
-            >
-              {/* Placeholder image */}
+            <Card sx={{
+              borderRadius: 3, boxShadow: 3, height: '100%', display: 'flex',
+              flexDirection: 'column', background: theme.palette.background.paper,
+            }}>
               <CardMedia
                 component="img"
                 src={placeholderImg}
                 alt="PDF Placeholder"
                 sx={{
-                  width: '100%',
-                  height: 180,
-                  objectFit: 'cover',
-                  borderTopLeftRadius: 12,
-                  borderTopRightRadius: 12,
+                  width: '100%', height: 180, objectFit: 'cover',
+                  borderTopLeftRadius: 12, borderTopRightRadius: 12,
                 }}
               />
-
               <CardContent sx={{ flexGrow: 1 }}>
-                <Typography variant="h6" fontWeight={700} gutterBottom noWrap>
-                  {doc.Title}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" noWrap>
-                  {doc.Author}
-                </Typography>
+                <Typography variant="h6" fontWeight={700} gutterBottom noWrap>{doc.Title}</Typography>
+                <Typography variant="body2" color="text.secondary" noWrap>{doc.Author}</Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                   {doc.Category} &bull; {doc.Year}
                 </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Dept: {doc.Department}
-                </Typography>
+                <Typography variant="caption" color="text.secondary">Dept: {doc.Department}</Typography>
                 <br />
-                <Typography variant="caption" color="text.secondary">
-                  Classification: {doc.Classification}
-                </Typography>
+                <Typography variant="caption" color="text.secondary">Classification: {doc.Classification}</Typography>
                 <br />
-                <Typography variant="caption" color="text.secondary">
-                  Sensitivity: {doc.Sensitivity}
-                </Typography>
+                <Typography variant="caption" color="text.secondary">Sensitivity: {doc.Sensitivity}</Typography>
               </CardContent>
               <CardActions sx={{ justifyContent: 'flex-end', pb: 2 }}>
                 <Tooltip title="View File">
-                  <IconButton
-                    color="primary"
-                    onClick={() => handleViewFile(doc)}
-                  >
+                  <IconButton color="primary" onClick={() => handleViewPdf(doc.File_Path)}>
                     <Visibility fontSize="small" />
                   </IconButton>
                 </Tooltip>
@@ -221,9 +139,7 @@ const DocumentManagementPage = () => {
         {currentDocs.length === 0 && (
           <Grid item xs={12}>
             <Box sx={{ textAlign: 'center', py: 6 }}>
-              <Typography variant="body2" color="text.secondary">
-                No documents found.
-              </Typography>
+              <Typography variant="body2" color="text.secondary">No documents found.</Typography>
             </Box>
           </Grid>
         )}
@@ -245,25 +161,99 @@ const DocumentManagementPage = () => {
         color="primary"
         onClick={handleOpenAdd}
         sx={{
-          position: 'fixed',
-          bottom: 32,
-          right: 32,
-          borderRadius: '50%',
-          minWidth: 0,
-          width: 64,
-          height: 64,
-          boxShadow: 6,
-          zIndex: 1201,
-          fontWeight: 700,
-          fontSize: 40,
-          p: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
+          position: 'fixed', bottom: 32, right: 32, borderRadius: '50%',
+          minWidth: 0, width: 64, height: 64, boxShadow: 6, zIndex: 1201,
+          fontWeight: 700, fontSize: 40, p: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+      >+</Button>
+
+      {/* PDF Viewer Dialog */}
+      <Dialog
+        open={pdfDialogOpen}
+        onClose={() => setPdfDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: {
+            height: { xs: '90vh', md: 700 },
+            bgcolor: theme.palette.background.paper,
+            borderRadius: 3,
+            boxShadow: 8,
+            overflow: 'hidden',
+          }
         }}
       >
-        +
-      </Button>
+        <DialogTitle
+          sx={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1,
+            background: theme.palette.background.default, borderBottom: `1px solid ${theme.palette.divider}`, minHeight: 56,
+          }}
+        >
+          <Box display="flex" alignItems="center" gap={1}>
+            <Visibility color="primary" sx={{ fontSize: 28, mr: 1 }} />
+            <Typography variant="h6" fontWeight={700} sx={{ fontSize: 18 }}>
+              Viewing PDF Document
+            </Typography>
+          </Box>
+          <IconButton
+            onClick={() => setPdfDialogOpen(false)}
+            size="small"
+            sx={{
+              color: theme.palette.grey[600],
+              '&:hover': { color: theme.palette.error.main, bgcolor: theme.palette.action.hover }
+            }}
+            aria-label="Close PDF"
+          >
+            <Close />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent
+          sx={{
+            p: 0, height: { xs: 'calc(90vh - 56px)', md: 644 },
+            background: theme.palette.background.paper,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          {pdfUrl ? (
+            <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
+              <Box
+                sx={{
+                  width: '100%', height: '100%', maxHeight: 644, maxWidth: '100%',
+                  overflow: 'auto', background: theme.palette.background.paper,
+                  borderRadius: 2, boxShadow: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                <Viewer
+                  fileUrl={pdfUrl}
+                  defaultScale={1.2}
+                  plugins={[]}
+                  renderToolbar={() => null}
+                  renderLoader={() => (
+                    <Box sx={{ width: '100%', textAlign: 'center', mt: 4 }}>
+                      <Typography color="text.secondary" fontSize={16}>Loading PDF...</Typography>
+                    </Box>
+                  )}
+                  style={{ height: '100%', width: '100%' }}
+                />
+              </Box>
+            </Worker>
+          ) : (
+            <Box sx={{ width: '100%', textAlign: 'center', mt: 4 }}>
+              <Typography color="text.secondary" fontSize={16}>PDF not available.</Typography>
+            </Box>
+          )}
+          <Box
+            sx={{
+              width: '100%', textAlign: 'center', py: 1,
+              background: theme.palette.background.default,
+              borderTop: `1px solid ${theme.palette.divider}`,
+              fontSize: 13, color: theme.palette.text.secondary, letterSpacing: 0.2,
+            }}
+          >
+            <b>Note:</b> Downloading and printing are disabled for this preview.
+          </Box>
+        </DialogContent>
+      </Dialog>
 
       <DocumentFormModal
         open={modalOpen}
@@ -272,26 +262,6 @@ const DocumentManagementPage = () => {
         isEdit={isEdit}
         documentData={editDoc}
       />
-
-      <Dialog
-        open={viewerOpen}
-        onClose={handleCloseViewer}
-        maxWidth="lg"
-        fullWidth
-        PaperProps={{ sx: { height: '90vh' } }}
-      >
-        <Box sx={{ height: '100%', width: '100%' }}>
-          {/* FlowPaper or PDF.js viewer iframe */}
-          <iframe
-            title="Document Viewer"
-            src={`https://flowpaper.com/flipbook/?pdf=${encodeURIComponent(viewerUrl)}`}
-            width="100%"
-            height="100%"
-            style={{ border: 'none', minHeight: 600 }}
-            allowFullScreen
-          />
-        </Box>
-      </Dialog>
 
       <Snackbar
         open={toast.open}
@@ -307,6 +277,7 @@ const DocumentManagementPage = () => {
           {toast.message}
         </Alert>
       </Snackbar>
+      {/* Hide download/print in PDF viewer */}
     </Box>
   );
 };
