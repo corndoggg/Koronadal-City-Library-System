@@ -23,17 +23,37 @@ const DocumentManagementPage = () => {
   const [editDoc, setEditDoc] = useState(null);
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
   const [pdfUrl, setPdfUrl] = useState('');
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => { fetchDocuments(); }, []);
   useEffect(() => { handleSearch(); }, [search, documents]);
 
   const fetchDocuments = async () => {
+    setLoading(true);
     try {
       const res = await axios.get(`${API_BASE}/documents`);
-      setDocuments(res.data);
+      const docs = res.data;
+      const docsWithInventory = await Promise.all(
+        docs.map(async (doc) => {
+          try {
+            const invRes = await axios.get(`${API_BASE}/documents/inventory/${doc.Document_ID}`);
+            const normalizedInventory = (invRes.data || []).map(inv => ({
+              availability: inv.availability || inv.Availability || "",
+              condition: inv.condition || inv.Condition || "",
+              location: inv.location || inv.Location || "",
+              Storage_ID: inv.Storage_ID
+            }));
+            return { ...doc, inventory: normalizedInventory };
+          } catch {
+            return { ...doc, inventory: [] };
+          }
+        })
+      );
+      setDocuments(docsWithInventory);
     } catch {
       setToast({ open: true, message: 'Failed to load documents', severity: 'error' });
     }
+    setLoading(false);
   };
 
   const handleSearch = () => {
@@ -52,21 +72,54 @@ const DocumentManagementPage = () => {
   const showToast = (message, severity = 'success') => setToast({ open: true, message, severity });
   const handleOpenAdd = () => { setIsEdit(false); setEditDoc(null); setModalOpen(true); };
   const handleOpenEdit = (doc) => { setIsEdit(true); setEditDoc(doc); setModalOpen(true); };
-  const handleSaveDocument = async (formData) => {
+
+  const handleSaveDocument = async (formData, inventoryList = [], deletedInventory = []) => {
     try {
+      let docId = null;
       if (isEdit) {
-        const payload = {}; formData.forEach((v, k) => { payload[k] = v; });
+        const payload = {};
+        formData.forEach((v, k) => { payload[k] = v; });
         await axios.put(`${API_BASE}/documents/${editDoc.Document_ID}`, payload);
+        docId = editDoc.Document_ID;
         showToast('Document updated');
       } else {
-        await axios.post(`${API_BASE}/documents/upload`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+        const res = await axios.post(`${API_BASE}/documents/upload`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        docId = res.data.documentId || res.data.id || res.data.Document_ID;
         showToast('Document uploaded');
       }
-      fetchDocuments(); setModalOpen(false);
+      if (docId && Array.isArray(inventoryList)) {
+        for (const inv of inventoryList) {
+          if (inv.Storage_ID) {
+            await axios.put(`${API_BASE}/documents/inventory/${docId}/${inv.Storage_ID}`, {
+              availability: inv.availability,
+              condition: inv.condition,
+              location: inv.location
+            });
+          } else {
+            await axios.post(`${API_BASE}/documents/inventory/${docId}`, {
+              availability: inv.availability,
+              condition: inv.condition,
+              location: inv.location
+            });
+          }
+        }
+      }
+      if (docId && Array.isArray(deletedInventory)) {
+        for (const inv of deletedInventory) {
+          if (inv.Storage_ID) {
+            await axios.delete(`${API_BASE}/documents/inventory/${docId}/${inv.Storage_ID}`);
+          }
+        }
+      }
+      fetchDocuments();
+      setModalOpen(false);
     } catch {
       showToast('Failed to save document', 'error');
     }
   };
+
   const handleViewPdf = (filePath) => { setPdfUrl(`${API_BASE}${filePath}`); setPdfDialogOpen(true); };
 
   const indexOfLast = currentPage * rowsPerPage;
@@ -120,6 +173,34 @@ const DocumentManagementPage = () => {
                 <Typography variant="caption" color="text.secondary">Classification: {doc.Classification}</Typography>
                 <br />
                 <Typography variant="caption" color="text.secondary">Sensitivity: {doc.Sensitivity}</Typography>
+                {/* Inventory Section */}
+                {Array.isArray(doc.inventory) && doc.inventory.length > 0 && (
+                  <Box mt={2} sx={{ background: theme.palette.background.default, borderRadius: 1, p: 1 }}>
+                    <Box sx={{
+                      display: 'inline-block',
+                      px: 2,
+                      py: 0.5,
+                      mb: 1,
+                      borderRadius: 4,
+                      background: theme.palette.primary.main,
+                      color: theme.palette.primary.contrastText,
+                      fontWeight: 600,
+                      fontSize: 15,
+                      letterSpacing: 0.5,
+                    }}>
+                      Copies: {doc.inventory.length}
+                    </Box>
+                    {doc.inventory.map((inv, idx) => (
+                      <Box key={idx} sx={{ fontSize: 13, color: 'text.secondary', mb: 0.5, pl: 1 }}>
+                        <span>
+                          <b>Availability:</b> {inv.availability || "-"} &nbsp;
+                          <b>Condition:</b> {inv.condition || "-"} &nbsp;
+                          <b>Location:</b> {inv.location || "-"}
+                        </span>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
               </CardContent>
               <CardActions sx={{ justifyContent: 'flex-end', pb: 2 }}>
                 <Tooltip title="View File">
@@ -277,7 +358,6 @@ const DocumentManagementPage = () => {
           {toast.message}
         </Alert>
       </Snackbar>
-      {/* Hide download/print in PDF viewer */}
     </Box>
   );
 };

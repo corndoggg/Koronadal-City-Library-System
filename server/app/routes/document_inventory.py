@@ -4,7 +4,7 @@ from app.db import get_db_connection
 document_inventory_bp = Blueprint('document_inventory', __name__)
 
 # Get all inventory entries for a specific document
-@document_inventory_bp.route('/documents/<int:document_id>/inventory', methods=['GET'])
+@document_inventory_bp.route('/documents/inventory/<int:document_id>', methods=['GET'])
 def get_inventory_by_document(document_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
@@ -15,16 +15,16 @@ def get_inventory_by_document(document_id):
     return jsonify(entries)
 
 # Add inventory copy for a document
-@document_inventory_bp.route('/documents/<int:document_id>/inventory', methods=['POST'])
+@document_inventory_bp.route('/documents/inventory/<int:document_id>', methods=['POST'])
 def add_inventory(document_id):
     data = request.json
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO Document_Inventory (Storage_ID, Document_ID, Availability, `Condition`, `Location`)
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO Document_Inventory (Document_ID, Availability, `Condition`, `Location`)
+        VALUES (%s, %s, %s, %s)
     """, (
-        data['storageId'], document_id, data.get('availability'), data.get('condition'), data.get('location')
+        document_id, data.get('availability'), data.get('condition'), data.get('location')
     ))
     conn.commit()
     cursor.close()
@@ -32,7 +32,7 @@ def add_inventory(document_id):
     return jsonify({'message': 'Inventory added'}), 201
 
 # Update inventory copy
-@document_inventory_bp.route('/documents/<int:document_id>/inventory/<int:storage_id>', methods=['PUT'])
+@document_inventory_bp.route('/documents/inventory/<int:document_id>/<int:storage_id>', methods=['PUT'])
 def update_inventory(document_id, storage_id):
     data = request.json
     conn = get_db_connection()
@@ -51,7 +51,7 @@ def update_inventory(document_id, storage_id):
     return jsonify({'message': 'Inventory updated'})
 
 # Delete inventory copy
-@document_inventory_bp.route('/documents/<int:document_id>/inventory/<int:storage_id>', methods=['DELETE'])
+@document_inventory_bp.route('/documents/inventory/<int:document_id>/<int:storage_id>', methods=['DELETE'])
 def delete_inventory(document_id, storage_id):
     conn = get_db_connection()
     cursor = conn.cursor()
