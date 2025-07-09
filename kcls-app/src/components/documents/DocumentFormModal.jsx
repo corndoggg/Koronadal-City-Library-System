@@ -3,7 +3,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Stack, MenuItem, Alert, Snackbar, Box, LinearProgress, useTheme,
   Table, TableHead, TableRow, TableCell, TableBody, IconButton, Tooltip, Typography, Divider, Grid
 } from "@mui/material";
-import { Add, Edit as EditIcon, Save, Cancel, Delete } from "@mui/icons-material";
+import { Add, Edit as EditIcon, Save, Cancel, Delete, LibraryBooks } from "@mui/icons-material";
 import axios from "axios";
 
 const initialForm = { title: "", author: "", category: "", department: "", classification: "", year: "", sensitivity: "", file: null, filePath: "" };
@@ -11,49 +11,28 @@ const initialInventory = { availability: "", condition: "", location: "" };
 const categories = ["Thesis", "Research", "Case Study", "Feasibility Study", "Capstone", "Other"];
 const sensitivities = ["Public", "Restricted", "Confidential"];
 
-function DocumentFormModal({ open, onClose, onSave, isEdit, documentData }) {
+function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locations = [] }) {
   const theme = useTheme();
-  const [form, setForm] = useState(initialForm);
-  const [fileUploading, setFileUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [form, setForm] = useState(initialForm), [fileUploading, setFileUploading] = useState(false), [uploadProgress, setUploadProgress] = useState(0);
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
-  const [inventoryList, setInventoryList] = useState([]);
-  const [inventoryForm, setInventoryForm] = useState(initialInventory);
-  const [editInvIndex, setEditInvIndex] = useState(null);
-  const [deletedInventory, setDeletedInventory] = useState([]);
-  const API_BASE = import.meta.env.VITE_API_BASE;
-  const fileInputRef = useRef();
+  const [inventoryList, setInventoryList] = useState([]), [inventoryForm, setInventoryForm] = useState(initialInventory), [editInvIndex, setEditInvIndex] = useState(null), [deletedInventory, setDeletedInventory] = useState([]);
+  const API_BASE = import.meta.env.VITE_API_BASE, fileInputRef = useRef();
 
   useEffect(() => {
     if (isEdit && documentData) {
       setForm({
-        title: documentData.Title || "",
-        author: documentData.Author || "",
-        category: documentData.Category || "",
-        department: documentData.Department || "",
-        classification: documentData.Classification || "",
-        year: documentData.Year || "",
-        sensitivity: documentData.Sensitivity || "",
-        file: null,
-        filePath: documentData.File_Path || "",
+        title: documentData.Title || "", author: documentData.Author || "", category: documentData.Category || "",
+        department: documentData.Department || "", classification: documentData.Classification || "", year: documentData.Year || "",
+        sensitivity: documentData.Sensitivity || "", file: null, filePath: documentData.File_Path || "",
       });
-      // Normalize inventory keys to lowercase for consistency
-      setInventoryList(
-        (documentData.inventory || []).map(inv => ({
-          availability: inv.availability || inv.Availability || "",
-          condition: inv.condition || inv.Condition || "",
-          location: inv.location || inv.Location || "",
-          Storage_ID: inv.Storage_ID
-        }))
-      );
-    } else {
-      setForm(initialForm);
-      setInventoryList([]);
-    }
-    setInventoryForm(initialInventory);
-    setEditInvIndex(null);
-    setDeletedInventory([]);
-    setUploadProgress(0);
+      setInventoryList((documentData.inventory || []).map(inv => ({
+        availability: inv.availability || inv.Availability || "",
+        condition: inv.condition || inv.Condition || "",
+        location: inv.location || inv.Location || "",
+        Storage_ID: inv.Storage_ID
+      })));
+    } else { setForm(initialForm); setInventoryList([]); }
+    setInventoryForm(initialInventory); setEditInvIndex(null); setDeletedInventory([]); setUploadProgress(0);
   }, [isEdit, documentData, open]);
 
   const handleChange = (e) => {
@@ -100,7 +79,6 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData }) {
     e.preventDefault();
     if (!form.title || !form.author || !form.category || !form.department || !form.classification || !form.year || !form.sensitivity)
       return setSnackbar({ open: true, message: "Please fill in all required fields.", severity: "error" });
-    // Only allow if at least one inventory entry has required fields
     if (!inventoryList.some(inv => inv.availability && inv.location))
       return setSnackbar({ open: true, message: "Please add at least one inventory entry.", severity: "error" });
     if (isEdit) {
@@ -113,6 +91,10 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData }) {
       onSave(fd, inventoryList, []);
     }
   };
+  const getLocationName = (id) => {
+    const found = locations.find(loc => String(loc.ID) === String(id));
+    return found ? found.Name : id || "-";
+  };
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -122,7 +104,6 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData }) {
       <form onSubmit={handleSubmit}>
         <DialogContent sx={{ background: theme.palette.mode === 'dark' ? theme.palette.background.paper : '#f9f9fb', color: theme.palette.text.primary }}>
           <Stack spacing={2}>
-            {/* Document Fields */}
             <Box>
               <Typography variant="subtitle1" fontWeight={600} gutterBottom>Document Details</Typography>
               <Grid container spacing={2}>
@@ -131,18 +112,11 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData }) {
                   { label: "Category", name: "category", select: true, options: categories },
                   { label: "Department", name: "department" }, { label: "Classification", name: "classification" },
                   { label: "Year", name: "year", type: "number" }, { label: "Sensitivity", name: "sensitivity", select: true, options: sensitivities }
-                ].map((f, i) => (
+                ].map((f) => (
                   <Grid item xs={12} sm={6} key={f.name}>
                     <TextField
-                      label={f.label}
-                      name={f.name}
-                      value={form[f.name]}
-                      onChange={handleChange}
-                      required
-                      fullWidth
-                      size="small"
-                      type={f.type || "text"}
-                      select={!!f.select}
+                      label={f.label} name={f.name} value={form[f.name]} onChange={handleChange} required fullWidth size="small"
+                      type={f.type || "text"} select={!!f.select}
                       sx={{ background: theme.palette.background.paper, borderRadius: 1 }}
                     >
                       {f.select && f.options.map((opt) => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
@@ -180,31 +154,31 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData }) {
               </Grid>
             </Box>
             <Divider sx={{ my: 2 }} />
-            {/* Inventory Section */}
             <Box>
               <Typography variant="subtitle1" fontWeight={600} gutterBottom>Document Inventory</Typography>
               <Grid container spacing={2}>
-                {[
-                  { label: "Availability", name: "availability", select: true, options: ["Available", "Borrowed", "Reserved"] },
-                  { label: "Condition", name: "condition" },
-                  { label: "Location", name: "location" }
-                ].map((f, i) => (
-                  <Grid item xs={12} sm={4} key={f.name}>
-                    <TextField
-                      label={f.label}
-                      name={f.name}
-                      value={inventoryForm[f.name]}
-                      onChange={handleInventoryChange}
-                      required={f.name !== "condition" && (inventoryForm.availability || inventoryForm.condition || inventoryForm.location)}
-                      fullWidth
-                      size="small"
-                      select={!!f.select}
-                      sx={{ background: theme.palette.background.paper, borderRadius: 1 }}
-                    >
-                      {f.select && f.options.map((opt) => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
-                    </TextField>
-                  </Grid>
-                ))}
+                <Grid item xs={12} sm={4}>
+                  <TextField label="Availability" name="availability" value={inventoryForm.availability} onChange={handleInventoryChange}
+                    required={!!(inventoryForm.availability || inventoryForm.condition || inventoryForm.location)} fullWidth size="small" select
+                    sx={{ background: theme.palette.background.paper, borderRadius: 1 }}>
+                    {["Available", "Borrowed", "Reserved"].map((opt) => (
+                      <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField label="Condition" name="condition" value={inventoryForm.condition} onChange={handleInventoryChange}
+                    fullWidth size="small" sx={{ background: theme.palette.background.paper, borderRadius: 1 }} />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField label="Location" name="location" value={inventoryForm.location} onChange={handleInventoryChange}
+                    required={!!(inventoryForm.availability || inventoryForm.condition || inventoryForm.location)} fullWidth size="small" select
+                    sx={{ background: theme.palette.background.paper, borderRadius: 1 }}>
+                    {locations.map((loc) => (
+                      <MenuItem key={loc.ID} value={loc.ID}>{loc.Name}</MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
                 <Grid item xs={12}>
                   <Button variant={editInvIndex !== null ? 'contained' : 'outlined'} onClick={handleAddOrUpdateInventory} size="small" startIcon={editInvIndex !== null ? <Save /> : <Add />}>
                     {editInvIndex !== null ? 'Update Inventory' : 'Add Inventory'}
@@ -232,7 +206,7 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData }) {
                         <TableRow key={idx} hover>
                           <TableCell>{inv.availability}</TableCell>
                           <TableCell>{inv.condition}</TableCell>
-                          <TableCell>{inv.location}</TableCell>
+                          <TableCell>{getLocationName(inv.location)}</TableCell>
                           <TableCell align="center">
                             <Tooltip title="Edit">
                               <IconButton size="small" onClick={() => handleEditInventory(idx)}>

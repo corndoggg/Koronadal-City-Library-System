@@ -8,7 +8,12 @@ document_inventory_bp = Blueprint('document_inventory', __name__)
 def get_inventory_by_document(document_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM Document_Inventory WHERE Document_ID = %s", (document_id,))
+    cursor.execute("""
+        SELECT di.*, s.Name as Location
+        FROM Document_Inventory di
+        LEFT JOIN storages s ON di.StorageLocation = s.ID
+        WHERE di.Document_ID = %s
+    """, (document_id,))
     entries = cursor.fetchall()
     cursor.close()
     conn.close()
@@ -21,7 +26,7 @@ def add_inventory(document_id):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO Document_Inventory (Document_ID, Availability, `Condition`, `Location`)
+        INSERT INTO Document_Inventory (Document_ID, Availability, `Condition`, `StorageLocation`)
         VALUES (%s, %s, %s, %s)
     """, (
         document_id, data.get('availability'), data.get('condition'), data.get('location')
@@ -39,7 +44,7 @@ def update_inventory(document_id, storage_id):
     cursor = conn.cursor()
     cursor.execute("""
         UPDATE Document_Inventory
-        SET Availability=%s, `Condition`=%s, `Location`=%s
+        SET Availability=%s, `Condition`=%s, `StorageLocation`=%s
         WHERE Document_ID=%s AND Storage_ID=%s
     """, (
         data.get('availability'), data.get('condition'), data.get('location'),

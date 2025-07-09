@@ -2,58 +2,52 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import {
   Box, Typography, TextField, Snackbar, Alert, Pagination, Button, useTheme,
-  Card, CardContent, CardActions, CardMedia, IconButton, Tooltip, Grid, Dialog, DialogTitle, DialogContent
+  Card, CardContent, CardActions, CardMedia, IconButton, Tooltip, Grid, Dialog, DialogTitle, DialogContent, MenuItem
 } from '@mui/material';
 import { Article, Visibility, Edit, Close } from '@mui/icons-material';
-import DocumentFormModal from '../../../components/librarian/documents/DocumentFormModal';
+import DocumentFormModal from '../../../components/documents/DocumentFormModal';
 import { Worker, Viewer } from '@react-pdf-viewer/core';
 import '@react-pdf-viewer/core/lib/styles/index.css';
 
 const DocumentManagementPage = () => {
-  const theme = useTheme();
-  const API_BASE = import.meta.env.VITE_API_BASE;
-  const [documents, setDocuments] = useState([]);
-  const [filteredDocs, setFilteredDocs] = useState([]);
-  const [search, setSearch] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const rowsPerPage = 2;
-  const [toast, setToast] = useState({ open: false, message: '', severity: 'success' });
-  const [modalOpen, setModalOpen] = useState(false);
-  const [isEdit, setIsEdit] = useState(false);
-  const [editDoc, setEditDoc] = useState(null);
-  const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
-  const [pdfUrl, setPdfUrl] = useState('');
-  const [loading, setLoading] = useState(false);
+  const theme = useTheme(), API_BASE = import.meta.env.VITE_API_BASE;
+  const [documents, setDocuments] = useState([]), [filteredDocs, setFilteredDocs] = useState([]), [search, setSearch] = useState(''),
+    [currentPage, setCurrentPage] = useState(1), rowsPerPage = 2, [toast, setToast] = useState({ open: false, message: '', severity: 'success' }),
+    [modalOpen, setModalOpen] = useState(false), [isEdit, setIsEdit] = useState(false), [editDoc, setEditDoc] = useState(null),
+    [pdfDialogOpen, setPdfDialogOpen] = useState(false), [pdfUrl, setPdfUrl] = useState(''), [loading, setLoading] = useState(false),
+    [locations, setLocations] = useState([]);
 
-  useEffect(() => { fetchDocuments(); }, []);
+  useEffect(() => { fetchDocuments(); fetchLocations(); }, []);
   useEffect(() => { handleSearch(); }, [search, documents]);
 
   const fetchDocuments = async () => {
     setLoading(true);
     try {
       const res = await axios.get(`${API_BASE}/documents`);
-      const docs = res.data;
       const docsWithInventory = await Promise.all(
-        docs.map(async (doc) => {
+        res.data.map(async (doc) => {
           try {
             const invRes = await axios.get(`${API_BASE}/documents/inventory/${doc.Document_ID}`);
             const normalizedInventory = (invRes.data || []).map(inv => ({
               availability: inv.availability || inv.Availability || "",
               condition: inv.condition || inv.Condition || "",
-              location: inv.location || inv.Location || "",
+              location: inv.location || inv.Location || inv.LocationName || "",
               Storage_ID: inv.Storage_ID
             }));
             return { ...doc, inventory: normalizedInventory };
-          } catch {
-            return { ...doc, inventory: [] };
-          }
+          } catch { return { ...doc, inventory: [] }; }
         })
       );
       setDocuments(docsWithInventory);
-    } catch {
-      setToast({ open: true, message: 'Failed to load documents', severity: 'error' });
-    }
+    } catch { setToast({ open: true, message: 'Failed to load documents', severity: 'error' }); }
     setLoading(false);
+  };
+
+  const fetchLocations = async () => {
+    try {
+      const res = await axios.get(`${API_BASE}/storages`);
+      setLocations(res.data || []);
+    } catch { setLocations([]); }
   };
 
   const handleSearch = () => {
@@ -77,54 +71,37 @@ const DocumentManagementPage = () => {
     try {
       let docId = null;
       if (isEdit) {
-        const payload = {};
-        formData.forEach((v, k) => { payload[k] = v; });
+        const payload = {}; formData.forEach((v, k) => { payload[k] = v; });
         await axios.put(`${API_BASE}/documents/${editDoc.Document_ID}`, payload);
-        docId = editDoc.Document_ID;
-        showToast('Document updated');
+        docId = editDoc.Document_ID; showToast('Document updated');
       } else {
-        const res = await axios.post(`${API_BASE}/documents/upload`, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
-        docId = res.data.documentId || res.data.id || res.data.Document_ID;
-        showToast('Document uploaded');
+        const res = await axios.post(`${API_BASE}/documents/upload`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+        docId = res.data.documentId || res.data.id || res.data.Document_ID; showToast('Document uploaded');
       }
       if (docId && Array.isArray(inventoryList)) {
         for (const inv of inventoryList) {
-          if (inv.Storage_ID) {
-            await axios.put(`${API_BASE}/documents/inventory/${docId}/${inv.Storage_ID}`, {
-              availability: inv.availability,
-              condition: inv.condition,
-              location: inv.location
-            });
-          } else {
-            await axios.post(`${API_BASE}/documents/inventory/${docId}`, {
-              availability: inv.availability,
-              condition: inv.condition,
-              location: inv.location
-            });
-          }
+          // Convert location to integer
+          const payload = {
+            availability: inv.availability,
+            condition: inv.condition,
+            location: inv.location ? parseInt(inv.location, 10) : null
+          };
+          if (inv.Storage_ID) await axios.put(`${API_BASE}/documents/inventory/${docId}/${inv.Storage_ID}`, payload);
+          else await axios.post(`${API_BASE}/documents/inventory/${docId}`, payload);
         }
       }
       if (docId && Array.isArray(deletedInventory)) {
         for (const inv of deletedInventory) {
-          if (inv.Storage_ID) {
-            await axios.delete(`${API_BASE}/documents/inventory/${docId}/${inv.Storage_ID}`);
-          }
+          if (inv.Storage_ID) await axios.delete(`${API_BASE}/documents/inventory/${docId}/${inv.Storage_ID}`);
         }
       }
-      fetchDocuments();
-      setModalOpen(false);
-    } catch {
-      showToast('Failed to save document', 'error');
-    }
+      fetchDocuments(); setModalOpen(false);
+    } catch { showToast('Failed to save document', 'error'); }
   };
 
   const handleViewPdf = (filePath) => { setPdfUrl(`${API_BASE}${filePath}`); setPdfDialogOpen(true); };
 
-  const indexOfLast = currentPage * rowsPerPage;
-  const indexOfFirst = indexOfLast - rowsPerPage;
-  const currentDocs = filteredDocs.slice(indexOfFirst, indexOfLast);
+  const indexOfLast = currentPage * rowsPerPage, indexOfFirst = indexOfLast - rowsPerPage, currentDocs = filteredDocs.slice(indexOfFirst, indexOfLast);
   const placeholderImg = 'https://placehold.co/400x180?text=PDF+Document';
 
   return (
@@ -342,6 +319,7 @@ const DocumentManagementPage = () => {
         onSave={handleSaveDocument}
         isEdit={isEdit}
         documentData={editDoc}
+        locations={locations}
       />
 
       <Snackbar

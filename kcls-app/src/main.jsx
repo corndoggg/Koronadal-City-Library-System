@@ -6,8 +6,8 @@ import { ThemeContextProvider } from './contexts/ThemeContext.jsx';
 import './global.css';
 
 import DashboardPage from './app/librarian/pages/DashboardPage.jsx';
-import BookManagementPage from './app/librarian/pages/BookManagementPage.jsx'
-import DocumentsManagementPage from './app/librarian/pages/DocumentManagementPage.jsx';
+import BookManagementPage from './app/librarian/books/page.jsx';
+import DocumentsManagementPage from './app/librarian/documents/page.jsx';
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

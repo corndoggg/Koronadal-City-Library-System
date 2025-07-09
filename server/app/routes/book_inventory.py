@@ -10,14 +10,16 @@ def get_inventory(book_id):
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
         SELECT 
-            Copy_ID, 
-            Accession_Number AS accessionNumber, 
-            Availability AS availability, 
-            Physical_Status AS physicalStatus, 
-            BookCondition AS `condition`, 
-            BookLocation AS location
-        FROM Book_Inventory 
-        WHERE Book_ID = %s
+            bi.Copy_ID, 
+            bi.Accession_Number AS accessionNumber, 
+            bi.Availability AS availability, 
+            bi.Physical_Status AS physicalStatus, 
+            bi.BookCondition AS `condition`, 
+            bi.StorageLocation AS location,      -- <--- return the ID
+            s.Name AS locationName               -- <--- return the name
+        FROM Book_Inventory bi
+        LEFT JOIN storages s ON bi.StorageLocation = s.ID
+        WHERE bi.Book_ID = %s
     """, (book_id,))
     inventory = cursor.fetchall()
     cursor.close()
@@ -26,19 +28,21 @@ def get_inventory(book_id):
 
 # 🔍 Get a specific copy by Copy_ID
 @inventory_bp.route('/inventory/copy/<int:copy_id>', methods=['GET'])
-def get_inventory_copy(copy_id):  # ✅ fixed: parameter should be copy_id
+def get_inventory_copy(copy_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
         SELECT 
-            Copy_ID, 
-            Accession_Number AS accessionNumber, 
-            Availability AS availability, 
-            Physical_Status AS physicalStatus, 
-            BookCondition AS `condition`,
-            BookLocation AS location
-        FROM Book_Inventory 
-        WHERE Copy_ID = %s
+            bi.Copy_ID, 
+            bi.Accession_Number AS accessionNumber, 
+            bi.Availability AS availability, 
+            bi.Physical_Status AS physicalStatus, 
+            bi.BookCondition AS `condition`,
+            bi.StorageLocation AS location,
+            s.Name AS locationName
+        FROM Book_Inventory bi
+        LEFT JOIN storages s ON bi.StorageLocation = s.ID
+        WHERE bi.Copy_ID = %s
     """, (copy_id,))
     inventory = cursor.fetchone()
     cursor.close()
@@ -54,7 +58,7 @@ def add_inventory(book_id):
     cursor.execute("""
         INSERT INTO Book_Inventory (
             Book_ID, Accession_Number, Availability, 
-            Physical_Status, BookCondition, BookLocation
+            Physical_Status, BookCondition, StorageLocation
         ) VALUES (%s, %s, %s, %s, %s, %s)
     """, (
         book_id,
@@ -82,7 +86,7 @@ def update_copy(book_id, copy_id):
             Availability = %s, 
             Physical_Status = %s,
             BookCondition = %s, 
-            BookLocation = %s 
+            StorageLocation = %s 
         WHERE 
             Copy_ID = %s AND Book_ID = %s
     """, (
