@@ -81,14 +81,21 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
       return setSnackbar({ open: true, message: "Please fill in all required fields.", severity: "error" });
     if (!inventoryList.some(inv => inv.availability && inv.location))
       return setSnackbar({ open: true, message: "Please add at least one inventory entry.", severity: "error" });
+
+    // Convert inventory location to integer before passing to onSave
+    const normalizedInventory = inventoryList.map(inv => ({
+      ...inv,
+      location: inv.location ? parseInt(inv.location, 10) : null
+    }));
+
     if (isEdit) {
       const payload = new FormData();
       Object.entries(form).forEach(([k, v]) => payload.append(k, v));
-      onSave(payload, inventoryList, deletedInventory);
+      onSave(payload, normalizedInventory, deletedInventory);
     } else {
       const fd = new FormData();
       Object.entries(form).forEach(([k, v]) => { if (k === "file" && !v) return; fd.append(k, v); });
-      onSave(fd, inventoryList, []);
+      onSave(fd, normalizedInventory, []);
     }
   };
   const getLocationName = (id) => {

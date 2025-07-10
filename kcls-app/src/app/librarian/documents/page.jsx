@@ -80,11 +80,13 @@ const DocumentManagementPage = () => {
       }
       if (docId && Array.isArray(inventoryList)) {
         for (const inv of inventoryList) {
-          // Convert location to integer
+          // Only send if location is a valid integer
+          const locId = parseInt(inv.location, 10);
+          if (!locId || isNaN(locId)) continue;
           const payload = {
             availability: inv.availability,
             condition: inv.condition,
-            location: inv.location ? parseInt(inv.location, 10) : null
+            location: locId
           };
           if (inv.Storage_ID) await axios.put(`${API_BASE}/documents/inventory/${docId}/${inv.Storage_ID}`, payload);
           else await axios.post(`${API_BASE}/documents/inventory/${docId}`, payload);

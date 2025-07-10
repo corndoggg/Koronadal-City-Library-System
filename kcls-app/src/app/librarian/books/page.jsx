@@ -26,7 +26,7 @@ const BookManagementPage = () => {
       const res = await axios.get(`${API_BASE}/books`);
       const booksWithInventory = await Promise.all(
         res.data.map(async (book) => {
-          const invRes = await axios.get(`${API_BASE}/inventory/${book.Book_ID}`);
+          const invRes = await axios.get(`${API_BASE}/books/inventory/${book.Book_ID}`);
           const inventory = (invRes.data || []).map(copy => ({
             ...copy,
             location: copy.location !== null && copy.location !== undefined ? String(copy.location) : ''
@@ -73,9 +73,9 @@ const BookManagementPage = () => {
         if (!copy.location || isNaN(parseInt(copy.location, 10))) continue;
         const payload = { ...copy, location: parseInt(copy.location, 10) };
         if (copy.Copy_ID) {
-          await axios.put(`${API_BASE}/inventory/${bookId}/${copy.Copy_ID}`, payload);
+          await axios.put(`${API_BASE}/books/inventory/${bookId}/${copy.Copy_ID}`, payload);
         } else {
-          await axios.post(`${API_BASE}/inventory/${bookId}`, payload);
+          await axios.post(`${API_BASE}/books/inventory/${bookId}`, payload);
         }
       }
       await fetchBooks();

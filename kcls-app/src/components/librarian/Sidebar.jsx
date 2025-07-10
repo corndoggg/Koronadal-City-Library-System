@@ -37,6 +37,7 @@ const navLinks = [
   { href: '/documents', icon: FileText, label: 'Documents' },
   { href: '/borrow', icon: Handshake, label: 'Borrow' },
   { href: '/storage', icon: Package, label: 'Storage' },
+  { href: '/browse', icon: Package, label: 'Browse' },
 ];
 
 const Sidebar = ({ drawerWidth = 240 }) => {
