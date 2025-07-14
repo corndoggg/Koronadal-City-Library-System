@@ -11,14 +11,14 @@ import { motion } from 'framer-motion';
 
 const drawerWidth = 240;
 
-const LibrarianpageLayout = () => {
+const BorrowerpageLayout = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   return (
     <>
       <CssBaseline />
-      <Sidebar/>
+      <Sidebar />
       <Box
         sx={{
           ml: !isMobile ? `${drawerWidth}px` : 0,
@@ -47,4 +47,4 @@ const LibrarianpageLayout = () => {
   );
 };
 
-export default LibrarianpageLayout;
+export default BorrowerpageLayout;

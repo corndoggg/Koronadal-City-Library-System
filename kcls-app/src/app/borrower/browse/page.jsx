@@ -86,7 +86,6 @@ const BrowseLibraryPage = () => {
           style={{ width: "100%", height: "100%", objectFit: "cover" }}
         />
       </Box>
-
       {isBook ? (
         <>
           <Typography variant="body2"><b>Author:</b> {item.Author}</Typography>

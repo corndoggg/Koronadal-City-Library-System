@@ -2,26 +2,28 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
   Box, Typography, TextField, Button, IconButton, useTheme,
-  Pagination, Snackbar, Alert, Tooltip, Grid, Card, CardContent, CardActions, CardMedia, Chip
+  Pagination, Snackbar, Alert, Tooltip, Grid, Card, CardContent, CardActions, CardMedia, Chip, CircularProgress
 } from '@mui/material';
 import { Edit, Book } from '@mui/icons-material';
-import BookFormModal from '../../../components/BookFormModal';
+import BookFormModal from '../../../components/BookFormModal.jsx';
 
 const initialBookForm = { title: '', author: '', edition: '', publisher: '', year: '', subject: '', language: '', isbn: '' };
 const initialCopyForm = { accessionNumber: '', availability: 'Available', physicalStatus: '', condition: '', location: '' };
 
-const BookManagementPage = () => {
+const AdminBookManagementPage = () => {
   const theme = useTheme(), API_BASE = import.meta.env.VITE_API_BASE;
   const [search, setSearch] = useState(''), [books, setBooks] = useState([]), [filteredBooks, setFilteredBooks] = useState([]),
     [currentPage, setCurrentPage] = useState(1), rowsPerPage = 8, [modalOpen, setModalOpen] = useState(false),
     [isEdit, setIsEdit] = useState(false), [editId, setEditId] = useState(null), [bookForm, setBookForm] = useState(initialBookForm),
     [copyForm, setCopyForm] = useState(initialCopyForm), [copies, setCopies] = useState([]), [editCopyIndex, setEditCopyIndex] = useState(null),
-    [toast, setToast] = useState({ open: false, message: '', severity: 'success' }), [locations, setLocations] = useState([]);
+    [toast, setToast] = useState({ open: false, message: '', severity: 'success' }), [locations, setLocations] = useState([]),
+    [loading, setLoading] = useState(false);
 
   useEffect(() => { fetchBooks(); fetchLocations(); }, []);
   useEffect(() => { handleSearch(); }, [search, books]);
 
   const fetchBooks = async () => {
+    setLoading(true);
     try {
       const res = await axios.get(`${API_BASE}/books`);
       const booksWithInventory = await Promise.all(
@@ -36,6 +38,7 @@ const BookManagementPage = () => {
       );
       setBooks(booksWithInventory);
     } catch { showToast('Failed to load books', 'error'); }
+    setLoading(false);
   };
 
   const fetchLocations = async () => {
@@ -57,31 +60,24 @@ const BookManagementPage = () => {
   const handleBookChange = e => setBookForm({ ...bookForm, [e.target.name]: e.target.name === 'year' ? parseInt(e.target.value) || '' : e.target.value });
   const handleCopyChange = e => setCopyForm({ ...copyForm, [e.target.name]: e.target.value });
 
+  // Only allow editing/updating, not adding
   const handleSaveBook = async () => {
     try {
-      let bookId;
       if (isEdit) {
         await axios.put(`${API_BASE}/books/${editId}`, bookForm);
-        bookId = editId;
-        showToast('Book updated');
-      } else {
-        const res = await axios.post(`${API_BASE}/books`, bookForm);
-        bookId = res.data.book_id;
-        showToast('Book added');
-      }
-      for (const copy of copies) {
-        if (!copy.location || isNaN(parseInt(copy.location, 10))) continue;
-        const payload = { ...copy, location: parseInt(copy.location, 10) };
-        if (copy.Copy_ID) {
-          await axios.put(`${API_BASE}/books/inventory/${bookId}/${copy.Copy_ID}`, payload);
-        } else {
-          await axios.post(`${API_BASE}/books/inventory/${bookId}`, payload);
+        for (const copy of copies) {
+          if (!copy.location || isNaN(parseInt(copy.location, 10))) continue;
+          const payload = { ...copy, location: parseInt(copy.location, 10) };
+          if (copy.Copy_ID) {
+            await axios.put(`${API_BASE}/books/inventory/${editId}/${copy.Copy_ID}`, payload);
+          }
         }
+        showToast('Book updated');
+        await fetchBooks();
+        handleClose();
       }
-      await fetchBooks();
-      handleClose();
     } catch {
-      showToast('Failed to save book', 'error');
+      showToast('Failed to update book', 'error');
     }
   };
 
@@ -89,7 +85,6 @@ const BookManagementPage = () => {
     setModalOpen(false); setIsEdit(false); setBookForm(initialBookForm); setCopyForm(initialCopyForm); setCopies([]); setEditCopyIndex(null);
   };
 
-  const openAddModal = () => { setIsEdit(false); setBookForm(initialBookForm); setCopyForm(initialCopyForm); setCopies([]); setModalOpen(true); };
   const openEditModal = (book) => {
     setIsEdit(true); setEditId(book.Book_ID);
     setBookForm({
@@ -117,59 +112,64 @@ const BookManagementPage = () => {
         </Box>
         <TextField label="Search by title, author, ISBN..." variant="outlined" size="small" value={search} onChange={e => setSearch(e.target.value)} sx={{ width: 350 }} />
       </Box>
-      <Grid container spacing={3}>
-        {currentBooks.map((book) => (
-          <Grid item xs={12} sm={6} md={4} lg={3} key={book.Book_ID}>
-            <Card sx={{ borderRadius: 3, boxShadow: 3, height: '100%', display: 'flex', flexDirection: 'column', background: theme.palette.background.paper }}>
-              <CardMedia component="img" src={placeholderImg} alt="Book Cover" sx={{ width: '100%', height: 180, objectFit: 'cover', borderTopLeftRadius: 12, borderTopRightRadius: 12 }} />
-              <CardContent sx={{ flexGrow: 1 }}>
-                <Typography variant="h6" fontWeight={700} gutterBottom noWrap>{book.Title}</Typography>
-                <Typography variant="body2" color="text.secondary" noWrap>{book.Author}</Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{book.Publisher} &bull; {book.Year}</Typography>
-                <Typography variant="caption" color="text.secondary">Subject: {book.Subject}</Typography><br />
-                <Typography variant="caption" color="text.secondary">Language: {book.Language}</Typography><br />
-                <Typography variant="caption" color="text.secondary">ISBN: {book.ISBN}</Typography>
-                <Box sx={{ mt: 1 }}>
-                  <Chip label={`Copies: ${book.inventory?.length || 0}`} color="primary" size="small" />
+      {loading ? (
+        <Box display="flex" justifyContent="center" alignItems="center" minHeight="40vh">
+          <CircularProgress color="primary" size={48} />
+        </Box>
+      ) : (
+        <>
+          <Grid container spacing={3}>
+            {currentBooks.map((book) => (
+              <Grid item xs={12} sm={6} md={4} lg={3} key={book.Book_ID}>
+                <Card sx={{ borderRadius: 3, boxShadow: 3, height: '100%', display: 'flex', flexDirection: 'column', background: theme.palette.background.paper }}>
+                  <CardMedia component="img" src={placeholderImg} alt="Book Cover" sx={{ width: '100%', height: 180, objectFit: 'cover', borderTopLeftRadius: 12, borderTopRightRadius: 12 }} />
+                  <CardContent sx={{ flexGrow: 1 }}>
+                    <Typography variant="h6" fontWeight={700} gutterBottom noWrap>{book.Title}</Typography>
+                    <Typography variant="body2" color="text.secondary" noWrap>{book.Author}</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{book.Publisher} &bull; {book.Year}</Typography>
+                    <Typography variant="caption" color="text.secondary">Subject: {book.Subject}</Typography><br />
+                    <Typography variant="caption" color="text.secondary">Language: {book.Language}</Typography><br />
+                    <Typography variant="caption" color="text.secondary">ISBN: {book.ISBN}</Typography>
+                    <Box sx={{ mt: 1 }}>
+                      <Chip label={`Copies: ${book.inventory?.length || 0}`} color="primary" size="small" />
+                    </Box>
+                    {book.inventory?.slice(0, 2).map((copy, idx) => (
+                      <Box key={idx} sx={{ mt: 1, pl: 1, borderLeft: '2px solid #eee' }}>
+                        <Typography variant="body2" sx={{ fontSize: 13 }}><strong>Accession #:</strong> {copy.accessionNumber}</Typography>
+                        <Typography variant="body2" sx={{ fontSize: 13 }}><strong>Location:</strong> {getLocationName(copy.location)}</Typography>
+                        <Typography variant="body2" sx={{ fontSize: 13 }}><strong>Condition:</strong> {copy.condition}</Typography>
+                        <Typography variant="body2" sx={{ fontSize: 13 }} color={copy.availability === 'Available' ? 'green' : 'orange'}><strong>{copy.availability}</strong></Typography>
+                      </Box>
+                    ))}
+                    {book.inventory && book.inventory.length > 2 && (
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                        +{book.inventory.length - 2} more copies...
+                      </Typography>
+                    )}
+                  </CardContent>
+                  <CardActions sx={{ justifyContent: 'flex-end', pb: 2 }}>
+                    <Tooltip title="Edit Book">
+                      <IconButton onClick={() => openEditModal(book)} color="primary">
+                        <Edit fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </CardActions>
+                </Card>
+              </Grid>
+            ))}
+            {currentBooks.length === 0 && (
+              <Grid item xs={12}>
+                <Box sx={{ textAlign: 'center', py: 6 }}>
+                  <Typography variant="body2" color="text.secondary">No books found. Try a different search.</Typography>
                 </Box>
-                {book.inventory?.slice(0, 2).map((copy, idx) => (
-                  <Box key={idx} sx={{ mt: 1, pl: 1, borderLeft: '2px solid #eee' }}>
-                    <Typography variant="body2" sx={{ fontSize: 13 }}><strong>Accession #:</strong> {copy.accessionNumber}</Typography>
-                    <Typography variant="body2" sx={{ fontSize: 13 }}><strong>Location:</strong> {getLocationName(copy.location)}</Typography>
-                    <Typography variant="body2" sx={{ fontSize: 13 }}><strong>Condition:</strong> {copy.condition}</Typography>
-                    <Typography variant="body2" sx={{ fontSize: 13 }} color={copy.availability === 'Available' ? 'green' : 'orange'}><strong>{copy.availability}</strong></Typography>
-                  </Box>
-                ))}
-                {book.inventory && book.inventory.length > 2 && (
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
-                    +{book.inventory.length - 2} more copies...
-                  </Typography>
-                )}
-              </CardContent>
-              <CardActions sx={{ justifyContent: 'flex-end', pb: 2 }}>
-                <Tooltip title="Edit Book">
-                  <IconButton onClick={() => openEditModal(book)} color="primary">
-                    <Edit fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </CardActions>
-            </Card>
+              </Grid>
+            )}
           </Grid>
-        ))}
-        {currentBooks.length === 0 && (
-          <Grid item xs={12}>
-            <Box sx={{ textAlign: 'center', py: 6 }}>
-              <Typography variant="body2" color="text.secondary">No books found. Try a different search.</Typography>
-            </Box>
-          </Grid>
-        )}
-      </Grid>
-      <Box display="flex" justifyContent="center" mt={4}>
-        <Pagination count={Math.ceil(filteredBooks.length / rowsPerPage)} page={currentPage} onChange={(e, page) => setCurrentPage(page)} color="primary" />
-      </Box>
-      <Button variant="contained" color="primary" onClick={openAddModal} sx={{
-        position: 'fixed', bottom: 32, right: 32, borderRadius: '50%', minWidth: 0, width: 64, height: 64, boxShadow: 6, zIndex: 1201, fontWeight: 700, fontSize: 40, p: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>+</Button>
+          <Box display="flex" justifyContent="center" mt={4}>
+            <Pagination count={Math.ceil(filteredBooks.length / rowsPerPage)} page={currentPage} onChange={(e, page) => setCurrentPage(page)} color="primary" />
+          </Box>
+        </>
+      )}
       <BookFormModal
         open={modalOpen}
         onClose={handleClose}
@@ -195,4 +195,4 @@ const BookManagementPage = () => {
   );
 };
 
-export default BookManagementPage;
+export default AdminBookManagementPage;

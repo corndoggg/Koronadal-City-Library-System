@@ -11,7 +11,7 @@ import { motion } from 'framer-motion';
 
 const drawerWidth = 240;
 
-const LibrarianpageLayout = () => {
+const AdminpageLayout = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
@@ -47,4 +47,4 @@ const LibrarianpageLayout = () => {
   );
 };
 
-export default LibrarianpageLayout;
+export default AdminpageLayout;

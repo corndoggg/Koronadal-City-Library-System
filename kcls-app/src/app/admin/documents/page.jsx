@@ -2,14 +2,14 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import {
   Box, Typography, TextField, Snackbar, Alert, Pagination, Button, useTheme,
-  Card, CardContent, CardActions, CardMedia, IconButton, Tooltip, Grid, Dialog, DialogTitle, DialogContent, MenuItem
+  Card, CardContent, CardActions, CardMedia, IconButton, Tooltip, Grid, Dialog, DialogTitle, DialogContent, MenuItem, CircularProgress
 } from '@mui/material';
 import { Article, Visibility, Edit, Close } from '@mui/icons-material';
 import DocumentFormModal from '../../../components/DocumentFormModal';
 import { Worker, Viewer } from '@react-pdf-viewer/core';
 import '@react-pdf-viewer/core/lib/styles/index.css';
 
-const DocumentManagementPage = () => {
+const AdminDocumentManagementPage = () => {
   const theme = useTheme(), API_BASE = import.meta.env.VITE_API_BASE;
   const [documents, setDocuments] = useState([]), [filteredDocs, setFilteredDocs] = useState([]), [search, setSearch] = useState(''),
     [currentPage, setCurrentPage] = useState(1), rowsPerPage = 2, [toast, setToast] = useState({ open: false, message: '', severity: 'success' }),
@@ -64,7 +64,6 @@ const DocumentManagementPage = () => {
   };
 
   const showToast = (message, severity = 'success') => setToast({ open: true, message, severity });
-  const handleOpenAdd = () => { setIsEdit(false); setEditDoc(null); setModalOpen(true); };
   const handleOpenEdit = (doc) => { setIsEdit(true); setEditDoc(doc); setModalOpen(true); };
 
   const handleSaveDocument = async (formData, inventoryList = [], deletedInventory = []) => {
@@ -80,7 +79,6 @@ const DocumentManagementPage = () => {
       }
       if (docId && Array.isArray(inventoryList)) {
         for (const inv of inventoryList) {
-          // Only send if location is a valid integer
           const locId = parseInt(inv.location, 10);
           if (!locId || isNaN(locId)) continue;
           const payload = {
@@ -124,108 +122,105 @@ const DocumentManagementPage = () => {
         />
       </Box>
 
-      {/* Cards Grid */}
-      <Grid container spacing={3}>
-        {currentDocs.map((doc) => (
-          <Grid item xs={12} sm={6} md={4} lg={3} key={doc.Document_ID}>
-            <Card sx={{
-              borderRadius: 3, boxShadow: 3, height: '100%', display: 'flex',
-              flexDirection: 'column', background: theme.palette.background.paper,
-            }}>
-              <CardMedia
-                component="img"
-                src={placeholderImg}
-                alt="PDF Placeholder"
-                sx={{
-                  width: '100%', height: 180, objectFit: 'cover',
-                  borderTopLeftRadius: 12, borderTopRightRadius: 12,
-                }}
-              />
-              <CardContent sx={{ flexGrow: 1 }}>
-                <Typography variant="h6" fontWeight={700} gutterBottom noWrap>{doc.Title}</Typography>
-                <Typography variant="body2" color="text.secondary" noWrap>{doc.Author}</Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  {doc.Category} &bull; {doc.Year}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">Dept: {doc.Department}</Typography>
-                <br />
-                <Typography variant="caption" color="text.secondary">Classification: {doc.Classification}</Typography>
-                <br />
-                <Typography variant="caption" color="text.secondary">Sensitivity: {doc.Sensitivity}</Typography>
-                {/* Inventory Section */}
-                {Array.isArray(doc.inventory) && doc.inventory.length > 0 && (
-                  <Box mt={2} sx={{ background: theme.palette.background.default, borderRadius: 1, p: 1 }}>
-                    <Box sx={{
-                      display: 'inline-block',
-                      px: 2,
-                      py: 0.5,
-                      mb: 1,
-                      borderRadius: 4,
-                      background: theme.palette.primary.main,
-                      color: theme.palette.primary.contrastText,
-                      fontWeight: 600,
-                      fontSize: 15,
-                      letterSpacing: 0.5,
-                    }}>
-                      Copies: {doc.inventory.length}
-                    </Box>
-                    {doc.inventory.map((inv, idx) => (
-                      <Box key={idx} sx={{ fontSize: 13, color: 'text.secondary', mb: 0.5, pl: 1 }}>
-                        <span>
-                          <b>Availability:</b> {inv.availability || "-"} &nbsp;
-                          <b>Condition:</b> {inv.condition || "-"} &nbsp;
-                          <b>Location:</b> {inv.location || "-"}
-                        </span>
+      {/* Loading Spinner */}
+      {loading ? (
+        <Box display="flex" justifyContent="center" alignItems="center" minHeight="40vh">
+          <CircularProgress color="primary" size={48} />
+        </Box>
+      ) : (
+        <>
+          {/* Cards Grid */}
+          <Grid container spacing={3}>
+            {currentDocs.map((doc) => (
+              <Grid item xs={12} sm={6} md={4} lg={3} key={doc.Document_ID}>
+                <Card sx={{
+                  borderRadius: 3, boxShadow: 3, height: '100%', display: 'flex',
+                  flexDirection: 'column', background: theme.palette.background.paper,
+                }}>
+                  <CardMedia
+                    component="img"
+                    src={placeholderImg}
+                    alt="PDF Placeholder"
+                    sx={{
+                      width: '100%', height: 180, objectFit: 'cover',
+                      borderTopLeftRadius: 12, borderTopRightRadius: 12,
+                    }}
+                  />
+                  <CardContent sx={{ flexGrow: 1 }}>
+                    <Typography variant="h6" fontWeight={700} gutterBottom noWrap>{doc.Title}</Typography>
+                    <Typography variant="body2" color="text.secondary" noWrap>{doc.Author}</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                      {doc.Category} &bull; {doc.Year}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">Dept: {doc.Department}</Typography>
+                    <br />
+                    <Typography variant="caption" color="text.secondary">Classification: {doc.Classification}</Typography>
+                    <br />
+                    <Typography variant="caption" color="text.secondary">Sensitivity: {doc.Sensitivity}</Typography>
+                    {/* Inventory Section */}
+                    {Array.isArray(doc.inventory) && doc.inventory.length > 0 && (
+                      <Box mt={2} sx={{ background: theme.palette.background.default, borderRadius: 1, p: 1 }}>
+                        <Box sx={{
+                          display: 'inline-block',
+                          px: 2,
+                          py: 0.5,
+                          mb: 1,
+                          borderRadius: 4,
+                          background: theme.palette.primary.main,
+                          color: theme.palette.primary.contrastText,
+                          fontWeight: 600,
+                          fontSize: 15,
+                          letterSpacing: 0.5,
+                        }}>
+                          Copies: {doc.inventory.length}
+                        </Box>
+                        {doc.inventory.map((inv, idx) => (
+                          <Box key={idx} sx={{ fontSize: 13, color: 'text.secondary', mb: 0.5, pl: 1 }}>
+                            <span>
+                              <b>Availability:</b> {inv.availability || "-"} &nbsp;
+                              <b>Condition:</b> {inv.condition || "-"} &nbsp;
+                              <b>Location:</b> {inv.location || "-"}
+                            </span>
+                          </Box>
+                        ))}
                       </Box>
-                    ))}
-                  </Box>
-                )}
-              </CardContent>
-              <CardActions sx={{ justifyContent: 'flex-end', pb: 2 }}>
-                <Tooltip title="View File">
-                  <IconButton color="primary" onClick={() => handleViewPdf(doc.File_Path)}>
-                    <Visibility fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Edit Document">
-                  <IconButton color="secondary" onClick={() => handleOpenEdit(doc)}>
-                    <Edit fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </CardActions>
-            </Card>
+                    )}
+                  </CardContent>
+                  <CardActions sx={{ justifyContent: 'flex-end', pb: 2 }}>
+                    <Tooltip title="View File">
+                      <IconButton color="primary" onClick={() => handleViewPdf(doc.File_Path)}>
+                        <Visibility fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Edit Document">
+                      <IconButton color="secondary" onClick={() => handleOpenEdit(doc)}>
+                        <Edit fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </CardActions>
+                </Card>
+              </Grid>
+            ))}
+            {currentDocs.length === 0 && (
+              <Grid item xs={12}>
+                <Box sx={{ textAlign: 'center', py: 6 }}>
+                  <Typography variant="body2" color="text.secondary">No documents found.</Typography>
+                </Box>
+              </Grid>
+            )}
           </Grid>
-        ))}
-        {currentDocs.length === 0 && (
-          <Grid item xs={12}>
-            <Box sx={{ textAlign: 'center', py: 6 }}>
-              <Typography variant="body2" color="text.secondary">No documents found.</Typography>
-            </Box>
-          </Grid>
-        )}
-      </Grid>
 
-      {/* Pagination */}
-      <Box display="flex" justifyContent="center" mt={4}>
-        <Pagination
-          count={Math.ceil(filteredDocs.length / rowsPerPage)}
-          page={currentPage}
-          onChange={(e, page) => setCurrentPage(page)}
-          color="primary"
-        />
-      </Box>
-
-      {/* Floating Add Document Button */}
-      <Button
-        variant="contained"
-        color="primary"
-        onClick={handleOpenAdd}
-        sx={{
-          position: 'fixed', bottom: 32, right: 32, borderRadius: '50%',
-          minWidth: 0, width: 64, height: 64, boxShadow: 6, zIndex: 1201,
-          fontWeight: 700, fontSize: 40, p: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}
-      >+</Button>
+          {/* Pagination */}
+          <Box display="flex" justifyContent="center" mt={4}>
+            <Pagination
+              count={Math.ceil(filteredDocs.length / rowsPerPage)}
+              page={currentPage}
+              onChange={(e, page) => setCurrentPage(page)}
+              color="primary"
+            />
+          </Box>
+        </>
+      )}
 
       {/* PDF Viewer Dialog */}
       <Dialog
@@ -342,4 +337,4 @@ const DocumentManagementPage = () => {
   );
 };
 
-export default DocumentManagementPage;
+export default AdminDocumentManagementPage;
