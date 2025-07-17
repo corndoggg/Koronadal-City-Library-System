@@ -16,6 +16,8 @@ import StorageManagementPage from './app/librarian/storages/page.jsx';
 import UserManagementPage from './app/admin/users/page.jsx';
 import LoginPage from './app/login/page.jsx';
 import BrowseLibraryPage from './app/borrower/browse/page.jsx';
+import BorrowerBorrowPage from './app/borrower/borrow/page.jsx';
+import LibrarianBorrowPage from './app/librarian/borrow/page.jsx';
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -44,11 +46,13 @@ createRoot(document.getElementById('root')).render(
             <Route path="books" element={<BookManagementPage />} />
             <Route path="documents" element={<DocumentManagementPage />} />
             <Route path="storage" element={<StorageManagementPage />} />
+            <Route path="borrows" element={<LibrarianBorrowPage />} />
           </Route>
           {/* Borrower routes */}
           <Route path="/borrower" element={<BorrowerLayout />}>
             <Route index element={<Navigate to="browse" replace />} />
             <Route path="browse" element={<BrowseLibraryPage />} />
+            <Route path="borrow" element={<BorrowerBorrowPage />} />
           </Route>
         </Routes>
       </ThemeContextProvider>

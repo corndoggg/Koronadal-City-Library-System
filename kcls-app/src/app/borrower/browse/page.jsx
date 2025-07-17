@@ -13,9 +13,16 @@ import {
   Stack,
   InputAdornment,
   CircularProgress,
-  Divider
+  Divider,
+  Button,
+  Snackbar,
+  Alert,
+  Fab,
+  Badge,
+  Drawer,
+  IconButton,
 } from "@mui/material";
-import { Book, Article, Search } from "@mui/icons-material";
+import { Book, Article, Search, ShoppingCart, Close } from "@mui/icons-material";
 
 const BrowseLibraryPage = () => {
   const API_BASE = import.meta.env.VITE_API_BASE;
@@ -25,9 +32,20 @@ const BrowseLibraryPage = () => {
   const [search, setSearch] = useState("");
   const [searchKey, setSearchKey] = useState("All");
   const [loading, setLoading] = useState(false);
+  const [borrowed, setBorrowed] = useState([]);
+  const [borrowLoading, setBorrowLoading] = useState(false);
+  const [toast, setToast] = useState({ open: false, message: "", severity: "success" });
+  const [cart, setCart] = useState([]);
+  const [cartOpen, setCartOpen] = useState(false);
+
+  // Get user info from localStorage
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+  const borrowerId = user?.UserID;
 
   useEffect(() => {
     fetchData();
+    fetchBorrowed();
+    // eslint-disable-next-line
   }, []);
 
   const fetchData = async () => {
@@ -37,13 +55,38 @@ const BrowseLibraryPage = () => {
         axios.get(`${API_BASE}/books`),
         axios.get(`${API_BASE}/documents`)
       ]);
-      setBooks(booksRes.data || []);
-      setDocuments(docsRes.data || []);
+      // Fetch inventory for each book/document to show availability
+      const booksWithInventory = await Promise.all(
+        (booksRes.data || []).map(async (book) => {
+          const invRes = await axios.get(`${API_BASE}/books/inventory/${book.Book_ID}`);
+          book.inventory = invRes.data || [];
+          return book;
+        })
+      );
+      const docsWithInventory = await Promise.all(
+        (docsRes.data || []).map(async (doc) => {
+          const invRes = await axios.get(`${API_BASE}/documents/inventory/${doc.Document_ID}`);
+          doc.inventory = invRes.data || [];
+          return doc;
+        })
+      );
+      setBooks(booksWithInventory);
+      setDocuments(docsWithInventory);
     } catch {
       setBooks([]);
       setDocuments([]);
     }
     setLoading(false);
+  };
+
+  const fetchBorrowed = async () => {
+    if (!borrowerId) return;
+    try {
+      const res = await axios.get(`${API_BASE}/borrow/borrower/${borrowerId}`);
+      setBorrowed(res.data || []);
+    } catch {
+      setBorrowed([]);
+    }
   };
 
   const handleTabChange = (_, v) => setTab(v);
@@ -59,6 +102,88 @@ const BrowseLibraryPage = () => {
         return (item[searchKey] || "").toLowerCase().includes(search.toLowerCase());
       }
     });
+  };
+
+  // Check if the user has borrowed or has a pending borrow for this specific book/document and not returned it
+  const isItemBorrowedOrPending = (item, isBook) => {
+    return borrowed.some(tx =>
+      (tx.items || []).some(bi =>
+        isBook
+          ? bi.BookCopyID && item.Book_ID && bi.BookCopyID === item.Book_ID
+          : bi.DocumentStorageID && item.Document_ID && bi.DocumentStorageID === item.Document_ID
+      ) && (tx.ReturnStatus !== "Returned" || tx.ApprovalStatus === "Pending")
+    );
+  };
+
+  // Check if item is already in cart
+  const isInCart = (item, isBook) =>
+    cart.some(ci =>
+      ci.type === (isBook ? "Book" : "Document") &&
+      ((isBook && ci.item.Book_ID === item.Book_ID) ||
+        (!isBook && ci.item.Document_ID === item.Document_ID))
+    );
+
+  // Add to cart handler
+  const handleAddToCart = async (item, isBook) => {
+    // Find first available inventory
+    let available;
+    if (isBook) {
+      available = (item.inventory || []).find(inv => (inv.availability || inv.Availability) === "Available");
+    } else {
+      available = (item.inventory || []).find(inv => (inv.availability || inv.Availability) === "Available");
+    }
+    if (!available) {
+      setToast({ open: true, message: "No available copy for this item.", severity: "info" });
+      return;
+    }
+    setCart([...cart, { type: isBook ? "Book" : "Document", item, inventory: available }]);
+    setToast({ open: true, message: "Added to cart!", severity: "success" });
+  };
+
+  // Remove from cart
+  const handleRemoveFromCart = idx => {
+    setCart(cart.filter((_, i) => i !== idx));
+  };
+
+  // Borrow all items in cart
+  const handleBorrowAll = async () => {
+    if (!borrowerId) {
+      setToast({ open: true, message: "You must be logged in as a borrower.", severity: "error" });
+      return;
+    }
+    if (cart.length === 0) {
+      setToast({ open: true, message: "Your cart is empty.", severity: "warning" });
+      return;
+    }
+    setBorrowLoading(true);
+    try {
+      const items = cart.map(ci =>
+        ci.type === "Book"
+          ? {
+              itemType: "Book",
+              bookCopyId: ci.inventory.Copy_ID,
+              initialCondition: ci.inventory.condition || "",
+            }
+          : {
+              itemType: "Document",
+              documentStorageId: ci.inventory.Storage_ID,
+              initialCondition: ci.inventory.Condition || ci.inventory.condition || "",
+            }
+      );
+      await axios.post(`${API_BASE}/borrow`, {
+        borrowerId,
+        purpose: "Personal Reading",
+        items,
+        borrowDate: new Date().toISOString().slice(0, 10),
+      });
+      setToast({ open: true, message: "Borrow request submitted!", severity: "success" });
+      setCart([]);
+      fetchBorrowed();
+    } catch {
+      setToast({ open: true, message: "Failed to borrow items.", severity: "error" });
+    }
+    setBorrowLoading(false);
+    setCartOpen(false);
   };
 
   const renderDetails = (item, isBook) => (
@@ -114,7 +239,7 @@ const BrowseLibraryPage = () => {
   );
 
   return (
-    <Box p={3}>
+    <Box p={3} pb={10}>
       <Typography variant="h4" fontWeight={700} mb={2}>Browse Library</Typography>
       <Stack direction="row" spacing={2} alignItems="center" mb={3}>
         <TextField
@@ -158,28 +283,62 @@ const BrowseLibraryPage = () => {
           {(tab === 0
             ? filterItems(books, ["Title", "Author", "Publisher", "ISBN", "Category", "CallNumber", "Edition", "Description"])
             : filterItems(documents, ["Title", "Type", "Author", "Publisher", "Category", "Description"])
-          ).map(item => (
-            <Grid item xs={12} sm={6} md={4} lg={3} key={item.Book_ID || item.Document_ID}>
-              <Card sx={{ borderRadius: 3, boxShadow: 4, height: "100%" }}>
-                <CardContent>
-                  <Stack direction="row" alignItems="center" spacing={1} mb={1}>
-                    {tab === 0 ? <Book color="primary" /> : <Article color="secondary" />}
-                    <Typography variant="h6" fontWeight={600}>
-                      {item.Title}
-                    </Typography>
-                  </Stack>
-                  <Divider sx={{ my: 1 }} />
-                  {renderDetails(item, tab === 0)}
-                  <Chip
-                    label={tab === 0 ? "Book" : "Document"}
-                    color={tab === 0 ? "primary" : "secondary"}
-                    size="small"
-                    sx={{ mt: 2 }}
-                  />
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
+          ).map(item => {
+            const isBook = tab === 0;
+            const availableCount = (item.inventory || []).filter(
+              inv => (inv.availability || inv.Availability) === "Available"
+            ).length;
+            return (
+              <Grid item xs={12} sm={6} md={4} lg={3} key={item.Book_ID || item.Document_ID}>
+                <Card sx={{ borderRadius: 3, boxShadow: 4, height: "100%" }}>
+                  <CardContent>
+                    <Stack direction="row" alignItems="center" spacing={1} mb={1}>
+                      {isBook ? <Book color="primary" /> : <Article color="secondary" />}
+                      <Typography variant="h6" fontWeight={600}>
+                        {item.Title}
+                      </Typography>
+                    </Stack>
+                    <Divider sx={{ my: 1 }} />
+                    {renderDetails(item, isBook)}
+                    <Chip
+                      label={isBook ? "Book" : "Document"}
+                      color={isBook ? "primary" : "secondary"}
+                      size="small"
+                      sx={{ mt: 2, mr: 1 }}
+                    />
+                    <Chip
+                      label={`Available: ${availableCount}`}
+                      color={availableCount > 0 ? "success" : "default"}
+                      size="small"
+                      sx={{ mt: 2 }}
+                    />
+                    <Box mt={2}>
+                      <Button
+                        variant="outlined"
+                        color="primary"
+                        fullWidth
+                        disabled={
+                          borrowLoading ||
+                          isItemBorrowedOrPending(item, isBook) ||
+                          isInCart(item, isBook) ||
+                          availableCount === 0
+                        }
+                        onClick={() => handleAddToCart(item, isBook)}
+                      >
+                        {isItemBorrowedOrPending(item, isBook)
+                          ? "Already Borrowed or Pending"
+                          : isInCart(item, isBook)
+                          ? "In Cart"
+                          : availableCount === 0
+                          ? "Not Available"
+                          : "Add to Cart"}
+                      </Button>
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+            );
+          })}
           {(tab === 0
             ? filterItems(books, ["Title", "Author", "Publisher", "ISBN", "Category", "CallNumber", "Edition", "Description"])
             : filterItems(documents, ["Title", "Type", "Author", "Publisher", "Category", "Description"])
@@ -192,6 +351,84 @@ const BrowseLibraryPage = () => {
           )}
         </Grid>
       )}
+
+      {/* Floating Cart Button */}
+      <Fab
+        color="primary"
+        sx={{
+          position: "fixed",
+          bottom: 32,
+          right: 32,
+          zIndex: 1200,
+        }}
+        onClick={() => setCartOpen(true)}
+      >
+        <Badge badgeContent={cart.length} color="error">
+          <ShoppingCart />
+        </Badge>
+      </Fab>
+
+      {/* Cart Drawer */}
+      <Drawer
+        anchor="right"
+        open={cartOpen}
+        onClose={() => setCartOpen(false)}
+        PaperProps={{ sx: { width: 340, p: 2 } }}
+      >
+        <Box display="flex" alignItems="center" justifyContent="space-between" p={2}>
+          <Typography variant="h6" fontWeight={700}>Borrow Cart</Typography>
+          <IconButton onClick={() => setCartOpen(false)}>
+            <Close />
+          </IconButton>
+        </Box>
+        <Divider />
+        <Box p={2}>
+          {cart.length === 0 ? (
+            <Typography color="text.secondary" align="center" mt={4}>
+              Your cart is empty.
+            </Typography>
+          ) : (
+            <>
+              <Stack direction="column" spacing={1}>
+                {cart.map((ci, idx) => (
+                  <Chip
+                    key={idx}
+                    label={`${ci.type}: ${ci.item.Title}`}
+                    onDelete={() => handleRemoveFromCart(idx)}
+                    color={ci.type === "Book" ? "primary" : "secondary"}
+                    sx={{ mb: 1 }}
+                  />
+                ))}
+              </Stack>
+              <Button
+                variant="contained"
+                color="success"
+                sx={{ mt: 3 }}
+                fullWidth
+                disabled={borrowLoading}
+                onClick={handleBorrowAll}
+              >
+                {borrowLoading ? "Processing..." : "Borrow All"}
+              </Button>
+            </>
+          )}
+        </Box>
+      </Drawer>
+
+      <Snackbar
+        open={toast.open}
+        autoHideDuration={3000}
+        onClose={() => setToast({ ...toast, open: false })}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+      >
+        <Alert
+          onClose={() => setToast({ ...toast, open: false })}
+          severity={toast.severity}
+          variant="filled"
+        >
+          {toast.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

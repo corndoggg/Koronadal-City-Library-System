@@ -15,8 +15,8 @@ def get_inventory(book_id):
             bi.Availability AS availability, 
             bi.Physical_Status AS physicalStatus, 
             bi.BookCondition AS `condition`, 
-            bi.StorageLocation AS location,      -- <--- return the ID
-            s.Name AS locationName               -- <--- return the name
+            bi.StorageLocation AS location,      
+            s.Name AS locationName
         FROM Book_Inventory bi
         LEFT JOIN storages s ON bi.StorageLocation = s.ID
         WHERE bi.Book_ID = %s
@@ -33,7 +33,8 @@ def get_inventory_copy(copy_id):
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
         SELECT 
-            bi.Copy_ID, 
+            bi.Copy_ID,
+            bi.Book_ID, 
             bi.Accession_Number AS accessionNumber, 
             bi.Availability AS availability, 
             bi.Physical_Status AS physicalStatus, 

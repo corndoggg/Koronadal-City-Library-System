@@ -56,7 +56,6 @@ const Sidebar = () => {
 
   // Get user info from localStorage
   const user = JSON.parse(localStorage.getItem('user') || '{}');
-  console.log('User Info:', user);
   const role = user.Role === 'Staff' && user.staff?.Position === 'Librarian'
     ? 'librarian'
     : user.Role === 'Staff'

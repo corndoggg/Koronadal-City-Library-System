@@ -68,3 +68,22 @@ def delete_inventory(document_id, storage_id):
     cursor.close()
     conn.close()
     return jsonify({'message': 'Inventory deleted'})
+
+# Get inventory entry by Storage_ID (for any document)
+@document_inventory_bp.route('/documents/inventory/storage/<int:storage_id>', methods=['GET'])
+def get_inventory_by_storage(storage_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT di.*, s.Name as Location
+        FROM Document_Inventory di
+        LEFT JOIN storages s ON di.StorageLocation = s.ID
+        WHERE di.Storage_ID = %s
+    """, (storage_id,))
+    entry = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    if entry:
+        return jsonify(entry)
+    else:
+        return jsonify({}), 404

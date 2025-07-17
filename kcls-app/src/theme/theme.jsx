@@ -5,34 +5,58 @@ const getDesignTokens = (mode) => ({
     mode,
 
     primary: {
-      main: '#aa001d',
-      light: '#ef5350',
-      dark: '#7a0014',
+      main: '#1976d2',      // A friendly blue
+      light: '#63a4ff',
+      dark: '#004ba0',
+      contrastText: '#fff',
     },
 
     secondary: {
-      main: '#ff4081',
+      main: '#ff9800',      // A warm orange
+      light: '#ffc947',
+      dark: '#c66900',
+      contrastText: '#fff',
+    },
+
+    success: {
+      main: '#43a047',
+      contrastText: '#fff',
+    },
+
+    error: {
+      main: '#e53935',
+      contrastText: '#fff',
+    },
+
+    warning: {
+      main: '#fbc02d',
+      contrastText: '#fff',
+    },
+
+    info: {
+      main: '#0288d1',
+      contrastText: '#fff',
     },
 
     ...(mode === 'light'
       ? {
           background: {
-            default: '#f9f9f9',
+            default: '#f4f6fb',   // Soft light background
             paper: '#ffffff',
           },
           text: {
-            primary: '#1a1a1a',
-            secondary: '#5c5c5c',
+            primary: '#222b45',   // Dark blue-gray for readability
+            secondary: '#6b778c',
           },
         }
       : {
           background: {
-            default: '#121212',
-            paper: '#1e1e1e',
+            default: '#181c25',   // Deep blue-gray for dark mode
+            paper: '#23293a',
           },
           text: {
-            primary: '#ffffff',
-            secondary: '#cccccc',
+            primary: '#f4f6fb',
+            secondary: '#b0b8c1',
           },
         }),
   },
