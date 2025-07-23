@@ -62,7 +62,7 @@ const getDesignTokens = (mode) => ({
   },
 
   typography: {
-    fontFamily: 'Inter, Roboto, sans-serif',
+    fontFamily: 'Inter, "Segoe UI", "Helvetica Neue", Arial, "Liberation Sans", sans-serif',
     button: {
       textTransform: 'none',
     },

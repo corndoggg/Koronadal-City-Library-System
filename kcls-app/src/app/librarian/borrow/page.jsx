@@ -53,10 +53,48 @@ const LibrarianBorrowPage = () => {
   const [actionLoading, setActionLoading] = useState(false);
   const [bookDetails, setBookDetails] = useState({});
   const [docDetails, setDocDetails] = useState({});
+  const [users, setUsers] = useState([]);
+  const [dueDates, setDueDates] = useState({});
 
   useEffect(() => {
     fetchTransactions();
+    fetchUsers();
   }, []);
+
+  // Fetch all users for borrower info
+  const fetchUsers = async () => {
+    try {
+      const res = await axios.get(`${API_BASE}/users`);
+      setUsers(res.data || []);
+    } catch {
+      setUsers([]);
+    }
+  };
+
+  // Helper to get borrower info by ID
+  const getBorrowerInfo = (borrowerId) => {
+    const user = users.find(u => u.UserID === borrowerId);
+    if (!user) return null;
+    return `${user.Firstname || ""} ${user.Middlename || ""} ${user.Lastname || ""} (${user.Email || ""})`;
+  };
+
+  // Fetch due dates for all transactions
+  useEffect(() => {
+    const fetchDueDates = async () => {
+      if (!transactions.length) return;
+      const newDueDates = {};
+      await Promise.all(transactions.map(async (tx) => {
+        try {
+          const res = await axios.get(`${API_BASE}/borrow/${tx.BorrowID}/due-date`);
+          newDueDates[tx.BorrowID] = res.data.DueDate;
+        } catch {
+          newDueDates[tx.BorrowID] = tx.ReturnDate || null;
+        }
+      }));
+      setDueDates(newDueDates);
+    };
+    fetchDueDates();
+  }, [transactions]);
 
   useEffect(() => {
     // Fetch book and document details for all items in all transactions
@@ -169,13 +207,17 @@ const LibrarianBorrowPage = () => {
   // Modal for transaction details
   const renderTxModal = () => {
     if (!selectedTx) return null;
+    const dueDate = dueDates[selectedTx.BorrowID];
+    const borrowerInfo = getBorrowerInfo(selectedTx.BorrowerID);
+
     return (
       <Dialog open={modalOpen} onClose={() => setModalOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Transaction Details</DialogTitle>
         <DialogContent dividers>
-          <Typography variant="subtitle1" mb={1}><b>Borrower ID:</b> {selectedTx.BorrowerID}</Typography>
+          <Typography variant="subtitle1" mb={1}><b>Borrower:</b> {borrowerInfo || selectedTx.BorrowerID}</Typography>
           <Typography variant="subtitle1" mb={1}><b>Purpose:</b> {selectedTx.Purpose}</Typography>
           <Typography variant="subtitle1" mb={1}><b>Date:</b> {selectedTx.BorrowDate?.slice(0, 10)}</Typography>
+          <Typography variant="subtitle1" mb={1}><b>Due Date:</b> {dueDate ? dueDate.slice(0, 10) : "N/A"}</Typography>
           <Divider sx={{ my: 2 }} />
           <Typography variant="subtitle2" fontWeight={700} mb={1}>Items:</Typography>
           <Stack direction="column" spacing={2}>
@@ -292,8 +334,11 @@ const LibrarianBorrowPage = () => {
                     <Typography variant="body1" fontWeight={600}>
                       {tx.BorrowDate ? tx.BorrowDate.slice(0, 10) : "N/A"}
                     </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Due: {dueDates[tx.BorrowID] ? dueDates[tx.BorrowID].slice(0, 10) : "N/A"}
+                    </Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ flexGrow: 1 }}>
-                      Purpose: {tx.Purpose}
+                      Borrower: {getBorrowerInfo(tx.BorrowerID) || tx.BorrowerID}
                     </Typography>
                     <Tooltip title="View Details">
                       <Button
@@ -334,8 +379,11 @@ const LibrarianBorrowPage = () => {
                     <Typography variant="body1" fontWeight={600}>
                       {tx.BorrowDate ? tx.BorrowDate.slice(0, 10) : "N/A"}
                     </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Due: {dueDates[tx.BorrowID] ? dueDates[tx.BorrowID].slice(0, 10) : "N/A"}
+                    </Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ flexGrow: 1 }}>
-                      Purpose: {tx.Purpose}
+                      Borrower: {getBorrowerInfo(tx.BorrowerID) || tx.BorrowerID}
                     </Typography>
                     <Tooltip title="View Details">
                       <Button
@@ -415,8 +463,11 @@ const LibrarianBorrowPage = () => {
                     <Typography variant="body1" fontWeight={600}>
                       {tx.BorrowDate ? tx.BorrowDate.slice(0, 10) : "N/A"}
                     </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Due: {dueDates[tx.BorrowID] ? dueDates[tx.BorrowID].slice(0, 10) : "N/A"}
+                    </Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ flexGrow: 1 }}>
-                      Purpose: {tx.Purpose}
+                      Borrower: {getBorrowerInfo(tx.BorrowerID) || tx.BorrowerID}
                     </Typography>
                   </Stack>
                 </AccordionSummary>

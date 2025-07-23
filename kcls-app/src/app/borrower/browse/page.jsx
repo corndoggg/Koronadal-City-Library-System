@@ -37,6 +37,8 @@ const BrowseLibraryPage = () => {
   const [toast, setToast] = useState({ open: false, message: "", severity: "success" });
   const [cart, setCart] = useState([]);
   const [cartOpen, setCartOpen] = useState(false);
+  const [purpose, setPurpose] = useState("");
+  const [returnDate, setReturnDate] = useState(null);
 
   // Get user info from localStorage
   const user = JSON.parse(localStorage.getItem("user") || "{}");
@@ -155,6 +157,14 @@ const BrowseLibraryPage = () => {
       setToast({ open: true, message: "Your cart is empty.", severity: "warning" });
       return;
     }
+    if (!purpose.trim()) {
+      setToast({ open: true, message: "Please enter a purpose.", severity: "warning" });
+      return;
+    }
+    if (!returnDate) {
+      setToast({ open: true, message: "Please select a return date.", severity: "warning" });
+      return;
+    }
     setBorrowLoading(true);
     try {
       const items = cart.map(ci =>
@@ -172,12 +182,15 @@ const BrowseLibraryPage = () => {
       );
       await axios.post(`${API_BASE}/borrow`, {
         borrowerId,
-        purpose: "Personal Reading",
+        purpose,
         items,
         borrowDate: new Date().toISOString().slice(0, 10),
+        returnDate: returnDate ? new Date(returnDate).toISOString().slice(0, 10) : null,
       });
       setToast({ open: true, message: "Borrow request submitted!", severity: "success" });
       setCart([]);
+      setPurpose("");
+      setReturnDate(null);
       fetchBorrowed();
     } catch {
       setToast({ open: true, message: "Failed to borrow items.", severity: "error" });
@@ -400,6 +413,29 @@ const BrowseLibraryPage = () => {
                   />
                 ))}
               </Stack>
+              {/* Purpose input */}
+              <TextField
+                label="Purpose"
+                value={purpose}
+                onChange={e => setPurpose(e.target.value)}
+                fullWidth
+                sx={{ mt: 2 }}
+                required
+              />
+              {/* Return date picker using react-datepicker */}
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="body2" sx={{ mb: 0.5 }}>Return Date</Typography>
+                <TextField
+                  label="Return Date"
+                  type="date"
+                  value={returnDate ? new Date(returnDate).toISOString().slice(0, 10) : ""}
+                  onChange={e => setReturnDate(e.target.value)}
+                  fullWidth
+                  sx={{ mt: 2 }}
+                  InputLabelProps={{ shrink: true }}
+                  required
+                />
+              </Box>
               <Button
                 variant="contained"
                 color="success"

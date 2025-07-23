@@ -51,6 +51,14 @@ def add_borrow_transaction():
         elif item['itemType'] == 'Document' and item.get('documentStorageId'):
             cursor.execute("UPDATE Document_Inventory SET Availability='Borrowed' WHERE Storage_ID=%s", (item['documentStorageId'],))
 
+    # --- Automatically create a Return Transaction with the return date ---
+    return_date = data.get('returnDate')
+    if return_date:
+        cursor.execute("""
+            INSERT INTO ReturnTransactions (BorrowID, ReturnDate)
+            VALUES (%s, %s)
+        """, (borrow_id, return_date))
+
     conn.commit()
 
     # Return transaction details
@@ -223,3 +231,19 @@ def set_borrow_transaction_retrieved(borrow_id):
     cursor.close()
     conn.close()
     return jsonify({'message': 'Borrow transaction set as retrieved.'}), 200
+
+# --- Get due date for a borrow transaction ---
+@borrowreturn_bp.route('/borrow/<int:borrow_id>/due-date', methods=['GET'])
+def get_borrow_due_date(borrow_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT ReturnDate FROM ReturnTransactions WHERE BorrowID=%s
+    """, (borrow_id,))
+    result = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    if result and result.get('ReturnDate'):
+        return jsonify({'BorrowID': borrow_id, 'DueDate': result['ReturnDate']}), 200
+    else:
+        return jsonify({'BorrowID': borrow_id, 'DueDate': None}), 404
