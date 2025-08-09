@@ -18,7 +18,8 @@ import LoginPage from './app/login/page.jsx';
 import BrowseLibraryPage from './app/borrower/browse/page.jsx';
 import BorrowerBorrowPage from './app/borrower/borrow/page.jsx';
 import LibrarianBorrowPage from './app/librarian/borrow/page.jsx';
-import LibrarianReturnPage from './app/librarian/return/page.jsx';
+import ProtectedRoute from './components/ProtectedRoute.jsx';
+import RegisterBorrowerPage from './app/register/page.jsx';
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -27,34 +28,37 @@ createRoot(document.getElementById('root')).render(
         <Routes>
           {/* Redirect root to login page */}
           <Route path="/" element={<Navigate to="/login" replace />} />
-          
-          {/* Public routes */}
-          
-          {/* Login route */}
+          {/* Login & Public routes */}
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/register-borrower" element={<RegisterBorrowerPage />} />
           {/* Admin routes */}
-          <Route path="/admin" element={<AdminpageLayout />}>
-            <Route index element={<Navigate to="dashboard" replace />} />
-            <Route path="dashboard" element={<DashboardPage />} />
-            <Route path="books" element={<AdminBookManagementPage />} />
-            <Route path="documents" element={<AdminDocumentManagementPage />} />
-            <Route path="users" element={<UserManagementPage />} />
+          <Route element={<ProtectedRoute allowedRoles={["Staff"]} allowedPositions={["Admin"]} />}>
+            <Route path="/admin" element={<AdminpageLayout />}>
+              <Route index element={<Navigate to="dashboard" replace />} />
+              <Route path="dashboard" element={<DashboardPage />} />
+              <Route path="books" element={<AdminBookManagementPage />} />
+              <Route path="documents" element={<AdminDocumentManagementPage />} />
+              <Route path="users" element={<UserManagementPage />} />
+            </Route>
           </Route>
           {/* Librarian routes */}
-          <Route path="/librarian" element={<LibrarianpageLayout />}>
-            <Route index element={<Navigate to="dashboard" replace />} />
-            <Route path="dashboard" element={<DashboardPage />} />
-            <Route path="books" element={<BookManagementPage />} />
-            <Route path="documents" element={<DocumentManagementPage />} />
-            <Route path="storage" element={<StorageManagementPage />} />
-            <Route path="borrows" element={<LibrarianBorrowPage />} />
-            <Route path='return' element={<LibrarianReturnPage />} />
+          <Route element={<ProtectedRoute allowedRoles={["Staff"]} allowedPositions={["Librarian"]} />}>
+            <Route path="/librarian" element={<LibrarianpageLayout />}>
+              <Route index element={<Navigate to="dashboard" replace />} />
+              <Route path="dashboard" element={<DashboardPage />} />
+              <Route path="books" element={<BookManagementPage />} />
+              <Route path="documents" element={<DocumentManagementPage />} />
+              <Route path="storage" element={<StorageManagementPage />} />
+              <Route path="borrows" element={<LibrarianBorrowPage />} />
+            </Route>
           </Route>
           {/* Borrower routes */}
-          <Route path="/borrower" element={<BorrowerLayout />}>
-            <Route index element={<Navigate to="browse" replace />} />
-            <Route path="browse" element={<BrowseLibraryPage />} />
-            <Route path="borrow" element={<BorrowerBorrowPage />} />
+          <Route element={<ProtectedRoute allowedRoles={["Borrower"]} />}>
+            <Route path="/borrower" element={<BorrowerLayout />}>
+              <Route index element={<Navigate to="browse" replace />} />
+              <Route path="browse" element={<BrowseLibraryPage />} />
+              <Route path="borrow" element={<BorrowerBorrowPage />} />
+            </Route>
           </Route>
         </Routes>
       </ThemeContextProvider>

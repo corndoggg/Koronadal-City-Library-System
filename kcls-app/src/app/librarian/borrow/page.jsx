@@ -1,215 +1,163 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import {
-  Box,
-  Typography,
-  Chip,
-  Stack,
-  Divider,
-  CircularProgress,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Tooltip,
-  Avatar,
+  Box, Typography, Chip, CircularProgress, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper,
+  Button, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, Stack, Divider, Avatar, MenuItem, Select,
+  InputLabel, FormControl, TextField, Checkbox, FormControlLabel
 } from "@mui/material";
-import { ExpandMore, Book, Article, Visibility } from "@mui/icons-material";
+import { Book, Article, Visibility, Search } from "@mui/icons-material";
 
 const API_BASE = import.meta.env.VITE_API_BASE;
-
-const statusOrder = {
-  Pending: 1,
-  Approved: 2,
-  Rejected: 3,
-  Returned: 4,
-};
+const returnConditions = ["Good", "Slightly Damaged", "Heavily Damaged", "Lost"];
 
 const getStatusChip = (tx) => {
-  if (tx.ReturnStatus === "Returned") {
-    return <Chip label="Returned" color="success" />;
-  }
-  if (tx.ApprovalStatus === "Pending") {
-    return <Chip label="Pending" color="warning" />;
-  }
-  if (tx.ApprovalStatus === "Approved") {
-    return <Chip label="Approved" color="primary" />;
-  }
-  if (tx.ApprovalStatus === "Rejected") {
-    return <Chip label="Rejected" color="error" />;
-  }
-  return <Chip label={tx.ApprovalStatus} />;
+  if (tx.ReturnStatus === "Returned") return <Chip label="Returned" color="success" size="small" />;
+  if (tx.ApprovalStatus === "Pending") return <Chip label="Pending" color="warning" size="small" />;
+  if (tx.ApprovalStatus === "Approved") return <Chip label="Approved" color="primary" size="small" />;
+  if (tx.ApprovalStatus === "Rejected") return <Chip label="Rejected" color="error" size="small" />;
+  return <Chip label={tx.ApprovalStatus} size="small" />;
 };
 
 const LibrarianBorrowPage = () => {
-  const [transactions, setTransactions] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [selectedTx, setSelectedTx] = useState(null);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [actionLoading, setActionLoading] = useState(false);
-  const [bookDetails, setBookDetails] = useState({});
-  const [docDetails, setDocDetails] = useState({});
-  const [users, setUsers] = useState([]);
-  const [dueDates, setDueDates] = useState({});
+  const [transactions, setTransactions] = useState([]), [loading, setLoading] = useState(false),
+    [selectedTx, setSelectedTx] = useState(null), [modalOpen, setModalOpen] = useState(false),
+    [actionLoading, setActionLoading] = useState(false), [bookDetails, setBookDetails] = useState({}),
+    [docDetails, setDocDetails] = useState({}), [users, setUsers] = useState([]), [dueDates, setDueDates] = useState({}),
+    [returnModalOpen, setReturnModalOpen] = useState(false), [returnData, setReturnData] = useState({}), [returnTx, setReturnTx] = useState(null),
+    [search, setSearch] = useState(""); // <-- search state
+
+  useEffect(() => { fetchTransactions(); fetchUsers(); }, []);
+  const fetchUsers = async () => { try { setUsers((await axios.get(`${API_BASE}/users`)).data || []); } catch { setUsers([]); } };
+  const getBorrowerInfo = (id) => { const u = users.find(u => u.UserID === id); return u ? `${u.Firstname || ""} ${u.Middlename || ""} ${u.Lastname || ""} (${u.Email || ""})` : null; };
 
   useEffect(() => {
-    fetchTransactions();
-    fetchUsers();
-  }, []);
-
-  // Fetch all users for borrower info
-  const fetchUsers = async () => {
-    try {
-      const res = await axios.get(`${API_BASE}/users`);
-      setUsers(res.data || []);
-    } catch {
-      setUsers([]);
-    }
-  };
-
-  // Helper to get borrower info by ID
-  const getBorrowerInfo = (borrowerId) => {
-    const user = users.find(u => u.UserID === borrowerId);
-    if (!user) return null;
-    return `${user.Firstname || ""} ${user.Middlename || ""} ${user.Lastname || ""} (${user.Email || ""})`;
-  };
-
-  // Fetch due dates for all transactions
-  useEffect(() => {
-    const fetchDueDates = async () => {
-      if (!transactions.length) return;
+    if (!transactions.length) return;
+    (async () => {
       const newDueDates = {};
       await Promise.all(transactions.map(async (tx) => {
-        try {
-          const res = await axios.get(`${API_BASE}/borrow/${tx.BorrowID}/due-date`);
-          newDueDates[tx.BorrowID] = res.data.DueDate;
-        } catch {
-          newDueDates[tx.BorrowID] = tx.ReturnDate || null;
-        }
+        try { newDueDates[tx.BorrowID] = (await axios.get(`${API_BASE}/borrow/${tx.BorrowID}/due-date`)).data.DueDate; }
+        catch { newDueDates[tx.BorrowID] = tx.ReturnDate || null; }
       }));
       setDueDates(newDueDates);
-    };
-    fetchDueDates();
+    })();
   }, [transactions]);
 
   useEffect(() => {
-    // Fetch book and document details for all items in all transactions
-    const fetchDetails = async () => {
-      let bookCopyIds = [];
-      let docStorageIds = [];
-      transactions.forEach(tx => {
-        (tx.items || []).forEach(item => {
-          if (item.ItemType === "Book" && item.BookCopyID) bookCopyIds.push(item.BookCopyID);
-          if (item.ItemType === "Document" && item.DocumentStorageID) docStorageIds.push(item.DocumentStorageID);
-        });
-      });
-      bookCopyIds = [...new Set(bookCopyIds)];
-      docStorageIds = [...new Set(docStorageIds)];
-
-      // Book Details
-      const bookInfo = {};
+    if (!transactions.length) return;
+    (async () => {
+      let bookCopyIds = [], docStorageIds = [];
+      transactions.forEach(tx => (tx.items || []).forEach(item => {
+        if (item.ItemType === "Book" && item.BookCopyID) bookCopyIds.push(item.BookCopyID);
+        if (item.ItemType === "Document" && item.DocumentStorageID) docStorageIds.push(item.DocumentStorageID);
+      }));
+      bookCopyIds = [...new Set(bookCopyIds)]; docStorageIds = [...new Set(docStorageIds)];
+      const bookInfo = {}, docInfo = {};
       for (const copyId of bookCopyIds) {
-        let bookId = null;
-        let invData = null;
-        try {
-          const invRes = await axios.get(`${API_BASE}/books/inventory/copy/${copyId}`);
-          invData = Array.isArray(invRes.data) ? invRes.data[0] : invRes.data;
-          bookId = invData?.Book_ID;
-        } catch {}
+        let bookId = null, invData = null;
+        try { invData = Array.isArray((await axios.get(`${API_BASE}/books/inventory/copy/${copyId}`)).data) ? (await axios.get(`${API_BASE}/books/inventory/copy/${copyId}`)).data[0] : (await axios.get(`${API_BASE}/books/inventory/copy/${copyId}`)).data; bookId = invData?.Book_ID; } catch {}
         if (!bookId) bookId = copyId;
-        try {
-          const bookRes = await axios.get(`${API_BASE}/books/${bookId}`);
-          if (bookRes.data && bookRes.data.Title) {
-            bookInfo[copyId] = { ...bookRes.data, ...invData };
-          }
-        } catch {}
+        try { const bookRes = await axios.get(`${API_BASE}/books/${bookId}`); if (bookRes.data && bookRes.data.Title) bookInfo[copyId] = { ...bookRes.data, ...invData }; } catch {}
       }
-
-      // Document Details
-      const docInfo = {};
       for (const storageId of docStorageIds) {
-        let docId = null;
-        let invData = null;
-        try {
-          const invRes = await axios.get(`${API_BASE}/documents/inventory/storage/${storageId}`);
-          invData = Array.isArray(invRes.data) ? invRes.data[0] : invRes.data;
-          docId = invData?.Document_ID;
-        } catch {}
+        let docId = null, invData = null;
+        try { invData = Array.isArray((await axios.get(`${API_BASE}/documents/inventory/storage/${storageId}`)).data) ? (await axios.get(`${API_BASE}/documents/inventory/storage/${storageId}`)).data[0] : (await axios.get(`${API_BASE}/documents/inventory/storage/${storageId}`)).data; docId = invData?.Document_ID; } catch {}
         if (!docId) docId = storageId;
-        try {
-          const docRes = await axios.get(`${API_BASE}/documents/${docId}`);
-          if (docRes.data && docRes.data.Title) {
-            docInfo[storageId] = { ...docRes.data, ...invData };
-          }
-        } catch {}
+        try { const docRes = await axios.get(`${API_BASE}/documents/${docId}`); if (docRes.data && docRes.data.Title) docInfo[storageId] = { ...docRes.data, ...invData }; } catch {}
       }
-
-      setBookDetails(bookInfo);
-      setDocDetails(docInfo);
-    };
-
-    if (transactions.length > 0) fetchDetails();
+      setBookDetails(bookInfo); setDocDetails(docInfo);
+    })();
   }, [transactions]);
 
   const fetchTransactions = async () => {
     setLoading(true);
-    try {
-      const res = await axios.get(`${API_BASE}/borrow`);
-      setTransactions(res.data || []);
-    } catch {
-      setTransactions([]);
-    }
+    try { setTransactions((await axios.get(`${API_BASE}/borrow`)).data || []); } catch { setTransactions([]); }
     setLoading(false);
   };
 
-  // Sort transactions by status
-  const sorted = (filterFn) =>
-    [...transactions]
-      .filter(filterFn)
-      .sort((a, b) => statusOrder[(a.ReturnStatus === "Returned" ? "Returned" : a.ApprovalStatus)] - statusOrder[(b.ReturnStatus === "Returned" ? "Returned" : b.ApprovalStatus)]);
+  const handleApprove = async (tx) => { setActionLoading(true); try { await axios.put(`${API_BASE}/borrow/${tx.BorrowID}/approve`, { approvalStatus: "Approved" }); fetchTransactions(); setModalOpen(false); } catch {} setActionLoading(false); };
+  const handleReject = async (tx) => { setActionLoading(true); try { await axios.put(`${API_BASE}/borrow/${tx.BorrowID}/reject`, { approvalStatus: "Rejected" }); fetchTransactions(); setModalOpen(false); } catch {} setActionLoading(false); };
+  const handleSetRetrieved = async (tx) => { setActionLoading(true); try { await axios.put(`${API_BASE}/borrow/${tx.BorrowID}/retrieved`, { retrievalStatus: "Retrieved" }); fetchTransactions(); setModalOpen(false); } catch {} setActionLoading(false); };
 
-  // Accept/Reject handlers for books
-  const handleApprove = async (tx) => {
+  // Return Modal Logic
+  const openReturnModal = (tx) => {
+    setReturnTx(tx);
+    const data = {};
+    (tx.items || []).forEach(item => { data[item.BorrowedItemID] = { condition: "Good", fine: 0, finePaid: false }; });
+    setReturnData(data); setReturnModalOpen(true);
+  };
+  const handleReturnChange = (itemId, field, value) => setReturnData(prev => ({ ...prev, [itemId]: { ...prev[itemId], [field]: value } }));
+  const handleReturnSubmit = async () => {
+    if (!returnTx) return;
     setActionLoading(true);
     try {
-      await axios.put(`${API_BASE}/borrow/${tx.BorrowID}/approve`, { approvalStatus: "Approved" });
-      fetchTransactions();
-      setModalOpen(false);
+      const items = (returnTx.items || []).map(item => ({
+        borrowedItemId: item.BorrowedItemID,
+        returnCondition: returnData[item.BorrowedItemID].condition,
+        fine: parseFloat(returnData[item.BorrowedItemID].fine) || 0,
+        finePaid: returnData[item.BorrowedItemID].finePaid ? "Yes" : "No",
+      }));
+      await axios.post(`${API_BASE}/return`, {
+        borrowId: returnTx.BorrowID,
+        returnDate: new Date().toISOString().slice(0, 10),
+        items,
+      });
+      setReturnModalOpen(false); fetchTransactions();
     } catch {}
     setActionLoading(false);
   };
 
-  const handleReject = async (tx) => {
-    setActionLoading(true);
-    try {
-      await axios.put(`${API_BASE}/borrow/${tx.BorrowID}/reject`, { approvalStatus: "Rejected" });
-      fetchTransactions();
-      setModalOpen(false);
-    } catch {}
-    setActionLoading(false);
-  };
+  const renderReturnModal = () => !returnTx ? null : (
+    <Dialog open={returnModalOpen} onClose={() => setReturnModalOpen(false)} maxWidth="sm" fullWidth>
+      <DialogTitle>Return Items for Borrow #{returnTx.BorrowID}</DialogTitle>
+      <DialogContent dividers>
+        <Stack spacing={2}>
+          {(returnTx.items || []).map(item => (
+            <Box key={item.BorrowedItemID} sx={{ border: "1px solid #eee", borderRadius: 1, p: 2 }}>
+              <Typography fontWeight={600}>
+                {item.ItemType === "Book" ? `Book Copy #${item.BookCopyID}` : `Document Storage #${item.DocumentStorageID}`}
+              </Typography>
+              <FormControl fullWidth sx={{ mt: 1 }}>
+                <InputLabel>Return Condition</InputLabel>
+                <Select
+                  label="Return Condition"
+                  value={returnData[item.BorrowedItemID]?.condition || "Good"}
+                  onChange={e => handleReturnChange(item.BorrowedItemID, "condition", e.target.value)}
+                >
+                  {returnConditions.map(opt => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
+                </Select>
+              </FormControl>
+              <TextField
+                label="Fine"
+                type="number"
+                value={returnData[item.BorrowedItemID]?.fine || 0}
+                onChange={e => handleReturnChange(item.BorrowedItemID, "fine", e.target.value)}
+                fullWidth sx={{ mt: 2 }} inputProps={{ min: 0, step: "0.01" }}
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={!!returnData[item.BorrowedItemID]?.finePaid}
+                    onChange={e => handleReturnChange(item.BorrowedItemID, "finePaid", e.target.checked)}
+                  />
+                }
+                label="Fine Paid" sx={{ mt: 1 }}
+              />
+            </Box>
+          ))}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setReturnModalOpen(false)} variant="outlined">Cancel</Button>
+        <Button onClick={handleReturnSubmit} variant="contained" color="primary" disabled={actionLoading}>
+          {actionLoading ? "Processing..." : "Submit Return"}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
 
-  // Set as retrieved (for both books and documents)
-  const handleSetRetrieved = async (tx) => {
-    setActionLoading(true);
-    try {
-      await axios.put(`${API_BASE}/borrow/${tx.BorrowID}/retrieved`, { retrievalStatus: "Retrieved" });
-      fetchTransactions();
-      setModalOpen(false);
-    } catch {}
-    setActionLoading(false);
-  };
-
-  // Modal for transaction details
   const renderTxModal = () => {
     if (!selectedTx) return null;
-    const dueDate = dueDates[selectedTx.BorrowID];
-    const borrowerInfo = getBorrowerInfo(selectedTx.BorrowerID);
-
+    const dueDate = dueDates[selectedTx.BorrowID], borrowerInfo = getBorrowerInfo(selectedTx.BorrowerID);
     return (
       <Dialog open={modalOpen} onClose={() => setModalOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Transaction Details</DialogTitle>
@@ -271,42 +219,18 @@ const LibrarianBorrowPage = () => {
         </DialogContent>
         <DialogActions>
           {selectedTx.ApprovalStatus === "Approved" && selectedTx.ReturnStatus !== "Returned" && (
-            <Button
-              onClick={() => handleSetRetrieved(selectedTx)}
-              color="primary"
-              disabled={actionLoading}
-              variant="contained"
-            >
+            <Button onClick={() => handleSetRetrieved(selectedTx)} color="primary" disabled={actionLoading} variant="contained">
               Mark as Retrieved
             </Button>
           )}
           {selectedTx.items.some(i => i.ItemType === "Book") && selectedTx.ApprovalStatus === "Pending" && (
             <>
-              <Button
-                onClick={() => handleApprove(selectedTx)}
-                color="success"
-                disabled={actionLoading}
-                variant="contained"
-              >
-                Accept
-              </Button>
-              <Button
-                onClick={() => handleReject(selectedTx)}
-                color="error"
-                disabled={actionLoading}
-                variant="outlined"
-              >
-                Reject
-              </Button>
+              <Button onClick={() => handleApprove(selectedTx)} color="success" disabled={actionLoading} variant="contained">Accept</Button>
+              <Button onClick={() => handleReject(selectedTx)} color="error" disabled={actionLoading} variant="outlined">Reject</Button>
             </>
           )}
           {selectedTx.items.every(i => i.ItemType === "Document") && selectedTx.ApprovalStatus === "Pending" && (
-            <Button
-              onClick={() => handleSetRetrieved(selectedTx)}
-              color="primary"
-              disabled={actionLoading}
-              variant="contained"
-            >
+            <Button onClick={() => handleSetRetrieved(selectedTx)} color="primary" disabled={actionLoading} variant="contained">
               Set as Retrieved
             </Button>
           )}
@@ -316,175 +240,94 @@ const LibrarianBorrowPage = () => {
     );
   };
 
+  // --- Filter transactions by search ---
+  const filteredTransactions = transactions.filter(tx => {
+    const borrower = getBorrowerInfo(tx.BorrowerID) || "";
+    const searchLower = search.toLowerCase();
+    return (
+      borrower.toLowerCase().includes(searchLower) ||
+      (tx.Purpose || "").toLowerCase().includes(searchLower) ||
+      (tx.BorrowDate || "").toLowerCase().includes(searchLower) ||
+      (dueDates[tx.BorrowID] || "").toLowerCase().includes(searchLower) ||
+      String(tx.BorrowID).includes(searchLower)
+    );
+  });
+
+  // Helper to determine status order
+  const getTxOrder = (tx) => {
+    if (tx.ReturnStatus === "Returned") return 3;
+    if (tx.ApprovalStatus === "Pending") return 0;
+    // Overdue: not returned and due date in the past
+    const due = dueDates[tx.BorrowID] ? new Date(dueDates[tx.BorrowID]) : null;
+    if (due && due < new Date()) return 1;
+    return 2; // Due (not overdue, not returned, not pending)
+  };
+
+  const sortedTransactions = [...filteredTransactions].sort((a, b) => getTxOrder(a) - getTxOrder(b));
+
   return (
     <Box p={3} maxWidth="lg" mx="auto">
       <Typography variant="h4" fontWeight={700} mb={2}>Borrow Transactions</Typography>
+      <Box mb={2} display="flex" alignItems="center" gap={1}>
+        <Search color="action" />
+        <TextField
+          size="small"
+          placeholder="Search by borrower, purpose, date, due date, or ID"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          sx={{ width: 350 }}
+        />
+      </Box>
       {loading ? (
         <Box textAlign="center" py={6}><CircularProgress /></Box>
       ) : (
-        <>
-          {/* Pending */}
-          <Typography variant="h6" mt={3} mb={1}>Pending</Typography>
-          <Stack spacing={2}>
-            {sorted(tx => tx.ApprovalStatus === "Pending" && tx.ReturnStatus !== "Returned").map(tx => (
-              <Accordion key={tx.BorrowID} disableGutters>
-                <AccordionSummary expandIcon={<ExpandMore />}>
-                  <Stack direction="row" spacing={2} alignItems="center" sx={{ width: "100%" }}>
-                    {getStatusChip(tx)}
-                    <Typography variant="body1" fontWeight={600}>
-                      {tx.BorrowDate ? tx.BorrowDate.slice(0, 10) : "N/A"}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Due: {dueDates[tx.BorrowID] ? dueDates[tx.BorrowID].slice(0, 10) : "N/A"}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ flexGrow: 1 }}>
-                      Borrower: {getBorrowerInfo(tx.BorrowerID) || tx.BorrowerID}
-                    </Typography>
-                    <Tooltip title="View Details">
-                      <Button
-                        size="small"
-                        startIcon={<Visibility />}
-                        onClick={e => {
-                          e.stopPropagation();
-                          setSelectedTx(tx);
-                          setModalOpen(true);
-                        }}
-                        variant="outlined"
-                      >
-                        View
-                      </Button>
-                    </Tooltip>
-                  </Stack>
-                </AccordionSummary>
-                <AccordionDetails>
-                  <Typography variant="body2" color="text.secondary">
-                    Click "View" to see transaction details and take action.
-                  </Typography>
-                </AccordionDetails>
-              </Accordion>
-            ))}
-            {sorted(tx => tx.ApprovalStatus === "Pending" && tx.ReturnStatus !== "Returned").length === 0 && (
-              <Typography color="text.secondary" align="center">No pending transactions.</Typography>
-            )}
-          </Stack>
-
-          {/* Approved */}
-          <Typography variant="h6" mt={4} mb={1}>Approved</Typography>
-          <Stack spacing={2}>
-            {sorted(tx => tx.ApprovalStatus === "Approved" && tx.ReturnStatus !== "Returned").map(tx => (
-              <Accordion key={tx.BorrowID} disableGutters>
-                <AccordionSummary expandIcon={<ExpandMore />}>
-                  <Stack direction="row" spacing={2} alignItems="center" sx={{ width: "100%" }}>
-                    {getStatusChip(tx)}
-                    <Typography variant="body1" fontWeight={600}>
-                      {tx.BorrowDate ? tx.BorrowDate.slice(0, 10) : "N/A"}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Due: {dueDates[tx.BorrowID] ? dueDates[tx.BorrowID].slice(0, 10) : "N/A"}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ flexGrow: 1 }}>
-                      Borrower: {getBorrowerInfo(tx.BorrowerID) || tx.BorrowerID}
-                    </Typography>
-                    <Tooltip title="View Details">
-                      <Button
-                        size="small"
-                        startIcon={<Visibility />}
-                        onClick={e => {
-                          e.stopPropagation();
-                          setSelectedTx(tx);
-                          setModalOpen(true);
-                        }}
-                        variant="outlined"
-                      >
-                        View
-                      </Button>
-                    </Tooltip>
-                  </Stack>
-                </AccordionSummary>
-                <AccordionDetails>
-                  <Typography variant="body2" color="text.secondary">
-                    Approved by librarian.
-                  </Typography>
-                  <Button
-                    sx={{ mt: 2 }}
-                    onClick={() => {
-                      setSelectedTx(tx);
-                      setModalOpen(true);
-                    }}
-                    color="primary"
-                    variant="contained"
-                  >
-                    Mark as Retrieved
-                  </Button>
-                </AccordionDetails>
-              </Accordion>
-            ))}
-            {sorted(tx => tx.ApprovalStatus === "Approved" && tx.ReturnStatus !== "Returned").length === 0 && (
-              <Typography color="text.secondary" align="center">No approved transactions.</Typography>
-            )}
-          </Stack>
-
-          {/* Rejected */}
-          <Typography variant="h6" mt={4} mb={1}>Rejected</Typography>
-          <Stack spacing={2}>
-            {sorted(tx => tx.ApprovalStatus === "Rejected" && tx.ReturnStatus !== "Returned").map(tx => (
-              <Accordion key={tx.BorrowID} disableGutters>
-                <AccordionSummary expandIcon={<ExpandMore />}>
-                  <Stack direction="row" spacing={2} alignItems="center" sx={{ width: "100%" }}>
-                    {getStatusChip(tx)}
-                    <Typography variant="body1" fontWeight={600}>
-                      {tx.BorrowDate ? tx.BorrowDate.slice(0, 10) : "N/A"}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ flexGrow: 1 }}>
-                      Purpose: {tx.Purpose}
-                    </Typography>
-                  </Stack>
-                </AccordionSummary>
-                <AccordionDetails>
-                  <Typography variant="body2" color="text.secondary">
-                    Rejected by librarian.
-                  </Typography>
-                </AccordionDetails>
-              </Accordion>
-            ))}
-            {sorted(tx => tx.ApprovalStatus === "Rejected" && tx.ReturnStatus !== "Returned").length === 0 && (
-              <Typography color="text.secondary" align="center">No rejected transactions.</Typography>
-            )}
-          </Stack>
-
-          {/* History (Returned) */}
-          <Typography variant="h6" mt={4} mb={1}>History</Typography>
-          <Stack spacing={2}>
-            {sorted(tx => tx.ReturnStatus === "Returned").map(tx => (
-              <Accordion key={tx.BorrowID} disableGutters>
-                <AccordionSummary expandIcon={<ExpandMore />}>
-                  <Stack direction="row" spacing={2} alignItems="center" sx={{ width: "100%" }}>
-                    {getStatusChip(tx)}
-                    <Typography variant="body1" fontWeight={600}>
-                      {tx.BorrowDate ? tx.BorrowDate.slice(0, 10) : "N/A"}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Due: {dueDates[tx.BorrowID] ? dueDates[tx.BorrowID].slice(0, 10) : "N/A"}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ flexGrow: 1 }}>
-                      Borrower: {getBorrowerInfo(tx.BorrowerID) || tx.BorrowerID}
-                    </Typography>
-                  </Stack>
-                </AccordionSummary>
-                <AccordionDetails>
-                  <Typography variant="body2" color="success.main">
-                    This transaction has been returned.
-                  </Typography>
-                </AccordionDetails>
-              </Accordion>
-            ))}
-            {sorted(tx => tx.ReturnStatus === "Returned").length === 0 && (
-              <Typography color="text.secondary" align="center">No history yet.</Typography>
-            )}
-          </Stack>
-        </>
+        <TableContainer component={Paper}>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Status</TableCell>
+                <TableCell>Date</TableCell>
+                <TableCell>Due Date</TableCell>
+                <TableCell>Borrower</TableCell>
+                <TableCell>Purpose</TableCell>
+                <TableCell>Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {sortedTransactions.map(tx => (
+                <TableRow key={tx.BorrowID}>
+                  <TableCell>{getStatusChip(tx)}</TableCell>
+                  <TableCell>{tx.BorrowDate ? tx.BorrowDate.slice(0, 10) : "N/A"}</TableCell>
+                  <TableCell>{dueDates[tx.BorrowID] ? dueDates[tx.BorrowID].slice(0, 10) : "N/A"}</TableCell>
+                  <TableCell>{getBorrowerInfo(tx.BorrowerID) || tx.BorrowerID}</TableCell>
+                  <TableCell>{tx.Purpose}</TableCell>
+                  <TableCell>
+                    <Stack direction="row" spacing={1}>
+                      <Tooltip title="View Details">
+                        <Button size="small" startIcon={<Visibility />} onClick={() => { setSelectedTx(tx); setModalOpen(true); }} variant="outlined">View</Button>
+                      </Tooltip>
+                      {tx.ReturnStatus !== "Returned" && (
+                        <Tooltip title="Return Items">
+                          <Button size="small" color="secondary" onClick={() => openReturnModal(tx)} variant="contained">Return</Button>
+                        </Tooltip>
+                      )}
+                    </Stack>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {filteredTransactions.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} align="center">
+                    <Typography color="text.secondary">No transactions found.</Typography>
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
       )}
       {renderTxModal()}
+      {renderReturnModal()}
     </Box>
   );
 };

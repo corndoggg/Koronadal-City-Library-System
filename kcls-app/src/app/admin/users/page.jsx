@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, Tabs, Tab, Paper, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, Avatar, Chip, CircularProgress, IconButton, Tooltip, Snackbar, Alert, Fab
+  TableHead, TableRow, Avatar, Chip, CircularProgress, IconButton, Tooltip, Snackbar, Alert, Fab, Stack
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import PersonIcon from '@mui/icons-material/Person';
@@ -185,11 +185,50 @@ const UserManagementPage = () => {
                     )}
                   </TableCell>
                   <TableCell align="center">
-                    <Tooltip title="Edit User">
-                      <IconButton color="secondary" onClick={() => handleEdit(user)}>
-                        <EditIcon />
-                      </IconButton>
-                    </Tooltip>
+                    <Stack direction="row" spacing={1} justifyContent="center">
+                      <Tooltip title="Edit User">
+                        <IconButton color="secondary" onClick={() => handleEdit(user)}>
+                          <EditIcon />
+                        </IconButton>
+                      </Tooltip>
+                      {/* Approve/Reject buttons for pending borrowers */}
+                      {tab === 1 && user.borrower?.AccountStatus === "Pending" && (
+                        <>
+                          <Tooltip title="Approve">
+                            <IconButton
+                              color="success"
+                              onClick={async () => {
+                                try {
+                                  await fetch(`${API_BASE}/users/${user.UserID}/approve`, { method: "PUT" });
+                                  setToast({ open: true, message: "User approved!", severity: "success" });
+                                  loadUsers();
+                                } catch {
+                                  setToast({ open: true, message: "Failed to approve user.", severity: "error" });
+                                }
+                              }}
+                            >
+                              <Chip label="Approve" color="success" size="small" />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Reject">
+                            <IconButton
+                              color="error"
+                              onClick={async () => {
+                                try {
+                                  await fetch(`${API_BASE}/users/${user.UserID}/reject`, { method: "PUT" });
+                                  setToast({ open: true, message: "User rejected!", severity: "success" });
+                                  loadUsers();
+                                } catch {
+                                  setToast({ open: true, message: "Failed to reject user.", severity: "error" });
+                                }
+                              }}
+                            >
+                              <Chip label="Reject" color="error" size="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </>
+                      )}
+                    </Stack>
                   </TableCell>
                 </TableRow>
               ))}

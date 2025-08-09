@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   Drawer, List, ListItemIcon, ListItemText, Tooltip, Box, Typography, Divider,
-  ListItemButton, IconButton, Avatar, Menu, MenuItem, Snackbar, Alert, useMediaQuery, Collapse,
+  ListItemButton, IconButton, Avatar, Menu, MenuItem, Snackbar, Alert, useMediaQuery,
+  Chip, Dialog, DialogTitle, DialogContent, DialogActions, Button
 } from '@mui/material';
 import { useTheme, alpha } from '@mui/material/styles';
 import {
-  LayoutDashboard, BookOpen, FileText, Handshake, Package, UserCircle, Menu as MenuIcon, ChevronDown, ChevronRight,
+  LayoutDashboard, BookOpen, FileText, Handshake, Package, UserCircle,
+  Menu as MenuIcon
 } from 'lucide-react';
-import { LightMode, DarkMode, Settings, Logout, Person } from '@mui/icons-material';
+import { LightMode, DarkMode, Logout, Person } from '@mui/icons-material';
 import { useThemeContext } from '../contexts/ThemeContext';
 import AccountInfoModal from './AccountInfoModal';
 
@@ -18,14 +20,7 @@ const navLinksByRole = {
     { href: '/librarian/books', icon: BookOpen, label: 'Books' },
     { href: '/librarian/documents', icon: FileText, label: 'Documents' },
     { href: '/librarian/storage', icon: Package, label: 'Storage' },
-    {
-      icon: Handshake,
-      label: 'Borrows',
-      subLinks: [
-        { href: '/librarian/borrows', label: 'Borrow' },
-        { href: '/librarian/return', label: 'Return' },
-      ],
-    },
+    { href: '/librarian/borrows', icon: Handshake, label: 'Borrows' },
   ],
   admin: [
     { href: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -48,13 +43,13 @@ const Sidebar = () => {
   const [anchorEl, setAnchorEl] = useState(null);
   const [toast, setToast] = useState({ open: false, message: '', severity: 'info' });
   const [accountModalOpen, setAccountModalOpen] = useState(false);
+  const [logoutOpen, setLogoutOpen] = useState(false);
   const open = Boolean(anchorEl);
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
-  const [openSub, setOpenSub] = useState({});
   const location = useLocation();
+  const navigate = useNavigate();
 
-  // Get user info from localStorage
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const role = user.Role === 'Staff' && user.staff?.Position === 'Librarian'
     ? 'librarian'
@@ -62,17 +57,35 @@ const Sidebar = () => {
     ? 'admin'
     : user.Role === 'Borrower'
     ? 'borrower'
-    : 'admin'; // fallback
+    : 'admin';
+
+  const roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
+  const navLinks = navLinksByRole[role] || [];
 
   const showToast = (msg, sev = 'info') => setToast({ open: true, message: msg, severity: sev });
   const handleThemeToggle = () => { toggleColorMode(); showToast(`Switched to ${isDark ? 'light' : 'dark'} mode`, 'success'); };
-  const navLinks = navLinksByRole[role] || [];
-  const drawerProps = isMobile
-    ? { variant: "temporary", open: showMobileSidebar, onClose: () => setShowMobileSidebar(false), ModalProps: { keepMounted: true } }
-    : { variant: "permanent", open: true };
 
-  const isSubLinkActive = (subLinks) =>
-    subLinks?.some(link => location.pathname === link.href);
+  const handleLogout = () => {
+    localStorage.removeItem('user');
+    setAnchorEl(null);
+    navigate('/login', { replace: true });
+  };
+
+  const activeIndicator = (isActive) => isActive && (
+    <Box
+      sx={{
+        position: 'absolute',
+        left: 6,
+        top: '50%',
+        transform: 'translateY(-50%)',
+        width: 4,
+        height: 28,
+        borderRadius: 2,
+        bgcolor: theme.palette.primary.main,
+        boxShadow: `0 0 0 1px ${alpha(theme.palette.primary.main, 0.3)}`
+      }}
+    />
+  );
 
   return (
     <>
@@ -105,158 +118,167 @@ const Sidebar = () => {
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'space-between',
-            transition: 'width 0.2s',
             overflowX: 'hidden',
           },
         }}
-        {...drawerProps}
+        {...(isMobile
+          ? { variant: "temporary", open: showMobileSidebar, onClose: () => setShowMobileSidebar(false), ModalProps: { keepMounted: true } }
+          : { variant: "permanent", open: true })}
       >
-        {/* Logo and Title */}
+        {/* Header */}
         <Box
           sx={{
-            display: 'flex', alignItems: 'center', gap: 1.5, px: 2.5, py: 2,
-            bgcolor: theme.palette.primary.main, color: theme.palette.primary.contrastText,
-            borderBottomLeftRadius: 16, borderBottomRightRadius: 16, boxShadow: 2,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.5,
+            px: 2.5,
+            py: 2,
+            bgcolor: theme.palette.primary.main,
+            color: theme.palette.primary.contrastText,
+            borderBottomLeftRadius: 16,
+            borderBottomRightRadius: 16,
+            boxShadow: 2,
+            position: 'relative'
           }}
         >
           <Box component="img" src="/logo.png" alt="Logo"
-            sx={{ width: 36, height: 36, objectFit: 'contain', borderRadius: 2, boxShadow: 1, bgcolor: '#fff', p: 0.5 }}
+            sx={{
+              width: 36, height: 36, objectFit: 'contain', borderRadius: 2, boxShadow: 1,
+              bgcolor: '#fff', p: 0.5
+            }}
           />
-          <Typography
-            variant="subtitle2" fontWeight="bold" fontSize={11} noWrap
-            sx={{ color: theme.palette.primary.contrastText, letterSpacing: 1 }}
-          >
+          <Typography variant="subtitle2" fontWeight="bold" fontSize={11} noWrap sx={{ letterSpacing: 1 }}>
             Koronadal City Library
           </Typography>
         </Box>
+
         <Divider />
+
         {/* Navigation */}
         <Box sx={{ flexGrow: 1, mt: 1 }}>
-          <List>
-            {navLinks.map(({ href, icon: Icon, label, subLinks }) =>
-              subLinks ? (
-                <React.Fragment key={label}>
-                  <ListItemButton
-                    onClick={() => setOpenSub(prev => ({ ...prev, [label]: !prev[label] }))
-                    }
-                    selected={isSubLinkActive(subLinks)}
-                    sx={{
-                      mx: 1.5, my: 0.5, borderRadius: 2, px: 2.5, py: 1.25,
-                      color: isSubLinkActive(subLinks) ? theme.palette.primary.main : theme.palette.text.secondary,
-                      backgroundColor: isSubLinkActive(subLinks)
-                        ? alpha(theme.palette.primary.main, isDark ? 0.22 : 0.13)
-                        : 'transparent',
-                      '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.08), transform: 'scale(1.03)' },
-                      transition: 'all 0.18s cubic-bezier(.4,2,.6,1)',
-                      fontWeight: isSubLinkActive(subLinks) ? 700 : 500, boxShadow: isSubLinkActive(subLinks) ? 2 : 0,
-                    }}
-                  >
-                    <ListItemIcon
+          <List sx={{ pt: 0 }}>
+            {navLinks.map(({ href, icon: Icon, label }) => (
+              <NavLink key={href} to={href} style={{ textDecoration: 'none' }}>
+                {({ isActive }) => {
+                  const activeBg = alpha(theme.palette.primary.main, isDark ? 0.22 : 0.13);
+                  return (
+                    <ListItemButton
+                      selected={isActive}
                       sx={{
-                        minWidth: 0, mr: 2, justifyContent: 'center',
-                        color: isSubLinkActive(subLinks) ? theme.palette.primary.main : theme.palette.text.primary,
+                        position: 'relative',
+                        mx: 1.2,
+                        my: 0.5,
+                        borderRadius: 2.5,
+                        px: 2.5,
+                        py: 1.1,
+                        minHeight: 48,
+                        color: isActive ? theme.palette.primary.main : theme.palette.text.secondary,
+                        backgroundColor: isActive ? activeBg : 'transparent',
+                        '&:hover': {
+                          backgroundColor: alpha(theme.palette.primary.main, 0.08),
+                          transform: 'translateX(2px)'
+                        },
+                        transition: 'all 0.22s cubic-bezier(.4,1.3,.6,1)',
+                        fontWeight: isActive ? 700 : 500,
+                        boxShadow: isActive ? 2 : 0,
                       }}
                     >
-                      <Icon size={22} />
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={label}
-                      primaryTypographyProps={{
-                        fontSize: 15, fontWeight: isSubLinkActive(subLinks) ? 700 : 500, letterSpacing: 0.2,
-                      }}
-                    />
-                    {openSub[label] ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-                  </ListItemButton>
-                  <Collapse in={!!openSub[label]} timeout="auto" unmountOnExit>
-                    <List component="div" disablePadding>
-                      {subLinks.map(sub => (
-                        <NavLink key={sub.href} to={sub.href} style={{ textDecoration: 'none' }}>
-                          {({ isActive }) => (
-                            <ListItemButton
-                              selected={isActive}
-                              sx={{
-                                mx: 3, my: 0.5, borderRadius: 2, px: 2, py: 1,
-                                color: isActive ? theme.palette.primary.main : theme.palette.text.secondary,
-                                backgroundColor: isActive
-                                  ? alpha(theme.palette.primary.main, isDark ? 0.22 : 0.13)
-                                  : 'transparent',
-                                '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.08) },
-                                fontWeight: isActive ? 700 : 500,
-                              }}
-                            >
-                              <ListItemText
-                                primary={sub.label}
-                                primaryTypographyProps={{
-                                  fontSize: 14, fontWeight: isActive ? 700 : 500,
-                                }}
-                              />
-                            </ListItemButton>
-                          )}
-                        </NavLink>
-                      ))}
-                    </List>
-                  </Collapse>
-                </React.Fragment>
-              ) : (
-                <NavLink key={href} to={href} style={{ textDecoration: 'none' }}>
-                  {({ isActive }) => {
-                    const activeBg = alpha(theme.palette.primary.main, isDark ? 0.22 : 0.13);
-                    return (
-                      <Tooltip title={label} placement="right" arrow disableHoverListener={!isMobile}>
-                        <ListItemButton
-                          selected={isActive}
-                          sx={{
-                            mx: 1.5, my: 0.5, borderRadius: 2, px: 2.5, py: 1.25,
-                            color: isActive ? theme.palette.primary.main : theme.palette.text.secondary,
-                            backgroundColor: isActive ? activeBg : 'transparent',
-                            '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.08), transform: 'scale(1.03)' },
-                            transition: 'all 0.18s cubic-bezier(.4,2,.6,1)',
-                            fontWeight: isActive ? 700 : 500, boxShadow: isActive ? 2 : 0,
-                          }}
-                        >
-                          <ListItemIcon
-                            sx={{
-                              minWidth: 0, mr: 2, justifyContent: 'center',
-                              color: isActive ? theme.palette.primary.main : theme.palette.text.primary,
-                            }}
-                          >
-                            <Icon size={22} />
-                          </ListItemIcon>
-                          <ListItemText
-                            primary={label}
-                            primaryTypographyProps={{
-                              fontSize: 15, fontWeight: isActive ? 700 : 500, letterSpacing: 0.2,
-                            }}
-                          />
-                        </ListItemButton>
-                      </Tooltip>
-                    );
-                  }}
-                </NavLink>
-              )
-            )}
+                      {activeIndicator(isActive)}
+                      <ListItemIcon
+                        sx={{
+                          minWidth: 0,
+                          mr: 2,
+                          justifyContent: 'center',
+                          color: isActive ? theme.palette.primary.main : theme.palette.text.primary,
+                        }}
+                      >
+                        <Icon size={22} />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={label}
+                        primaryTypographyProps={{
+                          fontSize: 15,
+                          fontWeight: isActive ? 700 : 500,
+                          letterSpacing: 0.2,
+                        }}
+                      />
+                    </ListItemButton>
+                  );
+                }}
+              </NavLink>
+            ))}
           </List>
         </Box>
-        {/* Profile section */}
-        <Box sx={{ px: 2.5, py: 2, borderTop: `1px solid ${theme.palette.divider}` }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
-            <Box
+
+        {/* Footer / Profile */}
+        <Box
+          sx={{
+            px: 2.5,
+            py: 2,
+            borderTop: `1px solid ${theme.palette.divider}`,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 1
+          }}
+        >
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              cursor: 'pointer',
+              '&:hover': { opacity: 0.9 },
+              px: 0.5,
+              py: 0.5,
+              borderRadius: 2,
+              transition: 'background 0.15s',
+              background: alpha(theme.palette.primary.main, 0.05),
+            }}
+            onClick={e => setAnchorEl(e.currentTarget)}
+          >
+            <Avatar
               sx={{
-                display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer',
-                '&:hover': { opacity: 0.85 }, px: 0.5, py: 0.5, borderRadius: 2,
-                transition: 'background 0.15s', background: alpha(theme.palette.primary.main, 0.04),
+                width: 36,
+                height: 36,
+                bgcolor: 'primary.main',
+                color: '#fff',
+                fontSize: 14,
+                fontWeight: 600
               }}
-              onClick={e => setAnchorEl(e.currentTarget)}
             >
-              <Tooltip title="Account settings">
-                <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main', color: '#fff' }}>
-                  <UserCircle size={20} />
-                </Avatar>
-              </Tooltip>
-              <Typography variant="body2" fontWeight={600}>
+              {(user.Firstname?.[0] || '') + (user.Lastname?.[0] || '') || <UserCircle size={18} />}
+            </Avatar>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography
+                variant="body2"
+                fontWeight={600}
+                noWrap
+                sx={{ maxWidth: 140 }}
+              >
                 {user.Firstname ? `${user.Firstname} ${user.Lastname}` : 'Profile'}
               </Typography>
+              <Chip
+                size="small"
+                label={roleLabel}
+                sx={{
+                  mt: 0.3,
+                  height: 18,
+                  fontSize: 10,
+                  fontWeight: 600,
+                  bgcolor: alpha(theme.palette.primary.main, 0.15),
+                  color: theme.palette.primary.main,
+                  letterSpacing: 0.5
+                }}
+              />
             </Box>
+          </Box>
+          <Box
+            sx={{
+              display: 'flex',
+              gap: 0.8,
+              justifyContent: 'space-between'
+            }}
+          >
             <Tooltip title={`Switch to ${isDark ? 'light' : 'dark'} mode`}>
               <IconButton
                 size="small"
@@ -264,54 +286,77 @@ const Sidebar = () => {
                 sx={{
                   color: theme.palette.text.primary,
                   bgcolor: alpha(theme.palette.primary.main, 0.07),
-                  '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.18) },
-                  ml: 1,
+                  '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.18) }
                 }}
               >
                 {isDark ? <LightMode fontSize="small" /> : <DarkMode fontSize="small" />}
               </IconButton>
             </Tooltip>
+            <Tooltip title="Logout">
+              <IconButton
+                size="small"
+                color="error"
+                onClick={() => setLogoutOpen(true)}
+                sx={{
+                  bgcolor: alpha(theme.palette.error.main, 0.08),
+                  '&:hover': { bgcolor: alpha(theme.palette.error.main, 0.18) }
+                }}
+              >
+                <Logout fontSize="small" />
+              </IconButton>
+            </Tooltip>
           </Box>
         </Box>
       </Drawer>
-      {/* Account Menu */}
+
+      {/* Account Menu (Profile only now) */}
       <Menu
         anchorEl={anchorEl}
         open={open}
         onClose={() => setAnchorEl(null)}
         anchorOrigin={{ horizontal: 'right', vertical: 'top' }}
         transformOrigin={{ horizontal: 'right', vertical: 'bottom' }}
-        PaperProps={{
-          sx: { mt: 1.2, minWidth: 170, borderRadius: 2, boxShadow: 3, p: 0.5 },
-        }}
+        PaperProps={{ sx: { mt: 1.2, minWidth: 170, borderRadius: 2, boxShadow: 3, p: 0.5 } }}
       >
         <MenuItem onClick={() => { setAccountModalOpen(true); setAnchorEl(null); }}>
           <Person fontSize="small" sx={{ mr: 1 }} /> Profile
         </MenuItem>
-        <MenuItem onClick={() => showToast('Settings clicked')}>
-          <Settings fontSize="small" sx={{ mr: 1 }} /> Settings
-        </MenuItem>
-        <Divider />
-        <MenuItem onClick={() => showToast('Logged out')}>
-          <Logout fontSize="small" sx={{ mr: 1 }} /> Logout
-        </MenuItem>
       </Menu>
-      {/* Account Info Modal */}
+
+      {/* Logout Confirm Dialog */}
+      <Dialog open={logoutOpen} onClose={() => setLogoutOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700 }}>Confirm Logout</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            Are you sure you want to log out?
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setLogoutOpen(false)} variant="text">Cancel</Button>
+          <Button
+            onClick={handleLogout}
+            color="error"
+            variant="contained"
+            disableElevation
+          >
+            Logout
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <AccountInfoModal
         open={accountModalOpen}
         onClose={() => setAccountModalOpen(false)}
         user={user}
       />
-      {/* Toast */}
+
       <Snackbar
         open={toast.open}
         autoHideDuration={2000}
         onClose={() => setToast({ ...toast, open: false })}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
       >
-        <Alert severity={toast.severity} variant="filled">
-          {toast.message}
-        </Alert>
+        <Alert severity={toast.severity} variant="filled">{toast.message}</Alert>
       </Snackbar>
     </>
   );

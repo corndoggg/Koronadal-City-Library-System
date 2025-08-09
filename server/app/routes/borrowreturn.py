@@ -10,7 +10,6 @@ def add_borrow_transaction():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    # Insert Borrow Transaction
     cursor.execute("""
         INSERT INTO BorrowTransactions (BorrowerID, Purpose, ApprovalStatus, ApprovedByStaffID, RetrievalStatus, ReturnStatus, BorrowDate)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
@@ -61,7 +60,6 @@ def add_borrow_transaction():
 
     conn.commit()
 
-    # Return transaction details
     cursor.execute("""
         SELECT * FROM BorrowTransactions WHERE BorrowID=%s
     """, (borrow_id,))
@@ -83,9 +81,28 @@ def list_borrow_transactions():
     cursor = conn.cursor(dictionary=True)
     cursor.execute("SELECT * FROM BorrowTransactions")
     transactions = cursor.fetchall()
+
+    borrow_ids = [tx['BorrowID'] for tx in transactions]
+    if borrow_ids:
+        format_strings = ','.join(['%s'] * len(borrow_ids))
+        # Get all BorrowedItems in one query
+        cursor.execute(f"SELECT * FROM BorrowedItems WHERE BorrowID IN ({format_strings})", tuple(borrow_ids))
+        all_items = cursor.fetchall()
+        items_by_borrow = {}
+        for item in all_items:
+            items_by_borrow.setdefault(item['BorrowID'], []).append(item)
+        # Get all ReturnDates in one query
+        cursor.execute(f"SELECT BorrowID, ReturnDate FROM ReturnTransactions WHERE BorrowID IN ({format_strings})", tuple(borrow_ids))
+        all_returns = cursor.fetchall()
+        returns_by_borrow = {ret['BorrowID']: ret['ReturnDate'] for ret in all_returns}
+    else:
+        items_by_borrow = {}
+        returns_by_borrow = {}
+
     for tx in transactions:
-        cursor.execute("SELECT * FROM BorrowedItems WHERE BorrowID=%s", (tx['BorrowID'],))
-        tx['items'] = cursor.fetchall()
+        tx['items'] = items_by_borrow.get(tx['BorrowID'], [])
+        tx['ReturnDate'] = returns_by_borrow.get(tx['BorrowID'])
+
     cursor.close()
     conn.close()
     return jsonify(transactions)
@@ -97,7 +114,6 @@ def add_return_transaction():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    # Insert Return Transaction
     cursor.execute("""
         INSERT INTO ReturnTransactions (BorrowID, ReturnDate, ReceivedByStaffID, Remarks)
         VALUES (%s, %s, %s, %s)
@@ -109,7 +125,6 @@ def add_return_transaction():
     ))
     return_id = cursor.lastrowid
 
-    # Insert Returned Items and update book/document condition and availability
     returned_items = []
     for item in data.get('items', []):
         cursor.execute("""
@@ -123,10 +138,8 @@ def add_return_transaction():
             item.get('finePaid', 'No')
         ))
 
-        # Get item type and IDs
         cursor.execute("SELECT ItemType, BookCopyID, DocumentStorageID FROM BorrowedItems WHERE BorrowedItemID=%s", (item['borrowedItemId'],))
         borrowed_item = cursor.fetchone()
-        # Update condition and availability
         if borrowed_item['ItemType'] == 'Book' and borrowed_item['BookCopyID']:
             cursor.execute("""
                 UPDATE Book_Inventory SET BookCondition=%s, Availability='Available' WHERE Copy_ID=%s
@@ -142,14 +155,12 @@ def add_return_transaction():
             **item
         })
 
-    # Update BorrowTransaction status
     cursor.execute("""
         UPDATE BorrowTransactions SET RetrievalStatus='Returned', ReturnStatus='Returned' WHERE BorrowID=%s
     """, (data['borrowId'],))
 
     conn.commit()
 
-    # Return transaction details
     cursor.execute("SELECT * FROM ReturnTransactions WHERE ReturnID=%s", (return_id,))
     return_transaction = cursor.fetchone()
     cursor.execute("SELECT * FROM ReturnedItems WHERE ReturnID=%s", (return_id,))
@@ -166,9 +177,21 @@ def list_return_transactions():
     cursor = conn.cursor(dictionary=True)
     cursor.execute("SELECT * FROM ReturnTransactions")
     transactions = cursor.fetchall()
+
+    return_ids = [tx['ReturnID'] for tx in transactions]
+    if return_ids:
+        format_strings = ','.join(['%s'] * len(return_ids))
+        cursor.execute(f"SELECT * FROM ReturnedItems WHERE ReturnID IN ({format_strings})", tuple(return_ids))
+        all_items = cursor.fetchall()
+        items_by_return = {}
+        for item in all_items:
+            items_by_return.setdefault(item['ReturnID'], []).append(item)
+    else:
+        items_by_return = {}
+
     for tx in transactions:
-        cursor.execute("SELECT * FROM ReturnedItems WHERE ReturnID=%s", (tx['ReturnID'],))
-        tx['items'] = cursor.fetchall()
+        tx['items'] = items_by_return.get(tx['ReturnID'], [])
+
     cursor.close()
     conn.close()
     return jsonify(transactions)
@@ -180,9 +203,26 @@ def get_borrower_transactions(borrower_id):
     cursor = conn.cursor(dictionary=True)
     cursor.execute("SELECT * FROM BorrowTransactions WHERE BorrowerID=%s", (borrower_id,))
     transactions = cursor.fetchall()
+
+    borrow_ids = [tx['BorrowID'] for tx in transactions]
+    if borrow_ids:
+        format_strings = ','.join(['%s'] * len(borrow_ids))
+        cursor.execute(f"SELECT * FROM BorrowedItems WHERE BorrowID IN ({format_strings})", tuple(borrow_ids))
+        all_items = cursor.fetchall()
+        items_by_borrow = {}
+        for item in all_items:
+            items_by_borrow.setdefault(item['BorrowID'], []).append(item)
+        cursor.execute(f"SELECT BorrowID, ReturnDate FROM ReturnTransactions WHERE BorrowID IN ({format_strings})", tuple(borrow_ids))
+        all_returns = cursor.fetchall()
+        returns_by_borrow = {ret['BorrowID']: ret['ReturnDate'] for ret in all_returns}
+    else:
+        items_by_borrow = {}
+        returns_by_borrow = {}
+
     for tx in transactions:
-        cursor.execute("SELECT * FROM BorrowedItems WHERE BorrowID=%s", (tx['BorrowID'],))
-        tx['items'] = cursor.fetchall()
+        tx['items'] = items_by_borrow.get(tx['BorrowID'], [])
+        tx['ReturnDate'] = returns_by_borrow.get(tx['BorrowID'])
+
     cursor.close()
     conn.close()
     return jsonify(transactions)
@@ -237,13 +277,43 @@ def set_borrow_transaction_retrieved(borrow_id):
 def get_borrow_due_date(borrow_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("""
-        SELECT ReturnDate FROM ReturnTransactions WHERE BorrowID=%s
-    """, (borrow_id,))
-    result = cursor.fetchone()
+    cursor.execute("SELECT ReturnDate FROM ReturnTransactions WHERE BorrowID=%s", (borrow_id,))
+    result = cursor.fetchall()  # fetch all results
     cursor.close()
     conn.close()
-    if result and result.get('ReturnDate'):
-        return jsonify({'BorrowID': borrow_id, 'DueDate': result['ReturnDate']}), 200
+    if result and result[0].get('ReturnDate'):
+        return jsonify({'BorrowID': borrow_id, 'DueDate': result[0]['ReturnDate']}), 200
     else:
         return jsonify({'BorrowID': borrow_id, 'DueDate': None}), 404
+
+# --- Approve a user account ---
+@borrowreturn_bp.route('/users/<int:user_id>/approve', methods=['PUT'])
+def approve_user_account(user_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    # Update AccountStatus to 'Approved' for borrowers
+    cursor.execute("""
+        UPDATE Borrowers
+        SET AccountStatus='Registered'
+        WHERE UserID=%s
+    """, (user_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return jsonify({'message': 'User approved.'}), 200
+
+# --- Reject a user account ---
+@borrowreturn_bp.route('/users/<int:user_id>/reject', methods=['PUT'])
+def reject_user_account(user_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    # Update AccountStatus to 'Rejected' for borrowers
+    cursor.execute("""
+        UPDATE Borrowers
+        SET AccountStatus='Rejected'
+        WHERE UserID=%s
+    """, (user_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return jsonify({'message': 'User rejected.'}), 200

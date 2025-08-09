@@ -6,7 +6,7 @@ import {
 
 const staffPositions = ['Librarian', 'Admin'];
 const borrowerTypes = ['Researcher', 'Government Agency'];
-const accountStatuses = ['Pending', 'Registered', 'Suspended'];
+const accountStatuses = ['Pending', 'Registered', 'Suspended', 'Rejected'];
 
 const defaultDetails = {
   firstname: '', middlename: '', lastname: '', email: '', contactnumber: '',

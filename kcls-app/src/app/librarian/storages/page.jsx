@@ -2,9 +2,10 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import {
   Box, Typography, Button, TextField, Dialog, DialogTitle, DialogContent, DialogActions,
-  Snackbar, Alert, Grid, Card, CardContent, CardActions, IconButton, Tooltip, useTheme, Chip, Divider, Stack
+  Snackbar, Alert, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper,
+  IconButton, Tooltip, useTheme, Chip, Stack, CircularProgress
 } from "@mui/material";
-import { Add, Edit, Storage, Book, Article, Warning, Error, CheckCircle, AssignmentLate } from "@mui/icons-material";
+import { Add, Edit, Storage, Book, Article, Search, Visibility } from "@mui/icons-material";
 
 const initialForm = { name: "" };
 
@@ -12,8 +13,9 @@ const StorageManagementPage = () => {
   const theme = useTheme(), API_BASE = import.meta.env.VITE_API_BASE;
   const [storages, setStorages] = useState([]), [open, setOpen] = useState(false), [isEdit, setIsEdit] = useState(false),
     [form, setForm] = useState(initialForm), [editId, setEditId] = useState(null), [toast, setToast] = useState({ open: false, message: "", severity: "success" }),
-    [loading, setLoading] = useState(false), [docsBooks, setDocsBooks] = useState([]),
-    [editItem, setEditItem] = useState(null), [editInv, setEditInv] = useState(null), [openEditInv, setOpenEditInv] = useState(false);
+    [loading, setLoading] = useState(false), [docsBooks, setDocsBooks] = useState([]), [search, setSearch] = useState(""),
+    [editItem, setEditItem] = useState(null), [editInv, setEditInv] = useState(null), [openEditInv, setOpenEditInv] = useState(false),
+    [viewAllOpen, setViewAllOpen] = useState(false), [viewAllItems, setViewAllItems] = useState([]);
 
   useEffect(() => { fetchStorages(); fetchDocsBooks(); }, []);
 
@@ -64,26 +66,21 @@ const StorageManagementPage = () => {
 
   const handleSave = async () => {
     const name = form.name?.trim();
-    console.log("Saving storage:", { name });
-    if (!name) {
-      setToast({ open: true, message: "Name is required.", severity: "error" });
-      return;
-    }
+    if (!name) return setToast({ open: true, message: "Name is required.", severity: "error" });
     try {
       if (isEdit) {
-        await axios.put(`${API_BASE}/storages/${editId}`, { name: name });
+        await axios.put(`${API_BASE}/storages/${editId}`, { name });
         setToast({ open: true, message: "Storage updated.", severity: "success" });
       } else {
-        await axios.post(`${API_BASE}/storages`, { name: name });
+        await axios.post(`${API_BASE}/storages`, { name });
         setToast({ open: true, message: "Storage added.", severity: "success" });
       }
-      fetchStorages();
-      handleClose();
+      fetchStorages(); handleClose();
     } catch {
       setToast({ open: true, message: "Failed to save storage.", severity: "error" });
     }
   };
-  
+
   const handleEditInventory = (item, inv) => { setEditItem(item); setEditInv({ ...inv }); setOpenEditInv(true); };
   const handleSaveInventory = async () => {
     if (!editInv) return;
@@ -117,69 +114,38 @@ const StorageManagementPage = () => {
     }
   };
 
-  const getItemsAtLocation = (storageId) =>
-    docsBooks.flatMap(item =>
-      (item.inventory || [])
-        .filter(inv => String(inv.location) === String(storageId))
-        .map(inv => ({
-          type: item.type, title: item.title, id: item.id,
-          accessionNumber: inv.accessionNumber, availability: inv.availability, condition: inv.condition, inv
-        }))
-    );
-
-  const getReports = () => {
-    const allItems = docsBooks.flatMap(item =>
-      (item.inventory || []).map(inv => ({
-        type: item.type, title: item.title, id: item.id,
-        storageId: inv.Storage_ID, copyId: inv.Copy_ID,
-        accessionNumber: inv.accessionNumber, availability: inv.availability,
-        condition: inv.condition, location: inv.location,
-      }))
-    );
-    const badCondition = allItems.filter(inv =>
-      inv.condition && ["bad", "poor", "damaged", "needs repair", "lost"].some(bad =>
-        String(inv.condition).toLowerCase().includes(bad)
-      )
-    );
-    const missingStorage = allItems.filter(inv =>
-      inv.type === "Book" ? !inv.location : !inv.storageId
-    );
-    const unavailable = allItems.filter(inv =>
-      inv.availability && String(inv.availability).toLowerCase() !== "available"
-    );
-    return { badCondition, missingStorage, unavailable };
-  };
-
-  const { badCondition, missingStorage, unavailable } = getReports();
-
-  const ReportChips = ({ items, color, findInv }) => (
-    <>
-      {items.map((inv, idx) => (
-        <Chip
-          key={idx}
-          icon={inv.type === "Book" ? <Book /> : <Article />}
-          label={
-            <>
-              {inv.type}: {inv.title}
-              {inv.accessionNumber && ` | Accession #: ${inv.accessionNumber}`}
-              {inv.condition && color !== "info" && ` | Condition: ${inv.condition}`}
-              {inv.availability && color === "info" && ` | Availability: ${inv.availability}`}
-              {inv.storageId && color === "error" && ` | Storage ID: ${inv.storageId}`}
-            </>
-          }
-          color={color}
-          variant="outlined"
-          sx={{ mr: 1, mb: 1, cursor: "pointer" }}
-          onClick={() => handleEditInventory(
-            { type: inv.type, title: inv.title, id: inv.id },
-            docsBooks
-              .find(d => d.type === inv.type && d.id === inv.id)
-              ?.inventory?.find(i => findInv(inv, i)) || {}
-          )}
-        />
-      ))}
-    </>
+  // Table data: flatten all items with storage info
+  const allItems = docsBooks.flatMap(item =>
+    (item.inventory || []).map(inv => ({
+      type: item.type,
+      title: item.title,
+      id: item.id,
+      storageId: inv.StorageLocation || inv.location,
+      accessionNumber: inv.accessionNumber,
+      availability: inv.availability,
+      condition: inv.condition,
+      inv
+    }))
   );
+
+  // Search filter
+  const filteredStorages = storages.filter(s =>
+    s.Name.toLowerCase().includes(search.toLowerCase()) ||
+    allItems.some(i => String(i.storageId) === String(s.ID) &&
+      (
+        (i.title && i.title.toLowerCase().includes(search.toLowerCase())) ||
+        (i.accessionNumber && i.accessionNumber.toLowerCase().includes(search.toLowerCase())) ||
+        (i.availability && i.availability.toLowerCase().includes(search.toLowerCase())) ||
+        (i.condition && i.condition.toLowerCase().includes(search.toLowerCase()))
+      )
+    )
+  );
+
+  // View all items modal for a storage
+  const handleViewAll = (storageId) => {
+    setViewAllItems(allItems.filter(i => String(i.storageId) === String(storageId)));
+    setViewAllOpen(true);
+  };
 
   return (
     <Box p={3} sx={{ minHeight: "100vh", background: theme.palette.background.default }}>
@@ -192,115 +158,125 @@ const StorageManagementPage = () => {
           Add Storage
         </Button>
       </Box>
-      <Box mb={4}>
-        <Typography variant="h6" color="primary" gutterBottom>
-          <AssignmentLate sx={{ verticalAlign: "middle", mr: 1 }} />
-          Storage & Physical Reports
-        </Typography>
-        <Divider sx={{ mb: 2 }} />
-        <Stack spacing={2}>
-          <Box>
-            <Stack direction="row" alignItems="center" gap={1} mb={1}>
-              <Error color="error" />
-              <Typography variant="subtitle2" color="error" fontWeight={700}>
-                {badCondition.length > 0 ? `Needs Attention (Bad Condition):` : "No items in bad condition."}
-              </Typography>
-            </Stack>
-            <ReportChips
-              items={badCondition}
-              color="error"
-              findInv={(inv, i) => inv.type === "Book" ? i.Copy_ID === inv.copyId : i.Storage_ID === inv.storageId}
-            />
-          </Box>
-          <Box>
-            <Stack direction="row" alignItems="center" gap={1} mb={1}>
-              <Warning color="warning" />
-              <Typography variant="subtitle2" color="warning.main" fontWeight={700}>
-                {missingStorage.length > 0 ? `Missing Storage Assignment:` : "All items have storage assigned."}
-              </Typography>
-            </Stack>
-            <ReportChips
-              items={missingStorage}
-              color="warning"
-              findInv={(inv, i) => inv.type === "Book"
-                ? (i.Copy_ID === inv.copyId)
-                : (!i.location)}
-            />
-          </Box>
-          <Box>
-            <Stack direction="row" alignItems="center" gap={1} mb={1}>
-              <CheckCircle color="info" />
-              <Typography variant="subtitle2" color="info.main" fontWeight={700}>
-                {unavailable.length > 0 ? `Unavailable Items:` : "All items are available."}
-              </Typography>
-            </Stack>
-            <ReportChips
-              items={unavailable}
-              color="info"
-              findInv={(inv, i) => inv.type === "Book"
-                ? (i.Copy_ID === inv.copyId)
-                : (i.availability === inv.availability)}
-            />
-          </Box>
-        </Stack>
+      <Box mb={2} display="flex" alignItems="center" gap={1}>
+        <Search color="action" />
+        <TextField
+          size="small"
+          placeholder="Search by storage, item, accession, availability, or condition"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          sx={{ width: 350 }}
+        />
       </Box>
-      <Grid container spacing={3}>
-        {storages.map(storage => (
-          <Grid item xs={12} sm={6} md={4} lg={3} key={storage.ID}>
-            <Card sx={{
-              borderRadius: 4, boxShadow: 6, background: theme.palette.background.paper,
-              border: `2px solid ${theme.palette.primary.light}`,
-              transition: "box-shadow 0.2s",
-              "&:hover": { boxShadow: 12, borderColor: theme.palette.primary.main }
-            }}>
-              <CardContent>
-                <Typography variant="h6" fontWeight={700} color="primary" gutterBottom>
-                  {storage.Name}
-                </Typography>
-                <Divider sx={{ my: 1 }} />
-                <Box mt={2}>
-                  <Typography variant="subtitle2" color="text.secondary" fontWeight={600}>Items at this Location:</Typography>
-                  {getItemsAtLocation(storage.ID).length > 0 ? (
-                    getItemsAtLocation(storage.ID).map((item, idx) => (
-                      <Chip
-                        key={idx}
-                        icon={item.type === "Book" ? <Book /> : <Article />}
-                        label={
-                          item.type === "Book"
-                            ? `Book: ${item.title} | Accession #: ${item.accessionNumber} | Availability: ${item.availability}${item.condition ? ` | Condition: ${item.condition}` : ""}`
-                            : `Document: ${item.title} | Availability: ${item.availability}${item.condition ? ` | Condition: ${item.condition}` : ""}`
-                        }
-                        color={item.type === "Book" ? "primary" : "secondary"}
-                        variant="outlined"
-                        sx={{ mr: 1, mb: 1, cursor: "pointer" }}
-                        onClick={() => handleEditInventory(
-                          { type: item.type, title: item.title, id: item.id }, item.inv
+      {loading ? (
+        <Box py={8} textAlign="center"><CircularProgress /></Box>
+      ) : (
+        <TableContainer component={Paper}>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Storage Name</TableCell>
+                <TableCell>Items</TableCell>
+                <TableCell>Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {filteredStorages.map(storage => {
+                const itemsInStorage = allItems.filter(i => String(i.storageId) === String(storage.ID));
+                const showItems = itemsInStorage.slice(0, 5);
+                return (
+                  <TableRow key={storage.ID}>
+                    <TableCell>
+                      <Typography fontWeight={700} color="primary">{storage.Name}</Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Stack direction="row" flexWrap="wrap" gap={1}>
+                        {showItems.length > 0 ? (
+                          showItems.map((item, idx) => (
+                            <Chip
+                              key={idx}
+                              icon={item.type === "Book" ? <Book /> : <Article />}
+                              label={
+                                item.type === "Book"
+                                  ? `Book: ${item.title} | Acc#: ${item.accessionNumber} | Avail: ${item.availability}${item.condition ? ` | Cond: ${item.condition}` : ""}`
+                                  : `Doc: ${item.title} | Avail: ${item.availability}${item.condition ? ` | Cond: ${item.condition}` : ""}`
+                              }
+                              color={item.type === "Book" ? "primary" : "secondary"}
+                              variant="outlined"
+                              sx={{ cursor: "pointer" }}
+                              onClick={() => handleEditInventory(
+                                { type: item.type, title: item.title, id: item.id }, item.inv
+                              )}
+                            />
+                          ))
+                        ) : (
+                          <Typography variant="caption" color="text.disabled">No items</Typography>
                         )}
-                      />
-                    ))
-                  ) : (
-                    <Typography variant="caption" color="text.disabled">No items at this location</Typography>
+                        {itemsInStorage.length > 5 && (
+                          <Button
+                            size="small"
+                            variant="text"
+                            startIcon={<Visibility />}
+                            onClick={() => handleViewAll(storage.ID)}
+                          >
+                            View all ({itemsInStorage.length})
+                          </Button>
+                        )}
+                      </Stack>
+                    </TableCell>
+                    <TableCell>
+                      <Tooltip title="Edit Storage">
+                        <IconButton color="primary" onClick={() => handleEdit(storage)}>
+                          <Edit />
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+              {filteredStorages.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={3} align="center">
+                    <Typography color="text.secondary">No storage locations found.</Typography>
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+      {/* View All Items Modal */}
+      <Dialog open={viewAllOpen} onClose={() => setViewAllOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>All Items in this Location</DialogTitle>
+        <DialogContent>
+          <Stack direction="column" gap={1}>
+            {viewAllItems.length === 0 ? (
+              <Typography color="text.secondary">No items in this location.</Typography>
+            ) : (
+              viewAllItems.map((item, idx) => (
+                <Chip
+                  key={idx}
+                  icon={item.type === "Book" ? <Book /> : <Article />}
+                  label={
+                    item.type === "Book"
+                      ? `Book: ${item.title} | Acc#: ${item.accessionNumber} | Avail: ${item.availability}${item.condition ? ` | Cond: ${item.condition}` : ""}`
+                      : `Doc: ${item.title} | Avail: ${item.availability}${item.condition ? ` | Cond: ${item.condition}` : ""}`
+                  }
+                  color={item.type === "Book" ? "primary" : "secondary"}
+                  variant="outlined"
+                  sx={{ cursor: "pointer" }}
+                  onClick={() => handleEditInventory(
+                    { type: item.type, title: item.title, id: item.id }, item.inv
                   )}
-                </Box>
-              </CardContent>
-              <CardActions sx={{ justifyContent: "flex-end" }}>
-                <Tooltip title="Edit Storage">
-                  <IconButton color="primary" onClick={() => handleEdit(storage)}>
-                    <Edit />
-                  </IconButton>
-                </Tooltip>
-              </CardActions>
-            </Card>
-          </Grid>
-        ))}
-        {storages.length === 0 && (
-          <Grid item xs={12}>
-            <Box sx={{ textAlign: "center", py: 6 }}>
-              <Typography variant="body2" color="text.secondary">No storage locations found.</Typography>
-            </Box>
-          </Grid>
-        )}
-      </Grid>
+                />
+              ))
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setViewAllOpen(false)} color="primary">Close</Button>
+        </DialogActions>
+      </Dialog>
       {/* Edit Inventory Modal */}
       <Dialog open={openEditInv} onClose={() => setOpenEditInv(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Edit {editItem?.type} Inventory</DialogTitle>
