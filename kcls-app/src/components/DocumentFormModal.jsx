@@ -38,6 +38,9 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
   const [unsaved, setUnsaved] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
 
+  // Add: AI extraction loading state
+  const [aiLoading, setAiLoading] = useState(false);
+
   useEffect(() => {
     if (open) {
       if (isEdit && documentData) {
@@ -74,11 +77,13 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
   const openToast = (message, severity = "success") =>
     setSnackbar({ open: true, message, severity });
 
+  // --- MODIFIED: handleChange for file upload ---
   const handleChange = (e) => {
     const { name, value, files } = e.target;
     if (name === "file" && files && files[0]) {
       setForm(prev => ({ ...prev, file: files[0], filePath: files[0].name }));
       setUnsaved(true);
+      handleAnalyzePdf(files[0]); // <-- Analyze and autofill
     } else {
       setForm(prev => ({ ...prev, [name]: value }));
       setUnsaved(true);
@@ -157,6 +162,33 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
     }
     setFileUploading(false);
     setUploadProgress(0);
+  };
+
+  // --- NEW: Analyze PDF and autofill fields ---
+  const handleAnalyzePdf = async (file) => {
+    setAiLoading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await axios.post(`${API_BASE}/analyze`, fd, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
+      const record = res.data?.record || {};
+      setForm(prev => ({
+        ...prev,
+        title: record.Title || prev.title,
+        author: record.Author || prev.author,
+        category: record.Category || prev.category,
+        department: record.Department || prev.department,
+        classification: record.Classification || prev.classification,
+        year: record.Year || prev.year,
+        sensitivity: record.Sensitivity || prev.sensitivity,
+      }));
+      openToast("Fields auto-filled from PDF.", "info");
+    } catch (err) {
+      openToast("Auto-extract failed.", "warning");
+    }
+    setAiLoading(false);
   };
 
   const validate = () => {
@@ -277,6 +309,14 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
                   color={validate() ? "success" : "default"}
                   sx={{ fontWeight: 600, height: 20 }}
                 />
+                {aiLoading && (
+                  <Chip
+                    size="small"
+                    color="info"
+                    label="Analyzing PDF..."
+                    sx={{ fontWeight: 600, height: 20 }}
+                  />
+                )}
               </Stack>
               <Grid container spacing={2}>
                 {[
@@ -335,6 +375,7 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
                         startIcon={<CloudUpload />}
                         size="small"
                         sx={{ fontWeight: 600 }}
+                        disabled={aiLoading}
                       >
                         {form.filePath ? "Change File" : "Select File"}
                         <input
@@ -353,6 +394,11 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
                           icon={<PictureAsPdf fontSize="small" />}
                           sx={{ maxWidth: "100%" }}
                         />
+                      )}
+                      {aiLoading && (
+                        <Typography variant="caption" color="info.main" sx={{ mt: 1 }}>
+                          Extracting fields from PDF...
+                        </Typography>
                       )}
                     </Box>
                   )}
