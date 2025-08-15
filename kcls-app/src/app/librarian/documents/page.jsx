@@ -6,8 +6,7 @@ import {
 } from '@mui/material';
 import { Article, Visibility, Edit, Close } from '@mui/icons-material';
 import DocumentFormModal from '../../../components/DocumentFormModal';
-import { Worker, Viewer } from '@react-pdf-viewer/core';
-import '@react-pdf-viewer/core/lib/styles/index.css';
+import DocumentPDFViewer from '../../../components/DocumentPDFViewer';
 
 const DocumentManagementPage = () => {
   const theme = useTheme(), API_BASE = import.meta.env.VITE_API_BASE;
@@ -228,92 +227,12 @@ const DocumentManagementPage = () => {
       >+</Button>
 
       {/* PDF Viewer Dialog */}
-      <Dialog
+      <DocumentPDFViewer
         open={pdfDialogOpen}
         onClose={() => setPdfDialogOpen(false)}
-        maxWidth="md"
-        fullWidth
-        PaperProps={{
-          sx: {
-            height: { xs: '90vh', md: 700 },
-            bgcolor: theme.palette.background.paper,
-            borderRadius: 3,
-            boxShadow: 8,
-            overflow: 'hidden',
-          }
-        }}
-      >
-        <DialogTitle
-          sx={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1,
-            background: theme.palette.background.default, borderBottom: `1px solid ${theme.palette.divider}`, minHeight: 56,
-          }}
-        >
-          <Box display="flex" alignItems="center" gap={1}>
-            <Visibility color="primary" sx={{ fontSize: 28, mr: 1 }} />
-            <Typography variant="h6" fontWeight={700} sx={{ fontSize: 18 }}>
-              Viewing PDF Document
-            </Typography>
-          </Box>
-          <IconButton
-            onClick={() => setPdfDialogOpen(false)}
-            size="small"
-            sx={{
-              color: theme.palette.grey[600],
-              '&:hover': { color: theme.palette.error.main, bgcolor: theme.palette.action.hover }
-            }}
-            aria-label="Close PDF"
-          >
-            <Close />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent
-          sx={{
-            p: 0, height: { xs: 'calc(90vh - 56px)', md: 644 },
-            background: theme.palette.background.paper,
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          }}
-        >
-          {pdfUrl ? (
-            <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
-              <Box
-                sx={{
-                  width: '100%', height: '100%', maxHeight: 644, maxWidth: '100%',
-                  overflow: 'auto', background: theme.palette.background.paper,
-                  borderRadius: 2, boxShadow: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}
-              >
-                <Viewer
-                  fileUrl={pdfUrl}
-                  defaultScale={1.2}
-                  plugins={[]}
-                  renderToolbar={() => null}
-                  renderLoader={() => (
-                    <Box sx={{ width: '100%', textAlign: 'center', mt: 4 }}>
-                      <Typography color="text.secondary" fontSize={16}>Loading PDF...</Typography>
-                    </Box>
-                  )}
-                  style={{ height: '100%', width: '100%' }}
-                />
-              </Box>
-            </Worker>
-          ) : (
-            <Box sx={{ width: '100%', textAlign: 'center', mt: 4 }}>
-              <Typography color="text.secondary" fontSize={16}>PDF not available.</Typography>
-            </Box>
-          )}
-          <Box
-            sx={{
-              width: '100%', textAlign: 'center', py: 1,
-              background: theme.palette.background.default,
-              borderTop: `1px solid ${theme.palette.divider}`,
-              fontSize: 13, color: theme.palette.text.secondary, letterSpacing: 0.2,
-            }}
-          >
-            <b>Note:</b> Downloading and printing are disabled for this preview.
-          </Box>
-        </DialogContent>
-      </Dialog>
+        fileUrl={pdfUrl}
+        title="Viewing PDF Document"
+      />
 
       <DocumentFormModal
         open={modalOpen}

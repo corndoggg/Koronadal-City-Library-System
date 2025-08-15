@@ -51,6 +51,7 @@ const LoginPage = () => {
       } else {
         storeUserSession(data);
         if (data.Role === 'Borrower') {
+          console.log(data);
           const status = data.borrower?.AccountStatus;
             if (status === "Pending" || status === "Rejected") {
               setBorrowerStatus(status);

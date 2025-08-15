@@ -5,11 +5,14 @@ import {
   CircularProgress, Divider, Button, Snackbar, Alert, Fab, Badge, Drawer, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, RadioGroup, FormControlLabel, Radio
 } from "@mui/material";
 import { Book, Article, Search, ShoppingCart, Close, Visibility } from "@mui/icons-material";
-import { Worker, Viewer } from '@react-pdf-viewer/core';
 import '@react-pdf-viewer/core/lib/styles/index.css';
+import DocumentPDFViewer from '../../../components/DocumentPDFViewer';
 
 const BrowseLibraryPage = () => {
   const API_BASE = import.meta.env.VITE_API_BASE;
+  // CHANGE: use real BorrowerID (NOT UserID) so FK constraint passes
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+  const borrowerId = user?.borrower?.BorrowerID || user?.BorrowerID || null;  // UPDATED
   const [tab, setTab] = useState(0), [books, setBooks] = useState([]), [documents, setDocuments] = useState([]),
     [search, setSearch] = useState(""), [searchKey, setSearchKey] = useState("All"), [loading, setLoading] = useState(false),
     [borrowed, setBorrowed] = useState([]), [borrowLoading, setBorrowLoading] = useState(false), [toast, setToast] = useState({ open: false, message: "", severity: "success" }),
@@ -17,7 +20,6 @@ const BrowseLibraryPage = () => {
     [docTypeDialogOpen, setDocTypeDialogOpen] = useState(false), [selectedDoc, setSelectedDoc] = useState(null), [selectedDocType, setSelectedDocType] = useState("Physical");
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
   const [pdfUrl, setPdfUrl] = useState('');
-  const user = JSON.parse(localStorage.getItem("user") || "{}"), borrowerId = user?.UserID;
 
   useEffect(() => { fetchData(); fetchBorrowed(); }, []);
   const fetchData = async () => {
@@ -94,7 +96,7 @@ const BrowseLibraryPage = () => {
   };
   const handleRemoveFromCart = idx => setCart(cart.filter((_, i) => i !== idx));
   const handleBorrowAll = async () => {
-    if (!borrowerId) return setToast({ open: true, message: "You must be logged in as a borrower.", severity: "error" });
+    if (!borrowerId) return setToast({ open: true, message: "Login required.", severity: "error" });
     if (cart.length === 0) return setToast({ open: true, message: "Your cart is empty.", severity: "warning" });
     if (!purpose.trim()) return setToast({ open: true, message: "Please enter a purpose.", severity: "warning" });
     if (!returnDate) return setToast({ open: true, message: "Please select a return date.", severity: "warning" });
@@ -111,7 +113,9 @@ const BrowseLibraryPage = () => {
             }
       );
       await axios.post(`${API_BASE}/borrow`, {
-        borrowerId, purpose, items,
+        borrowerId,            // now correct BorrowerID value
+        purpose,
+        items,
         borrowDate: new Date().toISOString().slice(0, 10),
         returnDate: returnDate ? new Date(returnDate).toISOString().slice(0, 10) : null,
       });
@@ -331,93 +335,13 @@ const BrowseLibraryPage = () => {
           <Button variant="contained" onClick={handleConfirmAddDoc} disabled={!selectedDocType}>Add to Cart</Button>
         </DialogActions>
       </Dialog>
-      {/* PDF Viewer Dialog */}
-      <Dialog
+      {/* PDF Viewer Component */}
+      <DocumentPDFViewer
         open={pdfDialogOpen}
         onClose={() => setPdfDialogOpen(false)}
-        maxWidth="md"
-        fullWidth
-        PaperProps={{
-          sx: {
-            height: { xs: '90vh', md: 700 },
-            bgcolor: "#fff",
-            borderRadius: 3,
-            boxShadow: 8,
-            overflow: 'hidden',
-          }
-        }}
-      >
-        <DialogTitle
-          sx={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1,
-            background: "#f5f5f5", borderBottom: `1px solid #eee`, minHeight: 56,
-          }}
-        >
-          <Box display="flex" alignItems="center" gap={1}>
-            <Visibility color="primary" sx={{ fontSize: 28, mr: 1 }} />
-            <Typography variant="h6" fontWeight={700} sx={{ fontSize: 18 }}>
-              Viewing PDF Document
-            </Typography>
-          </Box>
-          <IconButton
-            onClick={() => setPdfDialogOpen(false)}
-            size="small"
-            sx={{
-              color: "#888",
-              '&:hover': { color: "#d32f2f", bgcolor: "#f5f5f5" }
-            }}
-            aria-label="Close PDF"
-          >
-            <Close />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent
-          sx={{
-            p: 0, height: { xs: 'calc(90vh - 56px)', md: 644 },
-            background: "#fff",
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          }}
-        >
-          {pdfUrl ? (
-            <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
-              <Box
-                sx={{
-                  width: '100%', height: '100%', maxHeight: 644, maxWidth: '100%',
-                  overflow: 'auto', background: "#fff",
-                  borderRadius: 2, boxShadow: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}
-              >
-                <Viewer
-                  fileUrl={pdfUrl}
-                  defaultScale={1.2}
-                  plugins={[]}
-                  renderToolbar={() => null}
-                  renderLoader={() => (
-                    <Box sx={{ width: '100%', textAlign: 'center', mt: 4 }}>
-                      <Typography color="text.secondary" fontSize={16}>Loading PDF...</Typography>
-                    </Box>
-                  )}
-                  style={{ height: '100%', width: '100%' }}
-                />
-              </Box>
-            </Worker>
-          ) : (
-            <Box sx={{ width: '100%', textAlign: 'center', mt: 4 }}>
-              <Typography color="text.secondary" fontSize={16}>PDF not available.</Typography>
-            </Box>
-          )}
-          <Box
-            sx={{
-              width: '100%', textAlign: 'center', py: 1,
-              background: "#f5f5f5",
-              borderTop: `1px solid #eee`,
-              fontSize: 13, color: "#888", letterSpacing: 0.2,
-            }}
-          >
-            <b>Note:</b> Downloading and printing are disabled for this preview.
-          </Box>
-        </DialogContent>
-      </Dialog>
+        fileUrl={pdfUrl}
+        title="Viewing PDF Document"
+      />
       <Snackbar open={toast.open} autoHideDuration={3000} onClose={() => setToast({ ...toast, open: false })} anchorOrigin={{ vertical: "bottom", horizontal: "right" }}>
         <Alert onClose={() => setToast({ ...toast, open: false })} severity={toast.severity} variant="filled">{toast.message}</Alert>
       </Snackbar>

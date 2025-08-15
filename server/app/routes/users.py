@@ -70,20 +70,20 @@ def get_users():
                ud.Firstname, ud.Middlename, ud.Lastname, ud.Email, ud.ContactNumber,
                ud.Street, ud.Barangay, ud.City, ud.Province, ud.DateOfBirth,
                s.Position,
-               b.Type, b.Department, b.AccountStatus
+               b.BorrowerID, b.Type, b.Department, b.AccountStatus
         FROM Users u
         LEFT JOIN UserDetails ud ON u.UserID = ud.UserID
         LEFT JOIN Staff s ON u.UserID = s.UserID
         LEFT JOIN Borrowers b ON u.UserID = b.UserID
     """)
     users = cursor.fetchall()
-    # Attach only relevant details based on role
     for user in users:
         if user['Role'] == 'Staff':
             user['staff'] = {'Position': user['Position']}
             user['borrower'] = None
         elif user['Role'] == 'Borrower':
             user['borrower'] = {
+                'BorrowerID': user['BorrowerID'],
                 'Type': user['Type'],
                 'Department': user['Department'],
                 'AccountStatus': user['AccountStatus']
@@ -92,11 +92,9 @@ def get_users():
         else:
             user['staff'] = None
             user['borrower'] = None
-        # Remove unrelated fields for clarity
-        user.pop('Position', None)
-        user.pop('Type', None)
-        user.pop('Department', None)
-        user.pop('AccountStatus', None)
+        # cleanup
+        for k in ['Position','Type','Department','AccountStatus','BorrowerID']:
+            user.pop(k, None)
     cursor.close()
     conn.close()
     return jsonify(users)
@@ -167,11 +165,11 @@ def login_user():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
-        SELECT u.UserID, u.Role, u.Password,
+        SELECT u.UserID, u.Username, u.Role, u.Password,
                ud.Firstname, ud.Middlename, ud.Lastname, ud.Email, ud.ContactNumber,
                ud.Street, ud.Barangay, ud.City, ud.Province, ud.DateOfBirth,
                s.Position,
-               b.Type, b.Department, b.AccountStatus
+               b.BorrowerID, b.Type, b.Department, b.AccountStatus
         FROM Users u
         LEFT JOIN UserDetails ud ON u.UserID = ud.UserID
         LEFT JOIN Staff s ON u.UserID = s.UserID
@@ -183,12 +181,13 @@ def login_user():
     conn.close()
     if not user or user['Password'] != password:
         return jsonify({'error': 'Invalid username or password'}), 401
-    # Attach staff/borrower details for routing
+
     if user['Role'] == 'Staff':
         user['staff'] = {'Position': user['Position']}
         user['borrower'] = None
     elif user['Role'] == 'Borrower':
         user['borrower'] = {
+            'BorrowerID': user['BorrowerID'],
             'Type': user['Type'],
             'Department': user['Department'],
             'AccountStatus': user['AccountStatus']
@@ -197,10 +196,8 @@ def login_user():
     else:
         user['staff'] = None
         user['borrower'] = None
-    # Remove password, username, and unrelated fields
-    user.pop('Password', None)
-    user.pop('Position', None)
-    user.pop('Type', None)
-    user.pop('Department', None)
-    user.pop('AccountStatus', None)
+
+    # remove sensitive/unneeded fields
+    for k in ['Password','Position','Type','Department','AccountStatus','BorrowerID']:
+        user.pop(k, None)
     return jsonify(user)
