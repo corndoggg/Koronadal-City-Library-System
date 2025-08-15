@@ -14,7 +14,7 @@ class Config:
     }
     CORS_ORIGINS = [
         "https://koronadal-library.site",
-        "https://5173-firebase-kcls-app-1750170042887.cluster-w5vd22whf5gmav2vgkomwtc4go.cloudworkstations.dev",
+        "https://api.koronadal-library.site",
         "http://localhost:5173"
     ]
     UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', os.path.join(os.getcwd(), 'uploads'))

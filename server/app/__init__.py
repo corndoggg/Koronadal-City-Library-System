@@ -2,7 +2,6 @@ from flask import Flask
 from .config import Config
 from .cors import init_cors
 from .routes import register_routes
-from .db import get_db_connection
 
 def create_app():
     app = Flask(__name__)
