@@ -18,7 +18,7 @@ def get_inventory(book_id):
             bi.StorageLocation AS location,      
             s.Name AS locationName
         FROM Book_Inventory bi
-        LEFT JOIN storages s ON bi.StorageLocation = s.ID
+        LEFT JOIN Storages s ON bi.StorageLocation = s.ID
         WHERE bi.Book_ID = %s
     """, (book_id,))
     inventory = cursor.fetchall()
@@ -42,7 +42,7 @@ def get_inventory_copy(copy_id):
             bi.StorageLocation AS location,
             s.Name AS locationName
         FROM Book_Inventory bi
-        LEFT JOIN storages s ON bi.StorageLocation = s.ID
+        LEFT JOIN Storages s ON bi.StorageLocation = s.ID
         WHERE bi.Copy_ID = %s
     """, (copy_id,))
     inventory = cursor.fetchone()

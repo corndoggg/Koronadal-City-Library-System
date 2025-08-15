@@ -11,7 +11,7 @@ def get_inventory_by_document(document_id):
     cursor.execute("""
         SELECT di.*, s.Name as Location
         FROM Document_Inventory di
-        LEFT JOIN storages s ON di.StorageLocation = s.ID
+        LEFT JOIN Storages s ON di.StorageLocation = s.ID
         WHERE di.Document_ID = %s
     """, (document_id,))
     entries = cursor.fetchall()
@@ -77,7 +77,7 @@ def get_inventory_by_storage(storage_id):
     cursor.execute("""
         SELECT di.*, s.Name as Location
         FROM Document_Inventory di
-        LEFT JOIN storages s ON di.StorageLocation = s.ID
+        LEFT JOIN Storages s ON di.StorageLocation = s.ID
         WHERE di.Storage_ID = %s
     """, (storage_id,))
     entry = cursor.fetchone()
