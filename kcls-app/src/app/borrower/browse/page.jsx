@@ -2,7 +2,9 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import {
   Box, Typography, TextField, Tabs, Tab, Grid, Card, CardContent, Chip, Stack, InputAdornment,
-  CircularProgress, Divider, Button, Snackbar, Alert, Fab, Badge, Drawer, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, RadioGroup, FormControlLabel, Radio
+  CircularProgress, Divider, Button, Snackbar, Alert, Fab, Badge, Drawer, IconButton, Dialog,
+  DialogTitle, DialogContent, DialogActions, RadioGroup, FormControlLabel, Radio,
+  Tooltip, Paper, Skeleton
 } from "@mui/material";
 import { Book, Article, Search, ShoppingCart, Close, Visibility } from "@mui/icons-material";
 import '@react-pdf-viewer/core/lib/styles/index.css';
@@ -167,18 +169,47 @@ const BrowseLibraryPage = () => {
 
   return (
     <Box p={3} pb={10}>
-      <Typography variant="h4" fontWeight={700} mb={2}>Browse Library</Typography>
-      <Stack direction="row" spacing={2} alignItems="center" mb={3}>
+      {/* Header / Filters Container */}
+      <Paper
+        elevation={0}
+        sx={{
+          p: 2,
+          mb: 3,
+          border: theme => `2px solid ${theme.palette.divider}`,
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: 2,
+          borderRadius: 1,
+          bgcolor: 'background.paper'
+        }}
+      >
+        <Box>
+          <Typography variant="h5" fontWeight={800} lineHeight={1}>
+            Browse Library
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Search & add items to your borrow cart
+          </Typography>
+        </Box>
         <TextField
-          placeholder="Search books or documents..."
+          placeholder="Search..."
           value={search}
           onChange={e => setSearch(e.target.value)}
-          InputProps={{ startAdornment: (<InputAdornment position="start"><Search /></InputAdornment>) }}
-          sx={{ width: 350 }}
+          InputProps={{
+            startAdornment: (<InputAdornment position="start"><Search fontSize="small" /></InputAdornment>),
+          }}
+          size="small"
+          sx={{ width: 260 }}
         />
         <TextField
-          select label="Filter by" value={searchKey} onChange={e => setSearchKey(e.target.value)}
-          sx={{ width: 150 }} size="small" SelectProps={{ native: true }}
+          select
+          label="Filter Field"
+            value={searchKey}
+            onChange={e => setSearchKey(e.target.value)}
+            size="small"
+            sx={{ width: 160 }}
+            SelectProps={{ native: true }}
         >
           <option value="All">All</option>
           <option value="Title">Title</option>
@@ -187,15 +218,55 @@ const BrowseLibraryPage = () => {
           <option value="ISBN">ISBN</option>
           <option value="Category">Category</option>
         </TextField>
-        <Tabs value={tab} onChange={(_, v) => setTab(v)}>
-          <Tab label="Books" icon={<Book />} iconPosition="start" />
-          <Tab label="Documents" icon={<Article />} iconPosition="start" />
+        <Tabs
+          value={tab}
+          onChange={(_, v) => setTab(v)}
+          sx={{
+            ml: 'auto',
+            '& .MuiTabs-flexContainer': { gap: 1 },
+            '& .MuiTab-root': {
+              minHeight: 40,
+              border: theme => `1.5px solid ${theme.palette.divider}`,
+              borderRadius: 1,
+              px: 2,
+              textTransform: 'none',
+              fontWeight: 600
+            },
+            '& .Mui-selected': {
+              bgcolor: theme => theme.palette.background.paper,
+              borderColor: theme => theme.palette.primary.main,
+              color: 'primary.main !important'
+            }
+          }}
+        >
+          <Tab label="Books" icon={<Book fontSize="small" />} iconPosition="start" />
+          <Tab label="Documents" icon={<Article fontSize="small" />} iconPosition="start" />
         </Tabs>
-      </Stack>
+      </Paper>
+
+      {/* Results */}
       {loading ? (
-        <Box textAlign="center" py={6}><CircularProgress /></Box>
+        <Grid container spacing={2}>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Grid item xs={12} sm={6} md={4} lg={3} key={i}>
+              <Paper
+                sx={{
+                  p: 2,
+                  border: theme => `2px solid ${theme.palette.divider}`,
+                  borderRadius: 1
+                }}
+              >
+                <Skeleton variant="rectangular" height={110} sx={{ mb: 1 }} />
+                <Skeleton width="60%" />
+                <Skeleton width="80%" />
+                <Skeleton width="40%" />
+                <Skeleton variant="rectangular" height={34} sx={{ mt: 2, borderRadius: 0.5 }} />
+              </Paper>
+            </Grid>
+          ))}
+        </Grid>
       ) : (
-        <Grid container spacing={3}>
+        <Grid container spacing={2}>
           {(tab === 0
             ? filterItems(books, ["Title", "Author", "Publisher", "ISBN", "Category", "CallNumber", "Edition", "Description"])
             : filterItems(documents, ["Title", "Type", "Author", "Publisher", "Category", "Description"])
@@ -203,64 +274,137 @@ const BrowseLibraryPage = () => {
             const isBook = tab === 0;
             const availableCount = (item.inventory || []).filter(inv => (inv.availability || inv.Availability) === "Available").length;
             const docTypes = !isBook ? getAvailableDocTypes(item) : [];
-            // --- Add: show digital view button if document is public and has digital file ---
             const showDigitalView = !isBook && (item.File_Path || item.file_path) && (item.Sensitivity === "Public" || item.sensitivity === "Public");
+
+            const disabledReason = (() => {
+              if (isBook) {
+                if (isItemBorrowedOrPending(item, true)) return "Already borrowed or pending";
+                if (isInCart(item, true)) return "Already in cart";
+                if (availableCount === 0) return "No copies available";
+              } else {
+                if (docTypes.length === 0) return "No copies available";
+                if (docTypes.every(dt => isItemBorrowedOrPending(item, false, dt) || isInCart(item, false, dt)))
+                  return "All variants borrowed or in cart";
+              }
+              return null;
+            })();
+
+            const addDisabled = !!disabledReason || borrowLoading;
+
             return (
               <Grid item xs={12} sm={6} md={4} lg={3} key={item.Book_ID || item.Document_ID}>
-                <Card sx={{ borderRadius: 3, boxShadow: 4, height: "100%" }}>
-                  <CardContent>
-                    <Stack direction="row" alignItems="center" spacing={1} mb={1}>
-                      {isBook ? <Book color="primary" /> : <Article color="secondary" />}
-                      <Typography variant="h6" fontWeight={600}>{item.Title}</Typography>
-                    </Stack>
-                    <Divider sx={{ my: 1 }} />
-                    {renderDetails(item, isBook)}
-                    <Chip label={isBook ? "Book" : "Document"} color={isBook ? "primary" : "secondary"} size="small" sx={{ mt: 2, mr: 1 }} />
-                    <Chip label={`Available: ${availableCount}`} color={availableCount > 0 ? "success" : "default"} size="small" sx={{ mt: 2 }} />
-                    <Box mt={2}>
-                      <Button
-                        variant="outlined" color="primary" fullWidth
-                        disabled={
-                          borrowLoading ||
-                          (isBook
-                            ? isItemBorrowedOrPending(item, true)
-                            : docTypes.length === 0 ||
-                              docTypes.every(dt => isItemBorrowedOrPending(item, false, dt) || isInCart(item, false, dt))
-                          ) ||
-                          isInCart(item, isBook) ||
-                          availableCount === 0
-                        }
-                        onClick={() => handleAddToCart(item, isBook)}
+                <Paper
+                  elevation={0}
+                  sx={{
+                    height: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    p: 2,
+                    border: theme => `2px solid ${theme.palette.divider}`,
+                    borderRadius: 1,
+                    bgcolor: 'background.paper',
+                    position: 'relative',
+                    '&:hover': {
+                      borderColor: theme => theme.palette.primary.main
+                    }
+                  }}
+                >
+                  {/* Type Badge */}
+                  <Chip
+                    label={isBook ? 'BOOK' : 'DOCUMENT'}
+                    size="small"
+                    color={isBook ? 'primary' : 'secondary'}
+                    sx={{
+                      position: 'absolute',
+                      top: 8,
+                      right: 8,
+                      fontWeight: 700,
+                      borderRadius: 0.5
+                    }}
+                  />
+                  <Stack direction="row" alignItems="flex-start" spacing={1} mb={1}>
+                    <Box
+                      sx={{
+                        flexGrow: 1,
+                        pr: 1
+                      }}
+                    >
+                      <Typography
+                        variant="subtitle1"
+                        fontWeight={700}
+                        lineHeight={1.15}
+                        sx={{ mb: 0.5 }}
+                        noWrap
+                        title={item.Title}
                       >
-                        {isBook
-                          ? isItemBorrowedOrPending(item, true)
-                            ? "Already Borrowed or Pending"
-                            : isInCart(item, true)
-                            ? "In Cart"
-                            : availableCount === 0
-                            ? "Not Available"
-                            : "Add to Cart"
-                          : docTypes.length === 0
-                          ? "Not Available"
-                          : docTypes.every(dt => isItemBorrowedOrPending(item, false, dt) || isInCart(item, false, dt))
-                          ? "Already Borrowed or In Cart"
-                          : "Add to Cart"}
-                      </Button>
-                      {/* Digital View Button */}
-                      {showDigitalView && (
-                        <Button
-                          variant="contained"
-                          color="secondary"
-                          fullWidth
-                          sx={{ mt: 1 }}
-                          onClick={() => handleViewPdf(item.File_Path || item.file_path)}
-                        >
-                          View Digital Copy
-                        </Button>
-                      )}
+                        {item.Title}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" noWrap title={item.Author || item.Publisher}>
+                        {(item.Author || item.Publisher || '').slice(0, 54)}
+                      </Typography>
                     </Box>
-                  </CardContent>
-                </Card>
+                  </Stack>
+
+                  <Divider sx={{ my: 1 }} />
+
+                  <Box flexGrow={1}>
+                    {renderDetails(item, isBook)}
+                  </Box>
+
+                  <Stack direction="row" spacing={1} mt={2} flexWrap="wrap">
+                    <Chip
+                      label={`Available: ${availableCount}`}
+                      size="small"
+                      color={availableCount > 0 ? "success" : "default"}
+                      sx={{ fontWeight: 600 }}
+                    />
+                    {!isBook && docTypes.map(t => (
+                      <Chip
+                        key={t}
+                        label={t}
+                        size="small"
+                        variant="outlined"
+                        color="info"
+                        sx={{ fontWeight: 600 }}
+                      />
+                    ))}
+                  </Stack>
+
+                  <Box mt={2}>
+                    <Tooltip title={disabledReason || 'Add to borrow cart'} arrow disableInteractive>
+                      <span>
+                        <Button
+                          fullWidth
+                          variant="contained"
+                          color="primary"
+                          size="small"
+                          disabled={addDisabled}
+                          onClick={() => handleAddToCart(item, isBook)}
+                          sx={{
+                            fontWeight: 600,
+                            borderRadius: 0.75,
+                            boxShadow: 'none'
+                          }}
+                        >
+                          {disabledReason ? disabledReason : 'Add to Cart'}
+                        </Button>
+                      </span>
+                    </Tooltip>
+                    {showDigitalView && (
+                      <Button
+                        fullWidth
+                        variant="outlined"
+                        color="secondary"
+                        size="small"
+                        sx={{ mt: 1, fontWeight: 600, borderRadius: 0.75 }}
+                        onClick={() => handleViewPdf(item.File_Path || item.file_path)}
+                        startIcon={<Visibility fontSize="small" />}
+                      >
+                        View Digital
+                      </Button>
+                    )}
+                  </Box>
+                </Paper>
               </Grid>
             );
           })}
@@ -269,81 +413,208 @@ const BrowseLibraryPage = () => {
             : filterItems(documents, ["Title", "Type", "Author", "Publisher", "Category", "Description"])
           ).length === 0 && (
             <Grid item xs={12}>
-              <Box textAlign="center" py={6}>
-                <Typography color="text.secondary">No {tab === 0 ? "books" : "documents"} found.</Typography>
-              </Box>
+              <Paper
+                sx={{
+                  p: 6,
+                  textAlign: 'center',
+                  border: theme => `2px dashed ${theme.palette.divider}`,
+                  borderRadius: 1,
+                  bgcolor: 'background.paper'
+                }}
+              >
+                <Typography color="text.secondary">
+                  No {tab === 0 ? 'books' : 'documents'} match your search.
+                </Typography>
+              </Paper>
             </Grid>
           )}
         </Grid>
       )}
+
       {/* Floating Cart Button */}
-      <Fab color="primary" sx={{ position: "fixed", bottom: 32, right: 32, zIndex: 1200 }} onClick={() => setCartOpen(true)}>
-        <Badge badgeContent={cart.length} color="error"><ShoppingCart /></Badge>
-      </Fab>
+      <Tooltip title="Open Borrow Cart">
+        <Fab
+          color="primary"
+          sx={{
+            position: "fixed",
+            bottom: 32,
+            right: 32,
+            borderRadius: 1,
+            boxShadow: '0 4px 14px rgba(0,0,0,0.25)'
+          }}
+          onClick={() => setCartOpen(true)}
+        >
+          <Badge badgeContent={cart.length} color="error">
+            <ShoppingCart />
+          </Badge>
+        </Fab>
+      </Tooltip>
+
       {/* Cart Drawer */}
-      <Drawer anchor="right" open={cartOpen} onClose={() => setCartOpen(false)} PaperProps={{ sx: { width: 340, p: 2 } }}>
-        <Box display="flex" alignItems="center" justifyContent="space-between" p={2}>
-          <Typography variant="h6" fontWeight={700}>Borrow Cart</Typography>
-          <IconButton onClick={() => setCartOpen(false)}><Close /></IconButton>
+      <Drawer
+        anchor="right"
+        open={cartOpen}
+        onClose={() => setCartOpen(false)}
+        PaperProps={{
+          sx: {
+            width: 360,
+            borderLeft: theme => `2px solid ${theme.palette.divider}`,
+            borderRadius: 0
+          }
+        }}
+      >
+        <Box p={2} display="flex" alignItems="center" justifyContent="space-between">
+          <Typography variant="subtitle1" fontWeight={800}>Borrow Cart</Typography>
+          <IconButton size="small" onClick={() => setCartOpen(false)}><Close fontSize="small" /></IconButton>
         </Box>
         <Divider />
-        <Box p={2}>
+        <Box p={2} sx={{ flexGrow: 1, overflowY: 'auto' }}>
           {cart.length === 0 ? (
-            <Typography color="text.secondary" align="center" mt={4}>Your cart is empty.</Typography>
+            <Typography color="text.secondary" align="center" mt={4}>
+              Your cart is empty.
+            </Typography>
           ) : (
-            <>
-              <Stack direction="column" spacing={1}>
-                {cart.map((ci, idx) => (
-                  <Chip
-                    key={idx}
-                    label={ci.type === "Book" ? `${ci.type}: ${ci.item.Title}` : `${ci.type}: ${ci.item.Title} (${ci.copyType || "Physical"})`}
-                    onDelete={() => handleRemoveFromCart(idx)}
-                    color={ci.type === "Book" ? "primary" : "secondary"}
-                    sx={{ mb: 1 }}
-                  />
-                ))}
-              </Stack>
-              <TextField label="Purpose" value={purpose} onChange={e => setPurpose(e.target.value)} fullWidth sx={{ mt: 2 }} required />
-              <Box sx={{ mt: 2 }}>
-                <Typography variant="body2" sx={{ mb: 0.5 }}>Return Date</Typography>
-                <TextField
-                  label="Return Date" type="date"
-                  value={returnDate ? new Date(returnDate).toISOString().slice(0, 10) : ""}
-                  onChange={e => setReturnDate(e.target.value)}
-                  fullWidth sx={{ mt: 2 }} InputLabelProps={{ shrink: true }} required
-                />
-              </Box>
-              <Button variant="contained" color="success" sx={{ mt: 3 }} fullWidth disabled={borrowLoading} onClick={handleBorrowAll}>
-                {borrowLoading ? "Processing..." : "Borrow All"}
+            <Stack spacing={1}>
+              {cart.map((ci, idx) => (
+                <Paper
+                  key={idx}
+                  variant="outlined"
+                  sx={{
+                    p: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 0.5,
+                    borderRadius: 1,
+                    border: theme => `1.5px solid ${theme.palette.divider}`
+                  }}
+                >
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Typography fontSize={13} fontWeight={700} noWrap title={ci.item.Title}>
+                      {ci.item.Title}
+                    </Typography>
+                    <Chip
+                      size="small"
+                      label={ci.type === 'Book' ? 'BOOK' : (ci.copyType || 'DOC')}
+                      color={ci.type === 'Book' ? 'primary' : 'secondary'}
+                      sx={{ fontSize: 10, fontWeight: 700 }}
+                    />
+                  </Stack>
+                  {ci.type === 'Document' && (
+                    <Typography variant="caption" color="text.secondary">
+                      {ci.copyType} copy
+                    </Typography>
+                  )}
+                  <Button
+                    onClick={() => handleRemoveFromCart(idx)}
+                    size="small"
+                    color="error"
+                    variant="outlined"
+                    sx={{ alignSelf: 'flex-end', mt: 0.5, borderRadius: 0.75, fontSize: 11 }}
+                  >
+                    Remove
+                  </Button>
+                </Paper>
+              ))}
+
+              <Divider sx={{ my: 1 }} />
+
+              <TextField
+                label="Purpose"
+                value={purpose}
+                onChange={e => setPurpose(e.target.value)}
+                fullWidth
+                size="small"
+                multiline
+                minRows={2}
+              />
+              <TextField
+                label="Return Date"
+                type="date"
+                value={returnDate ? new Date(returnDate).toISOString().slice(0, 10) : ""}
+                onChange={e => setReturnDate(e.target.value)}
+                fullWidth
+                size="small"
+                InputLabelProps={{ shrink: true }}
+              />
+
+              <Button
+                variant="contained"
+                color="success"
+                fullWidth
+                disabled={borrowLoading}
+                onClick={handleBorrowAll}
+                sx={{ mt: 1, fontWeight: 700, borderRadius: 0.75 }}
+              >
+                {borrowLoading ? "Processing..." : `Submit Borrow (${cart.length})`}
               </Button>
-            </>
+            </Stack>
           )}
         </Box>
       </Drawer>
-      {/* Document Type Selection Dialog */}
+
+      {/* Document Type Dialog */}
       <Dialog open={docTypeDialogOpen} onClose={() => setDocTypeDialogOpen(false)}>
-        <DialogTitle>Select Document Type</DialogTitle>
-        <DialogContent>
-          <RadioGroup value={selectedDocType} onChange={e => setSelectedDocType(e.target.value)}>
+        <DialogTitle
+          sx={{
+            fontWeight: 800,
+            borderBottom: theme => `2px solid ${theme.palette.divider}`,
+            py: 1.5
+          }}
+        >
+          Select Document Type
+        </DialogTitle>
+        <DialogContent sx={{ mt: 1 }}>
+          <RadioGroup
+            value={selectedDocType}
+            onChange={e => setSelectedDocType(e.target.value)}
+          >
             {selectedDoc && getAvailableDocTypes(selectedDoc).map(type => (
-              <FormControlLabel key={type} value={type} control={<Radio />} label={type} />
+              <FormControlLabel
+                key={type}
+                value={type}
+                control={<Radio />}
+                label={type}
+              />
             ))}
           </RadioGroup>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDocTypeDialogOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleConfirmAddDoc} disabled={!selectedDocType}>Add to Cart</Button>
+        <DialogActions sx={{ px: 2, pb: 2 }}>
+          <Button onClick={() => setDocTypeDialogOpen(false)} size="small" variant="text">
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={handleConfirmAddDoc}
+            disabled={!selectedDocType}
+          >
+            Add
+          </Button>
         </DialogActions>
       </Dialog>
-      {/* PDF Viewer Component */}
+
+      {/* PDF Viewer */}
       <DocumentPDFViewer
         open={pdfDialogOpen}
         onClose={() => setPdfDialogOpen(false)}
         fileUrl={pdfUrl}
         title="Viewing PDF Document"
       />
-      <Snackbar open={toast.open} autoHideDuration={3000} onClose={() => setToast({ ...toast, open: false })} anchorOrigin={{ vertical: "bottom", horizontal: "right" }}>
-        <Alert onClose={() => setToast({ ...toast, open: false })} severity={toast.severity} variant="filled">{toast.message}</Alert>
+
+      {/* Toast */}
+      <Snackbar
+        open={toast.open}
+        autoHideDuration={3000}
+        onClose={() => setToast({ ...toast, open: false })}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+      >
+        <Alert
+          onClose={() => setToast({ ...toast, open: false })}
+          severity={toast.severity}
+          variant="filled"
+        >
+          {toast.message}
+        </Alert>
       </Snackbar>
     </Box>
   );

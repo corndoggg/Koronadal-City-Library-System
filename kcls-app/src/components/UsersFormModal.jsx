@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Dialog, DialogTitle, DialogContent, DialogActions,
+  Dialog, DialogTitle, DialogContent, DialogActions, Typography,
   Button, TextField, MenuItem, Grid, Box, Select, InputLabel, FormControl, useTheme
 } from '@mui/material';
 
@@ -98,13 +98,32 @@ const UsersFormModal = ({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+      PaperProps={{
+        elevation: 0,
+        sx: {
+          borderRadius: 1,
+          border: `2px solid ${theme.palette.divider}`,
+          boxShadow: '0 4px 14px rgba(0,0,0,0.12)',
+          backgroundImage: 'none'
+        }
+      }}
+    >
       <DialogTitle
         sx={{
-          bgcolor: theme.palette.primary.main,
-          color: theme.palette.primary.contrastText,
-          fontWeight: 700,
-          letterSpacing: 1
+          px: 2,
+          py: 1.5,
+          fontSize: 18,
+          fontWeight: 800,
+          letterSpacing: .5,
+          bgcolor: theme.palette.background.default,
+          borderBottom: `2px solid ${theme.palette.divider}`,
+          borderTopLeftRadius: 1,
+          borderTopRightRadius: 1
         }}
       >
         {isEdit ? 'Edit User' : 'Add User'}
@@ -112,176 +131,232 @@ const UsersFormModal = ({
       <form onSubmit={handleSubmit}>
         <DialogContent
           dividers
-          sx={{ background: theme.palette.background.default }}
+          sx={{
+            bgcolor: theme.palette.background.default,
+            p: 2.25,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+            '& .MuiTextField-root, & .MuiFormControl-root': {
+              borderRadius: 1
+            }
+          }}
         >
-          <Grid container spacing={2}>
-            {/* 1. User (Account) Section */}
-            <Grid item xs={12}>
-              <Box fontWeight={700} color={theme.palette.primary.main} mb={1}>
+          {/* Section: Account */}
+          <Box
+            sx={{
+              p: 1.5,
+              border: `1.5px solid ${theme.palette.divider}`,
+              borderRadius: 1,
+              bgcolor: 'background.paper',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 2
+            }}
+          >
+            <Box display="flex" alignItems="center" justifyContent="space-between">
+              <Typography fontSize={14} fontWeight={800} letterSpacing={.5}>
                 User Account
-              </Box>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Username"
-                value={username}
-                onChange={e => setUsername(e.target.value)}
-                fullWidth
-                required
-                disabled={isEdit}
-                sx={{ background: theme.palette.background.paper }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Password"
-                type="password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                fullWidth
-                required={!isEdit}
-                placeholder={isEdit ? "Leave blank to keep current" : ""}
-                sx={{ background: theme.palette.background.paper }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth sx={{ background: theme.palette.background.paper }}>
-                <InputLabel>Role</InputLabel>
-                <Select
-                  value={role}
-                  label="Role"
-                  onChange={e => setRole(e.target.value)}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Basic login credentials
+              </Typography>
+            </Box>
+            <Grid container spacing={1.5}>
+              <Grid item xs={12} md={4}>
+                <TextField
+                  label="Username"
+                  value={username}
+                  onChange={e => setUsername(e.target.value)}
+                  fullWidth
+                  required
+                  size="small"
                   disabled={isEdit}
-                >
-                  <MenuItem value="Staff">Staff</MenuItem>
-                  <MenuItem value="Borrower">Borrower</MenuItem>
-                </Select>
-              </FormControl>
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <TextField
+                  label="Password"
+                  type="password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  fullWidth
+                  required={!isEdit}
+                  placeholder={isEdit ? "Leave blank to keep" : ""}
+                  size="small"
+                  helperText={!isEdit && password && password.length < 6 ? "Min 6 chars" : " "}
+                  error={!isEdit && !!password && password.length < 6}
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Role</InputLabel>
+                  <Select
+                    value={role}
+                    label="Role"
+                    onChange={e => setRole(e.target.value)}
+                    disabled={isEdit}
+                  >
+                    <MenuItem value="Staff">Staff</MenuItem>
+                    <MenuItem value="Borrower">Borrower</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
             </Grid>
+          </Box>
 
-            {/* 2. UserDetails Section */}
-            <Grid item xs={12} mt={2}>
-              <Box fontWeight={700} color={theme.palette.primary.main} mb={1}>
+          {/* Section: Personal */}
+          <Box
+            sx={{
+              p: 1.5,
+              border: `1.5px solid ${theme.palette.divider}`,
+              borderRadius: 1,
+              bgcolor: 'background.paper',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 2
+            }}
+          >
+            <Box display="flex" alignItems="center" justifyContent="space-between">
+              <Typography fontSize={14} fontWeight={800} letterSpacing={.5}>
                 Personal Details
-              </Box>
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Identity & contact
+              </Typography>
+            </Box>
+            <Grid container spacing={1.5}>
+              <Grid item xs={12} md={4}>
+                <TextField
+                  label="First Name"
+                  name="firstname"
+                  value={details.firstname}
+                  onChange={handleDetailsChange}
+                  fullWidth
+                  required
+                  size="small"
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <TextField
+                  label="Middle Name"
+                  name="middlename"
+                  value={details.middlename}
+                  onChange={handleDetailsChange}
+                  fullWidth
+                  size="small"
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <TextField
+                  label="Last Name"
+                  name="lastname"
+                  value={details.lastname}
+                  onChange={handleDetailsChange}
+                  fullWidth
+                  required
+                  size="small"
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <TextField
+                  label="Email"
+                  name="email"
+                  type="email"
+                  value={details.email}
+                  onChange={handleDetailsChange}
+                  fullWidth
+                  required
+                  size="small"
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <TextField
+                  label="Contact Number"
+                  name="contactnumber"
+                  value={details.contactnumber}
+                  onChange={handleDetailsChange}
+                  fullWidth
+                  size="small"
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <TextField
+                  label="Date of Birth"
+                  name="dateofbirth"
+                  type="date"
+                  value={details.dateofbirth}
+                  onChange={handleDetailsChange}
+                  fullWidth
+                  size="small"
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <TextField
+                  label="Street"
+                  name="street"
+                  value={details.street}
+                  onChange={handleDetailsChange}
+                  fullWidth
+                  size="small"
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <TextField
+                  label="Barangay"
+                  name="barangay"
+                  value={details.barangay}
+                  onChange={handleDetailsChange}
+                  fullWidth
+                  size="small"
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <TextField
+                  label="City"
+                  name="city"
+                  value={details.city}
+                  onChange={handleDetailsChange}
+                  fullWidth
+                  size="small"
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <TextField
+                  label="Province"
+                  name="province"
+                  value={details.province}
+                  onChange={handleDetailsChange}
+                  fullWidth
+                  size="small"
+                />
+              </Grid>
             </Grid>
-            <Grid item xs={12} sm={4}>
-              <TextField
-                label="First Name"
-                name="firstname"
-                value={details.firstname}
-                onChange={handleDetailsChange}
-                fullWidth
-                required
-                sx={{ background: theme.palette.background.paper }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <TextField
-                label="Middle Name"
-                name="middlename"
-                value={details.middlename}
-                onChange={handleDetailsChange}
-                fullWidth
-                sx={{ background: theme.palette.background.paper }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <TextField
-                label="Last Name"
-                name="lastname"
-                value={details.lastname}
-                onChange={handleDetailsChange}
-                fullWidth
-                required
-                sx={{ background: theme.palette.background.paper }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Email"
-                name="email"
-                value={details.email}
-                onChange={handleDetailsChange}
-                fullWidth
-                required
-                type="email"
-                sx={{ background: theme.palette.background.paper }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Contact Number"
-                name="contactnumber"
-                value={details.contactnumber}
-                onChange={handleDetailsChange}
-                fullWidth
-                sx={{ background: theme.palette.background.paper }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Street"
-                name="street"
-                value={details.street}
-                onChange={handleDetailsChange}
-                fullWidth
-                sx={{ background: theme.palette.background.paper }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Barangay"
-                name="barangay"
-                value={details.barangay}
-                onChange={handleDetailsChange}
-                fullWidth
-                sx={{ background: theme.palette.background.paper }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="City"
-                name="city"
-                value={details.city}
-                onChange={handleDetailsChange}
-                fullWidth
-                sx={{ background: theme.palette.background.paper }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Province"
-                name="province"
-                value={details.province}
-                onChange={handleDetailsChange}
-                fullWidth
-                sx={{ background: theme.palette.background.paper }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Date of Birth"
-                name="dateofbirth"
-                type="date"
-                value={details.dateofbirth}
-                onChange={handleDetailsChange}
-                fullWidth
-                InputLabelProps={{ shrink: true }}
-                sx={{ background: theme.palette.background.paper }}
-              />
-            </Grid>
+          </Box>
 
-            {/* 3. Staff or Borrower Section */}
-            {role === 'Staff' && (
-              <>
-                <Grid item xs={12} mt={2}>
-                  <Box fontWeight={700} color={theme.palette.primary.main} mb={1}>
-                    Staff Details
-                  </Box>
-                </Grid>
-                <Grid item xs={12}>
-                  <FormControl fullWidth sx={{ background: theme.palette.background.paper }}>
+          {/* Role-specific */}
+          {role === 'Staff' && (
+            <Box
+              sx={{
+                p: 1.5,
+                border: `1.5px solid ${theme.palette.divider}`,
+                borderRadius: 1,
+                bgcolor: 'background.paper',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 2
+              }}
+            >
+              <Box display="flex" justifyContent="space-between" alignItems="center">
+                <Typography fontSize={14} fontWeight={800}>Staff Details</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Position assignment
+                </Typography>
+              </Box>
+              <Grid container spacing={1.5}>
+                <Grid item xs={12} md={6}>
+                  <FormControl fullWidth size="small">
                     <InputLabel>Position</InputLabel>
                     <Select
                       name="position"
@@ -296,17 +371,31 @@ const UsersFormModal = ({
                     </Select>
                   </FormControl>
                 </Grid>
-              </>
-            )}
-            {role === 'Borrower' && (
-              <>
-                <Grid item xs={12} mt={2}>
-                  <Box fontWeight={700} color={theme.palette.primary.main} mb={1}>
-                    Borrower Details
-                  </Box>
-                </Grid>
-                <Grid item xs={12} sm={4}>
-                  <FormControl fullWidth sx={{ background: theme.palette.background.paper }}>
+              </Grid>
+            </Box>
+          )}
+
+          {role === 'Borrower' && (
+            <Box
+              sx={{
+                p: 1.5,
+                border: `1.5px solid ${theme.palette.divider}`,
+                borderRadius: 1,
+                bgcolor: 'background.paper',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 2
+              }}
+            >
+              <Box display="flex" justifyContent="space-between" alignItems="center">
+                <Typography fontSize={14} fontWeight={800}>Borrower Details</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Classification & status
+                </Typography>
+              </Box>
+              <Grid container spacing={1.5}>
+                <Grid item xs={12} md={4}>
+                  <FormControl fullWidth size="small">
                     <InputLabel>Type</InputLabel>
                     <Select
                       name="type"
@@ -321,18 +410,18 @@ const UsersFormModal = ({
                     </Select>
                   </FormControl>
                 </Grid>
-                <Grid item xs={12} sm={4}>
+                <Grid item xs={12} md={4}>
                   <TextField
                     label="Department"
                     name="department"
                     value={borrower.department || ''}
                     onChange={handleBorrowerChange}
                     fullWidth
-                    sx={{ background: theme.palette.background.paper }}
+                    size="small"
                   />
                 </Grid>
-                <Grid item xs={12} sm={4}>
-                  <FormControl fullWidth sx={{ background: theme.palette.background.paper }}>
+                <Grid item xs={12} md={4}>
+                  <FormControl fullWidth size="small">
                     <InputLabel>Status</InputLabel>
                     <Select
                       name="accountstatus"
@@ -347,13 +436,37 @@ const UsersFormModal = ({
                     </Select>
                   </FormControl>
                 </Grid>
-              </>
-            )}
-          </Grid>
+              </Grid>
+            </Box>
+          )}
         </DialogContent>
-        <DialogActions sx={{ bgcolor: theme.palette.background.paper }}>
-          <Button onClick={onClose} color="secondary" variant="outlined">Cancel</Button>
-          <Button type="submit" color="primary" variant="contained">{isEdit ? 'Update' : 'Add'}</Button>
+        <DialogActions
+          sx={{
+            px: 2,
+            py: 1.25,
+            bgcolor: theme.palette.background.default,
+            borderTop: `2px solid ${theme.palette.divider}`,
+            borderBottomLeftRadius: 1,
+            borderBottomRightRadius: 1
+          }}
+        >
+          <Button
+            onClick={onClose}
+            variant="outlined"
+            size="small"
+            sx={{ borderRadius: 1, fontWeight: 600 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+              variant="contained"
+              size="small"
+              sx={{ borderRadius: 1, fontWeight: 700 }}
+              disabled={!username || (!isEdit && (!password || password.length < 6))}
+          >
+            {isEdit ? 'Update' : 'Add'}
+          </Button>
         </DialogActions>
       </form>
     </Dialog>

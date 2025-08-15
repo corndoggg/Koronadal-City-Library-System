@@ -2,9 +2,11 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import {
   Box, Typography, TextField, Snackbar, Alert, Pagination, Button, useTheme,
-  Card, CardContent, CardActions, CardMedia, IconButton, Tooltip, Grid, Dialog, DialogTitle, DialogContent, MenuItem, CircularProgress
+  IconButton, Tooltip, Grid, Stack,
+  CircularProgress, Chip, Paper
 } from '@mui/material';
-import { Article, Visibility, Edit, Close } from '@mui/icons-material';
+import { Article, Visibility, Edit, Close, Add } from '@mui/icons-material';
+import { alpha } from '@mui/material/styles';
 import DocumentFormModal from '../../../components/DocumentFormModal';
 import DocumentPDFViewer from '../../../components/DocumentPDFViewer';
 
@@ -104,118 +106,276 @@ const AdminDocumentManagementPage = () => {
   const placeholderImg = 'https://placehold.co/400x180?text=PDF+Document';
 
   return (
-    <Box p={3} sx={{ position: 'relative', minHeight: '100vh' }}>
+    <Box p={3} sx={{ position: 'relative', minHeight: '100vh', bgcolor: 'background.default' }}>
       {/* Header */}
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
+      <Paper
+        elevation={0}
+        sx={{
+            p: 2,
+            mb: 4,
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 2,
+            alignItems: 'center',
+            width: '100%',
+            border: theme => `2px solid ${theme.palette.divider}`,
+            borderRadius: 1,
+            bgcolor: 'background.paper'
+        }}
+      >
         <Box display="flex" alignItems="center" gap={1}>
-          <Article fontSize="large" color="primary" />
-          <Typography variant="h4" fontWeight={700}>Document Management</Typography>
+          <Article color="primary" />
+          <Typography variant="h6" fontWeight={800} letterSpacing={0.5}>
+            Document Management
+          </Typography>
         </Box>
         <TextField
-          label="Search by title, author, category..."
-          variant="outlined"
+          label="Search title / author / category"
           size="small"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          sx={{ width: 350, background: theme.palette.background.paper, borderRadius: 1 }}
+          sx={{ width: { xs: '100%', sm: 320 }, ml: 'auto' }}
         />
-      </Box>
+        <Button
+          variant="contained"
+          size="small"
+          startIcon={<Add />}
+          onClick={() => { setIsEdit(false); setEditDoc(null); setModalOpen(true); }}
+          sx={{ fontWeight: 700, borderRadius: 1 }}
+        >
+          Add Document
+        </Button>
+      </Paper>
 
-      {/* Loading Spinner */}
       {loading ? (
         <Box display="flex" justifyContent="center" alignItems="center" minHeight="40vh">
           <CircularProgress color="primary" size={48} />
         </Box>
       ) : (
         <>
-          {/* Cards Grid */}
-          <Grid container spacing={3}>
-            {currentDocs.map((doc) => (
-              <Grid item xs={12} sm={6} md={4} lg={3} key={doc.Document_ID}>
-                <Card sx={{
-                  borderRadius: 3, boxShadow: 3, height: '100%', display: 'flex',
-                  flexDirection: 'column', background: theme.palette.background.paper,
-                }}>
-                  <CardMedia
-                    component="img"
-                    src={placeholderImg}
-                    alt="PDF Placeholder"
+          <Grid container spacing={2.5}>
+            {currentDocs.map(doc => {
+              const copies = doc.inventory || [];
+              return (
+                <Grid item xs={12} sm={6} md={4} lg={3} key={doc.Document_ID}>
+                  <Paper
+                    elevation={0}
                     sx={{
-                      width: '100%', height: 180, objectFit: 'cover',
-                      borderTopLeftRadius: 12, borderTopRightRadius: 12,
+                      border: theme => `2px solid ${theme.palette.divider}`,
+                      borderRadius: 1,
+                      bgcolor: 'background.paper',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      height: '100%',
+                      position: 'relative',
+                      overflow: 'hidden',
+                      transition: 'border-color .18s, box-shadow .18s',
+                      '&:hover': {
+                        borderColor: 'primary.main',
+                        boxShadow: theme => `0 4px 16px ${alpha(theme.palette.primary.main, 0.12)}`
+                      }
                     }}
-                  />
-                  <CardContent sx={{ flexGrow: 1 }}>
-                    <Typography variant="h6" fontWeight={700} gutterBottom noWrap>{doc.Title}</Typography>
-                    <Typography variant="body2" color="text.secondary" noWrap>{doc.Author}</Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                      {doc.Category} &bull; {doc.Year}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">Dept: {doc.Department}</Typography>
-                    <br />
-                    <Typography variant="caption" color="text.secondary">Classification: {doc.Classification}</Typography>
-                    <br />
-                    <Typography variant="caption" color="text.secondary">Sensitivity: {doc.Sensitivity}</Typography>
-                    {/* Inventory Section */}
-                    {Array.isArray(doc.inventory) && doc.inventory.length > 0 && (
-                      <Box mt={2} sx={{ background: theme.palette.background.default, borderRadius: 1, p: 1 }}>
-                        <Box sx={{
-                          display: 'inline-block',
-                          px: 2,
-                          py: 0.5,
-                          mb: 1,
-                          borderRadius: 4,
-                          background: theme.palette.primary.main,
-                          color: theme.palette.primary.contrastText,
-                          fontWeight: 600,
-                          fontSize: 15,
-                          letterSpacing: 0.5,
-                        }}>
-                          Copies: {doc.inventory.length}
+                  >
+                    {/* Top banner */}
+                    <Box
+                      sx={{
+                        height: 100,
+                        background: theme =>
+                          `linear-gradient(135deg, ${alpha(theme.palette.primary.main,0.12)}, ${alpha(theme.palette.primary.main,0.02)})`,
+                        borderBottom: theme => `1.5px solid ${theme.palette.divider}`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 42,
+                        color: 'primary.main',
+                        fontWeight: 800,
+                        letterSpacing: 1
+                      }}
+                    >
+                      PDF
+                    </Box>
+
+                    <Box sx={{ p: 1.75, display: 'flex', flexDirection: 'column', gap: 0.5, flexGrow: 1 }}>
+                      <Typography
+                        variant="subtitle1"
+                        fontWeight={700}
+                        noWrap
+                        title={doc.Title}
+                        sx={{ lineHeight: 1.15 }}
+                      >
+                        {doc.Title}
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        noWrap
+                      >
+                        {doc.Author || '—'}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {doc.Category || '—'} &bull; {doc.Year || '—'}
+                      </Typography>
+                      <Stack direction="row" spacing={0.5} flexWrap="wrap" mt={0.5}>
+                        <Chip
+                          size="small"
+                          label={doc.Department || 'No Dept'}
+                          sx={{ fontSize: 10, fontWeight: 600, borderRadius: 0.5 }}
+                        />
+                        <Chip
+                          size="small"
+                          color="info"
+                          label={doc.Classification || 'Class?'}
+                          sx={{ fontSize: 10, fontWeight: 600, borderRadius: 0.5 }}
+                        />
+                        <Chip
+                          size="small"
+                          color={doc.Sensitivity === 'Public' ? 'success' : 'warning'}
+                          label={doc.Sensitivity || 'Sensitivity'}
+                          sx={{ fontSize: 10, fontWeight: 600, borderRadius: 0.5 }}
+                        />
+                        <Chip
+                          size="small"
+                          color="primary"
+                          label={`Copies: ${copies.length}`}
+                          sx={{ fontSize: 10, fontWeight: 700, borderRadius: 0.5 }}
+                        />
+                      </Stack>
+
+                      {copies.length > 0 && (
+                        <Box
+                          mt={1}
+                          sx={{
+                            p: 1,
+                            border: theme => `1.5px solid ${theme.palette.divider}`,
+                            borderRadius: 0.75,
+                            bgcolor: theme => alpha(theme.palette.primary.main, 0.03),
+                            maxHeight: 120,
+                            overflowY: 'auto',
+                            '&::-webkit-scrollbar': { width: 6 },
+                            '&::-webkit-scrollbar-thumb': {
+                              background: theme => alpha(theme.palette.primary.main, 0.25),
+                              borderRadius: 3
+                            }
+                          }}
+                        >
+                          {copies.slice(0, 4).map((inv, i) => (
+                            <Box
+                              key={i}
+                              sx={{
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                gap: 0.75,
+                                mb: 0.75,
+                                fontSize: 11,
+                                lineHeight: 1.2
+                              }}
+                            >
+                              <Chip
+                                size="small"
+                                label={inv.availability || '—'}
+                                color={inv.availability === 'Available' ? 'success' : 'warning'}
+                                sx={{ height: 20, fontSize: 10, fontWeight: 600 }}
+                              />
+                              <Chip
+                                size="small"
+                                variant="outlined"
+                                label={inv.condition || 'Cond?'}
+                                sx={{ height: 20, fontSize: 10, fontWeight: 600 }}
+                              />
+                              <Chip
+                                size="small"
+                                variant="outlined"
+                                label={inv.location || 'Loc?'}
+                                sx={{ height: 20, fontSize: 10, fontWeight: 600 }}
+                              />
+                            </Box>
+                          ))}
+                          {copies.length > 4 && (
+                            <Typography variant="caption" color="text.secondary">
+                              +{copies.length - 4} more…
+                            </Typography>
+                          )}
                         </Box>
-                        {doc.inventory.map((inv, idx) => (
-                          <Box key={idx} sx={{ fontSize: 13, color: 'text.secondary', mb: 0.5, pl: 1 }}>
-                            <span>
-                              <b>Availability:</b> {inv.availability || "-"} &nbsp;
-                              <b>Condition:</b> {inv.condition || "-"} &nbsp;
-                              <b>Location:</b> {inv.location || "-"}
-                            </span>
-                          </Box>
-                        ))}
-                      </Box>
-                    )}
-                  </CardContent>
-                  <CardActions sx={{ justifyContent: 'flex-end', pb: 2 }}>
-                    <Tooltip title="View File">
-                      <IconButton color="primary" onClick={() => handleViewPdf(doc.File_Path)}>
-                        <Visibility fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Edit Document">
-                      <IconButton color="secondary" onClick={() => handleOpenEdit(doc)}>
-                        <Edit fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                  </CardActions>
-                </Card>
-              </Grid>
-            ))}
+                      )}
+                    </Box>
+
+                    <Box
+                      sx={{
+                        px: 1,
+                        py: 0.75,
+                        borderTop: theme => `1.5px solid ${theme.palette.divider}`,
+                        display: 'flex',
+                        justifyContent: 'flex-end',
+                        gap: 0.5
+                      }}
+                    >
+                      <Tooltip title="View PDF">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleViewPdf(doc.File_Path)}
+                          sx={{
+                            borderRadius: 0.75,
+                            border: theme => `1px solid ${alpha(theme.palette.primary.main,0.4)}`,
+                            '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.12) }
+                          }}
+                          color="primary"
+                        >
+                          <Visibility fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Edit">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleOpenEdit(doc)}
+                          sx={{
+                            borderRadius: 0.75,
+                            border: theme => `1px solid ${alpha(theme.palette.secondary.main,0.4)}`,
+                            '&:hover': { bgcolor: alpha(theme.palette.secondary.main, 0.12) }
+                          }}
+                          color="secondary"
+                        >
+                          <Edit fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  </Paper>
+                </Grid>
+              );
+            })}
             {currentDocs.length === 0 && (
               <Grid item xs={12}>
-                <Box sx={{ textAlign: 'center', py: 6 }}>
-                  <Typography variant="body2" color="text.secondary">No documents found.</Typography>
-                </Box>
+                <Paper
+                  elevation={0}
+                  sx={{
+                    textAlign: 'center',
+                    py: 6,
+                    border: theme => `2px dashed ${theme.palette.divider}`,
+                    borderRadius: 1,
+                    bgcolor: 'background.paper'
+                  }}
+                >
+                  <Typography variant="body2" color="text.secondary">
+                    No documents found.
+                  </Typography>
+                </Paper>
               </Grid>
             )}
           </Grid>
 
-          {/* Pagination */}
           <Box display="flex" justifyContent="center" mt={4}>
             <Pagination
               count={Math.ceil(filteredDocs.length / rowsPerPage)}
               page={currentPage}
               onChange={(e, page) => setCurrentPage(page)}
               color="primary"
+              sx={{
+                '& .MuiPaginationItem-root': {
+                  borderRadius: 1,
+                  fontWeight: 700,
+                  minWidth: 36,
+                  minHeight: 36
+                }
+              }}
             />
           </Box>
         </>
@@ -246,6 +406,7 @@ const AdminDocumentManagementPage = () => {
           onClose={() => setToast({ ...toast, open: false })}
           severity={toast.severity}
           variant="filled"
+          sx={{ borderRadius: 1, fontWeight: 600 }}
         >
           {toast.message}
         </Alert>
@@ -255,3 +416,4 @@ const AdminDocumentManagementPage = () => {
 };
 
 export default AdminDocumentManagementPage;
+                          <Visibility fontSize="small" />

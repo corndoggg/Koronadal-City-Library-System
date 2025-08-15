@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box, Typography, TextField, Button, Paper, CircularProgress, Alert,
-  useTheme, Checkbox, FormControlLabel, Stack, Link
+  useTheme, Checkbox, FormControlLabel, Stack, Link, Divider
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
+import { alpha } from '@mui/material/styles';
 
 const API_BASE = import.meta.env.VITE_API_BASE;
 
@@ -106,32 +107,92 @@ const LoginPage = () => {
       display="flex"
       alignItems="center"
       justifyContent="center"
-      sx={{ background: theme.palette.background.default }}
+      sx={{
+        background: theme.palette.background.default,
+        p: 2
+      }}
     >
-      <Paper elevation={4} sx={{ p: 4, borderRadius: 3, minWidth: 360, maxWidth: 400 }}>
-        <Typography variant="h5" fontWeight={700} color={theme.palette.primary.main} mb={2} align="center">
-          Koronadal City Library Login
-        </Typography>
-        <form onSubmit={handleLogin}>
+      <Paper
+        elevation={0}
+        sx={{
+          p: 3,
+          width: '100%',
+          maxWidth: 420,
+          borderRadius: 1,                             // boxy
+          border: `2px solid ${theme.palette.divider}`,// strong border
+          boxShadow: `0 4px 12px rgba(0,0,0,0.08), 0 0 0 1px ${alpha(theme.palette.divider,0.6)}`,
+          bgcolor: 'background.paper',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 2
+        }}
+      >
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 1.25,
+            p: 2,
+            borderRadius: 1,
+            border: `1.5px solid ${theme.palette.divider}`,
+            background: alpha(theme.palette.primary.main, 0.04)
+          }}
+        >
+          <Box
+            component="img"
+            src="/logo.png"          // place the seal/logo file as /public/logo.png (or adjust path)
+            alt="Koronadal City Library Logo"
+            sx={{
+              width: 84,
+              height: 84,
+              objectFit: 'contain',
+              borderRadius: 1,
+              border: `1.5px solid ${alpha(theme.palette.primary.main, 0.5)}`,
+              background: '#fff',
+              p: 1
+            }}
+          />
+          <Typography
+            variant="h6"
+            fontWeight={800}
+            letterSpacing={0.5}
+            textAlign="center"
+            sx={{ fontSize: 18, lineHeight: 1.1 }}
+          >
+            Koronadal City Library
+          </Typography>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            fontWeight={600}
+            letterSpacing={0.5}
+            sx={{ fontSize: 11 }}
+          >
+            Account Access Portal
+          </Typography>
+        </Box>
+
+        <Box component="form" onSubmit={handleLogin} sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
           <TextField
             label="Username"
             value={username}
             onChange={e => setUsername(e.target.value)}
             fullWidth
             required
-            margin="normal"
-            autoFocus
+            size="small"
           />
-            <TextField
-              label="Password"
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              fullWidth
-              required
-              margin="normal"
-            />
-          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mt: 0.5 }}>
+          <TextField
+            label="Password"
+            type="password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            fullWidth
+            required
+            size="small"
+          />
+
+          <Stack direction="row" alignItems="center" justifyContent="space-between">
             <FormControlLabel
               control={
                 <Checkbox
@@ -140,36 +201,58 @@ const LoginPage = () => {
                   onChange={(e) => setRememberMe(e.target.checked)}
                 />
               }
-              label={<Typography variant="caption" fontSize={13}>Remember me</Typography>}
-              sx={{ ml: -1 }}
+              label={<Typography variant="caption" fontSize={12}>Remember me</Typography>}
+              sx={{
+                m: 0,
+                '& .MuiFormControlLabel-label': { fontWeight: 600, letterSpacing: 0.3 }
+              }}
             />
             <Link
               component="button"
               type="button"
               variant="body2"
-              sx={{ fontSize: 13 }}
+              sx={{ fontSize: 12, fontWeight: 600, letterSpacing: 0.3 }}
               onClick={() => navigate('/forgot-password')}
             >
               Forgot password?
             </Link>
           </Stack>
+
           {error && (
-            <Alert severity="error" sx={{ mt: 2, mb: 1 }}>
+            <Alert
+              severity="error"
+              variant="filled"
+              sx={{
+                borderRadius: 1,
+                fontSize: 13,
+                py: 0.5
+              }}
+            >
               {error}
             </Alert>
           )}
+
           <Button
             type="submit"
             variant="contained"
             color="primary"
             fullWidth
-            sx={{ mt: 2, fontWeight: 600 }}
             disabled={loading}
+            sx={{
+              mt: 0.5,
+              fontWeight: 700,
+              letterSpacing: 0.5,
+              borderRadius: 1,
+              py: 1
+            }}
           >
-            {loading ? <CircularProgress size={24} color="inherit" /> : 'Login'}
+            {loading ? <CircularProgress size={22} color="inherit" /> : 'Login'}
           </Button>
-          <Box mt={2} textAlign="center">
-            <Typography variant="caption" display="block" color="text.secondary" mb={0.5}>
+
+          <Divider sx={{ my: 1.5 }} />
+
+          <Box textAlign="center">
+            <Typography variant="caption" display="block" color="text.secondary" mb={0.5} fontWeight={600} letterSpacing={0.3}>
               Not yet registered?
             </Typography>
             <Button
@@ -177,11 +260,17 @@ const LoginPage = () => {
               variant="outlined"
               size="small"
               onClick={() => navigate('/register-borrower')}
+              sx={{
+                fontWeight: 700,
+                letterSpacing: 0.5,
+                borderRadius: 1,
+                py: 0.9
+              }}
             >
               Register as Borrower
             </Button>
           </Box>
-        </form>
+        </Box>
       </Paper>
     </Box>
   );

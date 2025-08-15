@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useRef } from "react";
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Stack, MenuItem, Alert, Snackbar, Box, LinearProgress, useTheme,
-  Table, TableHead, TableRow, TableCell, TableBody, IconButton, Tooltip, Typography, Divider, Grid
+  Table, TableHead, TableRow, TableCell, TableBody, IconButton, Tooltip, Typography, Divider, Grid, Paper, CircularProgress
 } from "@mui/material";
-import { Add, Edit as EditIcon, Save, Cancel, Delete, LibraryBooks } from "@mui/icons-material";
+import { Add, Edit as EditIcon, Save, Cancel, Delete, Book } from "@mui/icons-material";
 import axios from "axios";
 
 const initialForm = { title: "", author: "", category: "", department: "", classification: "", year: "", sensitivity: "", file: null, filePath: "" };

@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
   Box, Typography, TextField, Button, IconButton, useTheme,
-  Pagination, Snackbar, Alert, Tooltip, Grid, Card, CardContent, CardActions, CardMedia, Chip
+  Pagination, Snackbar, Alert, Tooltip, Grid, Chip, CircularProgress, Paper
 } from '@mui/material';
-import { Edit, Book } from '@mui/icons-material';
+import { Edit, Book, Add } from '@mui/icons-material';
+import { alpha } from '@mui/material/styles';
 import BookFormModal from '../../../components/BookFormModal';
 
 const initialBookForm = { title: '', author: '', edition: '', publisher: '', year: '', subject: '', language: '', isbn: '' };
@@ -16,12 +17,14 @@ const BookManagementPage = () => {
     [currentPage, setCurrentPage] = useState(1), rowsPerPage = 8, [modalOpen, setModalOpen] = useState(false),
     [isEdit, setIsEdit] = useState(false), [editId, setEditId] = useState(null), [bookForm, setBookForm] = useState(initialBookForm),
     [copyForm, setCopyForm] = useState(initialCopyForm), [copies, setCopies] = useState([]), [editCopyIndex, setEditCopyIndex] = useState(null),
-    [toast, setToast] = useState({ open: false, message: '', severity: 'success' }), [locations, setLocations] = useState([]);
+    [toast, setToast] = useState({ open: false, message: '', severity: 'success' }), [locations, setLocations] = useState([]),
+    [loading, setLoading] = useState(false);
 
   useEffect(() => { fetchBooks(); fetchLocations(); }, []);
   useEffect(() => { handleSearch(); }, [search, books]);
 
   const fetchBooks = async () => {
+    setLoading(true);
     try {
       const res = await axios.get(`${API_BASE}/books`);
       const booksWithInventory = await Promise.all(
@@ -36,6 +39,7 @@ const BookManagementPage = () => {
       );
       setBooks(booksWithInventory);
     } catch { showToast('Failed to load books', 'error'); }
+    setLoading(false);
   };
 
   const fetchLocations = async () => {
@@ -109,67 +113,266 @@ const BookManagementPage = () => {
   const getLocationName = id => { const found = locations.find(loc => String(loc.ID) === String(id)); return found ? found.Name : id || "-"; };
 
   return (
-    <Box p={3} sx={{ position: 'relative', minHeight: '100vh' }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-        <Box display="flex" alignItems="center" gap={1}>
-          <Book fontSize="large" color="primary" />
-          <Typography variant="h4" fontWeight={700}>Book Management</Typography>
+    <Box p={3} sx={{ position: 'relative', minHeight: '100vh', bgcolor: 'background.default' }}>
+      {/* Header (boxy) */}
+      <Paper
+        elevation={0}
+        sx={{
+          mb: 4,
+          p: 2,
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 2,
+          alignItems: 'center',
+          border: theme => `2px solid ${theme.palette.divider}`,
+          borderRadius: 1,
+          bgcolor: 'background.paper'
+        }}
+      >
+        <Box display="flex" alignItems="center" gap={1.25}>
+          <Book color="primary" />
+          <Typography variant="h6" fontWeight={800} letterSpacing={0.5}>
+            Book Management
+          </Typography>
         </Box>
-        <TextField label="Search by title, author, ISBN..." variant="outlined" size="small" value={search} onChange={e => setSearch(e.target.value)} sx={{ width: 350 }} />
-      </Box>
-      <Grid container spacing={3}>
-        {currentBooks.map((book) => (
-          <Grid item xs={12} sm={6} md={4} lg={3} key={book.Book_ID}>
-            <Card sx={{ borderRadius: 3, boxShadow: 3, height: '100%', display: 'flex', flexDirection: 'column', background: theme.palette.background.paper }}>
-              <CardMedia component="img" src={placeholderImg} alt="Book Cover" sx={{ width: '100%', height: 180, objectFit: 'cover', borderTopLeftRadius: 12, borderTopRightRadius: 12 }} />
-              <CardContent sx={{ flexGrow: 1 }}>
-                <Typography variant="h6" fontWeight={700} gutterBottom noWrap>{book.Title}</Typography>
-                <Typography variant="body2" color="text.secondary" noWrap>{book.Author}</Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{book.Publisher} &bull; {book.Year}</Typography>
-                <Typography variant="caption" color="text.secondary">Subject: {book.Subject}</Typography><br />
-                <Typography variant="caption" color="text.secondary">Language: {book.Language}</Typography><br />
-                <Typography variant="caption" color="text.secondary">ISBN: {book.ISBN}</Typography>
-                <Box sx={{ mt: 1 }}>
-                  <Chip label={`Copies: ${book.inventory?.length || 0}`} color="primary" size="small" />
-                </Box>
-                {book.inventory?.slice(0, 2).map((copy, idx) => (
-                  <Box key={idx} sx={{ mt: 1, pl: 1, borderLeft: '2px solid #eee' }}>
-                    <Typography variant="body2" sx={{ fontSize: 13 }}><strong>Accession #:</strong> {copy.accessionNumber}</Typography>
-                    <Typography variant="body2" sx={{ fontSize: 13 }}><strong>Location:</strong> {getLocationName(copy.location)}</Typography>
-                    <Typography variant="body2" sx={{ fontSize: 13 }}><strong>Condition:</strong> {copy.condition}</Typography>
-                    <Typography variant="body2" sx={{ fontSize: 13 }} color={copy.availability === 'Available' ? 'green' : 'orange'}><strong>{copy.availability}</strong></Typography>
+        <TextField
+          label="Search title / author / ISBN"
+          size="small"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          sx={{
+            width: { xs: '100%', sm: 300 },
+            ml: { xs: 0, md: 'auto' },
+            '& .MuiOutlinedInput-root': { borderRadius: 1 }
+          }}
+        />
+        <Button
+          variant="contained"
+          size="small"
+          startIcon={<Add />}
+          onClick={openAddModal}
+          sx={{ fontWeight: 700, borderRadius: 1, ml: { xs: 0 } }}
+        >
+          Add Book
+        </Button>
+      </Paper>
+
+      {/* Books Grid */}
+      {loading ? (
+        <Box display="flex" justifyContent="center" alignItems="center" minHeight="40vh">
+          <CircularProgress size={48} />
+        </Box>
+      ) : (
+        <>
+          <Grid container spacing={2.5}>
+            {currentBooks.map(book => (
+              <Grid item xs={12} sm={6} md={4} lg={3} key={book.Book_ID}>
+                <Paper
+                  elevation={0}
+                  sx={{
+                    border: theme => `2px solid ${theme.palette.divider}`,
+                    borderRadius: 1,
+                    bgcolor: 'background.paper',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    height: '100%',
+                    position: 'relative',
+                    overflow: 'hidden',
+                    transition: 'border-color .18s, box-shadow .18s',
+                    '&:hover': {
+                      borderColor: 'primary.main',
+                      boxShadow: theme => `0 4px 16px ${alpha(theme.palette.primary.main, 0.12)}`
+                    }
+                  }}
+                >
+                  {/* Banner */}
+                  <Box
+                    sx={{
+                      height: 100,
+                      background: theme =>
+                        `linear-gradient(135deg, ${alpha(theme.palette.primary.main,0.12)}, ${alpha(theme.palette.primary.main,0.02)})`,
+                      borderBottom: theme => `1.5px solid ${theme.palette.divider}`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 40,
+                      color: 'primary.main',
+                      fontWeight: 800,
+                      letterSpacing: 1
+                    }}
+                  >
+                    BOOK
                   </Box>
-                ))}
-                {book.inventory && book.inventory.length > 2 && (
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
-                    +{book.inventory.length - 2} more copies...
+
+                  {/* Content */}
+                  <Box sx={{ p: 1.75, display: 'flex', flexDirection: 'column', gap: 0.5, flexGrow: 1 }}>
+                    <Typography
+                      variant="subtitle1"
+                      fontWeight={700}
+                      noWrap
+                      title={book.Title}
+                      sx={{ lineHeight: 1.15 }}
+                    >
+                      {book.Title}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" noWrap>
+                      {book.Author || '—'}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {book.Publisher || '—'} &bull; {book.Year || '—'}
+                    </Typography>
+
+                    <Box mt={0.5} display="flex" flexWrap="wrap" gap={0.5}>
+                      <Chip
+                        size="small"
+                        label={book.Subject || 'Subject?'}
+                        sx={{ fontSize: 10, fontWeight: 600, borderRadius: 0.5 }}
+                      />
+                      <Chip
+                        size="small"
+                        color="info"
+                        label={book.Language || 'Lang?'}
+                        sx={{ fontSize: 10, fontWeight: 600, borderRadius: 0.5 }}
+                      />
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        label={`Ed: ${book.Edition || '—'}`}
+                        sx={{ fontSize: 10, fontWeight: 600, borderRadius: 0.5 }}
+                      />
+                      <Chip
+                        size="small"
+                        color="primary"
+                        label={`Copies: ${book.inventory?.length || 0}`}
+                        sx={{ fontSize: 10, fontWeight: 700, borderRadius: 0.5 }}
+                      />
+                    </Box>
+
+                    {book.inventory?.length > 0 && (
+                      <Box
+                        mt={1}
+                        sx={{
+                          p: 1,
+                          border: theme => `1.5px solid ${theme.palette.divider}`,
+                          borderRadius: 0.75,
+                          bgcolor: theme => alpha(theme.palette.primary.main, 0.03),
+                          maxHeight: 120,
+                          overflowY: 'auto',
+                          '&::-webkit-scrollbar': { width: 6 },
+                          '&::-webkit-scrollbar-thumb': {
+                            background: theme => alpha(theme.palette.primary.main, 0.25),
+                            borderRadius: 3
+                          }
+                        }}
+                      >
+                        {book.inventory.slice(0, 4).map((copy, i) => (
+                          <Box
+                            key={i}
+                            sx={{
+                              display: 'flex',
+                              flexWrap: 'wrap',
+                              gap: 0.75,
+                              mb: 0.75,
+                              fontSize: 11,
+                              lineHeight: 1.2
+                            }}
+                          >
+                            <Chip
+                              size="small"
+                              label={copy.availability || copy.Availability || '—'}
+                              color={(copy.availability || copy.Availability) === 'Available' ? 'success' : 'warning'}
+                              sx={{ height: 20, fontSize: 10, fontWeight: 600 }}
+                            />
+                            <Chip
+                              size="small"
+                              variant="outlined"
+                              label={copy.condition || copy.Condition || 'Cond?'}
+                              sx={{ height: 20, fontSize: 10, fontWeight: 600 }}
+                            />
+                            <Chip
+                              size="small"
+                              variant="outlined"
+                              label={getLocationName(copy.location)}
+                              sx={{ height: 20, fontSize: 10, fontWeight: 600 }}
+                            />
+                          </Box>
+                        ))}
+                        {book.inventory.length > 4 && (
+                          <Typography variant="caption" color="text.secondary">
+                            +{book.inventory.length - 4} more…
+                          </Typography>
+                        )}
+                      </Box>
+                    )}
+                  </Box>
+
+                  {/* Actions */}
+                  <Box
+                    sx={{
+                      px: 1,
+                      py: 0.75,
+                      borderTop: theme => `1.5px solid ${theme.palette.divider}`,
+                      display: 'flex',
+                      justifyContent: 'flex-end'
+                    }}
+                  >
+                    <Tooltip title="Edit Book">
+                      <IconButton
+                        size="small"
+                        onClick={() => openEditModal(book)}
+                        sx={{
+                          borderRadius: 0.75,
+                          border: theme => `1px solid ${alpha(theme.palette.primary.main,0.4)}`,
+                          '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.12) }
+                        }}
+                        color="primary"
+                      >
+                        <Edit fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+                </Paper>
+              </Grid>
+            ))}
+            {currentBooks.length === 0 && (
+              <Grid item xs={12}>
+                <Paper
+                  elevation={0}
+                  sx={{
+                    textAlign: 'center',
+                    py: 6,
+                    border: theme => `2px dashed ${theme.palette.divider}`,
+                    borderRadius: 1,
+                    bgcolor: 'background.paper'
+                  }}
+                >
+                  <Typography variant="body2" color="text.secondary">
+                    No books found. Try a different search.
                   </Typography>
-                )}
-              </CardContent>
-              <CardActions sx={{ justifyContent: 'flex-end', pb: 2 }}>
-                <Tooltip title="Edit Book">
-                  <IconButton onClick={() => openEditModal(book)} color="primary">
-                    <Edit fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </CardActions>
-            </Card>
+                </Paper>
+              </Grid>
+            )}
           </Grid>
-        ))}
-        {currentBooks.length === 0 && (
-          <Grid item xs={12}>
-            <Box sx={{ textAlign: 'center', py: 6 }}>
-              <Typography variant="body2" color="text.secondary">No books found. Try a different search.</Typography>
-            </Box>
-          </Grid>
-        )}
-      </Grid>
-      <Box display="flex" justifyContent="center" mt={4}>
-        <Pagination count={Math.ceil(filteredBooks.length / rowsPerPage)} page={currentPage} onChange={(e, page) => setCurrentPage(page)} color="primary" />
-      </Box>
-      <Button variant="contained" color="primary" onClick={openAddModal} sx={{
-        position: 'fixed', bottom: 32, right: 32, borderRadius: '50%', minWidth: 0, width: 64, height: 64, boxShadow: 6, zIndex: 1201, fontWeight: 700, fontSize: 40, p: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>+</Button>
+
+          <Box display="flex" justifyContent="center" mt={4}>
+            <Pagination
+              count={Math.ceil(filteredBooks.length / rowsPerPage)}
+              page={currentPage}
+              onChange={(e, page) => setCurrentPage(page)}
+              color="primary"
+              sx={{
+                '& .MuiPaginationItem-root': {
+                  borderRadius: 1,
+                  fontWeight: 700,
+                  minWidth: 36,
+                  minHeight: 36
+                }
+              }}
+            />
+          </Box>
+        </>
+      )}
+
       <BookFormModal
         open={modalOpen}
         onClose={handleClose}
@@ -188,7 +391,13 @@ const BookManagementPage = () => {
         handleSaveBook={handleSaveBook}
         locations={locations}
       />
-      <Snackbar open={toast.open} autoHideDuration={3000} onClose={() => setToast({ ...toast, open: false })} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>
+
+      <Snackbar
+        open={toast.open}
+        autoHideDuration={3000}
+        onClose={() => setToast({ ...toast, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
         <Alert onClose={() => setToast({ ...toast, open: false })} severity={toast.severity} variant="filled">{toast.message}</Alert>
       </Snackbar>
     </Box>
