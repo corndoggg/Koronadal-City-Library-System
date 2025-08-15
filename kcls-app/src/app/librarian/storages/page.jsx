@@ -1,21 +1,32 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import axios from "axios";
 import {
   Box, Typography, Button, TextField, Dialog, DialogTitle, DialogContent, DialogActions,
   Snackbar, Alert, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper,
-  IconButton, Tooltip, useTheme, Chip, Stack, CircularProgress
+  IconButton, Tooltip, useTheme, Chip, Stack, CircularProgress, InputAdornment, Divider,
+  Skeleton
 } from "@mui/material";
-import { Add, Edit, Storage, Book, Article, Search, Visibility } from "@mui/icons-material";
+import { Add, Edit, Storage, Book, Article, Search, Visibility, Refresh } from "@mui/icons-material";
+import { alpha } from "@mui/material/styles";
 
 const initialForm = { name: "" };
 
 const StorageManagementPage = () => {
   const theme = useTheme(), API_BASE = import.meta.env.VITE_API_BASE;
-  const [storages, setStorages] = useState([]), [open, setOpen] = useState(false), [isEdit, setIsEdit] = useState(false),
-    [form, setForm] = useState(initialForm), [editId, setEditId] = useState(null), [toast, setToast] = useState({ open: false, message: "", severity: "success" }),
-    [loading, setLoading] = useState(false), [docsBooks, setDocsBooks] = useState([]), [search, setSearch] = useState(""),
-    [editItem, setEditItem] = useState(null), [editInv, setEditInv] = useState(null), [openEditInv, setOpenEditInv] = useState(false),
-    [viewAllOpen, setViewAllOpen] = useState(false), [viewAllItems, setViewAllItems] = useState([]);
+  const [storages, setStorages] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [isEdit, setIsEdit] = useState(false);
+  const [form, setForm] = useState(initialForm);
+  const [editId, setEditId] = useState(null);
+  const [toast, setToast] = useState({ open: false, message: "", severity: "success" });
+  const [loading, setLoading] = useState(false);
+  const [docsBooks, setDocsBooks] = useState([]);
+  const [search, setSearch] = useState("");
+  const [editItem, setEditItem] = useState(null);
+  const [editInv, setEditInv] = useState(null);
+  const [openEditInv, setOpenEditInv] = useState(false);
+  const [viewAllOpen, setViewAllOpen] = useState(false);
+  const [viewAllItems, setViewAllItems] = useState([]);
 
   useEffect(() => { fetchStorages(); fetchDocsBooks(); }, []);
 
@@ -31,7 +42,7 @@ const StorageManagementPage = () => {
       const booksWithInventory = await Promise.all(
         (booksRes.data || []).map(async (b) => {
           const invRes = await axios.get(`${API_BASE}/books/inventory/${b.Book_ID}`);
-          const inventory = (invRes.data || []).map(copy => ({
+            const inventory = (invRes.data || []).map(copy => ({
             ...copy,
             location: copy.StorageLocation != null ? String(copy.StorageLocation) : (copy.location != null ? String(copy.location) : ''),
             accessionNumber: copy.accessionNumber ?? copy.AccessionNumber ?? "",
@@ -114,141 +125,306 @@ const StorageManagementPage = () => {
     }
   };
 
-  // Table data: flatten all items with storage info
-  const allItems = docsBooks.flatMap(item =>
-    (item.inventory || []).map(inv => ({
-      type: item.type,
-      title: item.title,
-      id: item.id,
-      storageId: inv.StorageLocation || inv.location,
-      accessionNumber: inv.accessionNumber,
-      availability: inv.availability,
-      condition: inv.condition,
-      inv
-    }))
-  );
+  const allItems = useMemo(() =>
+    docsBooks.flatMap(item =>
+      (item.inventory || []).map(inv => ({
+        type: item.type,
+        title: item.title,
+        id: item.id,
+        storageId: inv.StorageLocation || inv.location,
+        accessionNumber: inv.accessionNumber,
+        availability: inv.availability,
+        condition: inv.condition,
+        inv
+      }))
+    ), [docsBooks]);
 
-  // Search filter
-  const filteredStorages = storages.filter(s =>
-    s.Name.toLowerCase().includes(search.toLowerCase()) ||
-    allItems.some(i => String(i.storageId) === String(s.ID) &&
-      (
-        (i.title && i.title.toLowerCase().includes(search.toLowerCase())) ||
-        (i.accessionNumber && i.accessionNumber.toLowerCase().includes(search.toLowerCase())) ||
-        (i.availability && i.availability.toLowerCase().includes(search.toLowerCase())) ||
-        (i.condition && i.condition.toLowerCase().includes(search.toLowerCase()))
+  const filteredStorages = useMemo(() => {
+    const q = search.toLowerCase();
+    return storages.filter(s =>
+      s.Name.toLowerCase().includes(q) ||
+      allItems.some(i => String(i.storageId) === String(s.ID) &&
+        (
+          (i.title && i.title.toLowerCase().includes(q)) ||
+          (i.accessionNumber && i.accessionNumber.toLowerCase().includes(q)) ||
+          (i.availability && i.availability.toLowerCase().includes(q)) ||
+          (i.condition && i.condition.toLowerCase().includes(q))
+        )
       )
-    )
-  );
+    );
+  }, [storages, allItems, search]);
 
-  // View all items modal for a storage
   const handleViewAll = (storageId) => {
     setViewAllItems(allItems.filter(i => String(i.storageId) === String(storageId)));
     setViewAllOpen(true);
   };
 
   return (
-    <Box p={3} sx={{ minHeight: "100vh", background: theme.palette.background.default }}>
-      <Box display="flex" alignItems="center" justifyContent="space-between" mb={4}>
+    <Box p={3} sx={{ minHeight: "100vh", bgcolor: 'background.default', position: 'relative' }}>
+      {/* Header */}
+      <Paper
+        elevation={0}
+        sx={{
+          mb: 3,
+          p: 2,
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 2,
+          alignItems: 'center',
+          border: `2px solid ${theme.palette.divider}`,
+          borderRadius: 1,
+          bgcolor: 'background.paper'
+        }}
+      >
         <Stack direction="row" alignItems="center" gap={1}>
-          <Storage fontSize="large" color="primary" />
-          <Typography variant="h4" fontWeight={700}>Storage Management</Typography>
+          <Storage color="primary" />
+          <Box>
+            <Typography fontWeight={800} variant="h6" letterSpacing={0.5}>
+              Storage Management
+            </Typography>
+            <Typography variant="caption" color="text.secondary" fontWeight={600}>
+              Organize physical locations for books & documents
+            </Typography>
+          </Box>
         </Stack>
-        <Button variant="contained" color="primary" startIcon={<Add />} onClick={handleOpen} sx={{ borderRadius: 2, fontWeight: 600 }}>
-          Add Storage
-        </Button>
-      </Box>
-      <Box mb={2} display="flex" alignItems="center" gap={1}>
-        <Search color="action" />
         <TextField
           size="small"
-          placeholder="Search by storage, item, accession, availability, or condition"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          sx={{ width: 350 }}
+            placeholder="Search storage / item / accession / availability / condition"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            sx={{
+              width: { xs: '100%', md: 420 },
+              ml: { xs: 0, md: 'auto' },
+              '& .MuiOutlinedInput-root': { borderRadius: 1 }
+            }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search fontSize="small" />
+                </InputAdornment>
+              )
+            }}
         />
-      </Box>
+        <Stack direction="row" gap={1} ml="auto">
+          <Tooltip title="Refresh">
+            <IconButton
+              size="small"
+              onClick={() => { fetchStorages(); fetchDocsBooks(); }}
+              sx={{
+                borderRadius: 1,
+                border: `1.5px solid ${theme.palette.divider}`,
+                '&:hover': { bgcolor: theme.palette.action.hover }
+              }}
+            >
+              <Refresh fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Button
+            variant="contained"
+            size="small"
+            startIcon={<Add />}
+            onClick={handleOpen}
+            sx={{ fontWeight: 700, borderRadius: 1 }}
+          >
+            Add Storage
+          </Button>
+        </Stack>
+      </Paper>
+
+      {/* Table */}
       {loading ? (
-        <Box py={8} textAlign="center"><CircularProgress /></Box>
+        <Paper
+          elevation={0}
+          sx={{
+            p: 4,
+            textAlign: 'center',
+            border: `2px solid ${theme.palette.divider}`,
+            borderRadius: 1,
+            bgcolor: 'background.paper'
+          }}
+        >
+          <CircularProgress size={46} />
+          <Typography mt={2} variant="caption" color="text.secondary" display="block" fontWeight={600}>
+            Loading inventory…
+          </Typography>
+          <Box mt={3} display="flex" flexDirection="column" gap={1}>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} variant="rounded" height={46} />
+            ))}
+          </Box>
+        </Paper>
       ) : (
-        <TableContainer component={Paper}>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Storage Name</TableCell>
-                <TableCell>Items</TableCell>
-                <TableCell>Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filteredStorages.map(storage => {
-                const itemsInStorage = allItems.filter(i => String(i.storageId) === String(storage.ID));
-                const showItems = itemsInStorage.slice(0, 5);
-                return (
-                  <TableRow key={storage.ID}>
-                    <TableCell>
-                      <Typography fontWeight={700} color="primary">{storage.Name}</Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Stack direction="row" flexWrap="wrap" gap={1}>
-                        {showItems.length > 0 ? (
-                          showItems.map((item, idx) => (
+        <Paper
+          elevation={0}
+          sx={{
+            border: `2px solid ${theme.palette.divider}`,
+            borderRadius: 1,
+            overflow: 'hidden',
+            bgcolor: 'background.paper'
+          }}
+        >
+          <TableContainer
+            sx={{
+              maxHeight: '65vh',
+              '&::-webkit-scrollbar': { width: 8 },
+              '&::-webkit-scrollbar-thumb': {
+                background: theme.palette.divider,
+                borderRadius: 4
+              }
+            }}
+          >
+            <Table stickyHeader size="small">
+              <TableHead>
+                <TableRow
+                  sx={{
+                    '& th': {
+                      fontWeight: 700,
+                      fontSize: 12,
+                      letterSpacing: .5,
+                      bgcolor: theme.palette.background.default,
+                      borderBottom: `2px solid ${theme.palette.divider}`
+                    }
+                  }}
+                >
+                  <TableCell width="25%">Storage</TableCell>
+                  <TableCell>Items (sample up to 5)</TableCell>
+                  <TableCell width="12%" align="center">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody
+                sx={{
+                  '& tr:hover': { backgroundColor: theme.palette.action.hover },
+                  '& td': { borderBottom: `1px solid ${theme.palette.divider}` }
+                }}
+              >
+                {filteredStorages.map(storage => {
+                  const itemsInStorage = allItems.filter(i => String(i.storageId) === String(storage.ID));
+                  const showItems = itemsInStorage.slice(0, 5);
+                  const availableCount = itemsInStorage.filter(i => i.availability === 'Available').length;
+                  return (
+                    <TableRow key={storage.ID}>
+                      <TableCell>
+                        <Stack spacing={0.5}>
+                          <Typography fontWeight={800} fontSize={13} lineHeight={1.1}>
+                            {storage.Name}
+                          </Typography>
+                          <Stack direction="row" spacing={0.5} flexWrap="wrap">
                             <Chip
-                              key={idx}
-                              icon={item.type === "Book" ? <Book /> : <Article />}
-                              label={
-                                item.type === "Book"
-                                  ? `Book: ${item.title} | Acc#: ${item.accessionNumber} | Avail: ${item.availability}${item.condition ? ` | Cond: ${item.condition}` : ""}`
-                                  : `Doc: ${item.title} | Avail: ${item.availability}${item.condition ? ` | Cond: ${item.condition}` : ""}`
-                              }
-                              color={item.type === "Book" ? "primary" : "secondary"}
-                              variant="outlined"
-                              sx={{ cursor: "pointer" }}
-                              onClick={() => handleEditInventory(
-                                { type: item.type, title: item.title, id: item.id }, item.inv
-                              )}
+                              size="small"
+                              label={`Items: ${itemsInStorage.length}`}
+                              sx={{ fontSize: 10, fontWeight: 700, borderRadius: 0.75 }}
                             />
-                          ))
-                        ) : (
-                          <Typography variant="caption" color="text.disabled">No items</Typography>
-                        )}
-                        {itemsInStorage.length > 5 && (
-                          <Button
+                            <Chip
+                              size="small"
+                              color="success"
+                              label={`Available: ${availableCount}`}
+                              sx={{ fontSize: 10, fontWeight: 700, borderRadius: 0.75 }}
+                            />
+                          </Stack>
+                        </Stack>
+                      </TableCell>
+                      <TableCell>
+                        <Stack direction="row" flexWrap="wrap" gap={0.75}>
+                          {showItems.length > 0 ? (
+                            showItems.map((item, idx) => (
+                              <Chip
+                                key={idx}
+                                size="small"
+                                icon={item.type === "Book" ? <Book fontSize="small" /> : <Article fontSize="small" />}
+                                label={
+                                  item.type === "Book"
+                                    ? `${item.title} • Acc# ${item.accessionNumber || '-'} • ${item.availability}`
+                                    : `${item.title} • ${item.availability}`
+                                }
+                                color={item.type === "Book" ? "primary" : "secondary"}
+                                variant="outlined"
+                                onClick={() => handleEditInventory(
+                                  { type: item.type, title: item.title, id: item.id }, item.inv
+                                )}
+                                sx={{
+                                  maxWidth: 280,
+                                  '& .MuiChip-label': { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+                                  borderRadius: 0.75,
+                                  fontSize: 11,
+                                  fontWeight: 600
+                                }}
+                              />
+                            ))
+                          ) : (
+                            <Typography variant="caption" color="text.disabled">
+                              No items
+                            </Typography>
+                          )}
+                          {itemsInStorage.length > 5 && (
+                            <Button
+                              size="small"
+                              variant="text"
+                              startIcon={<Visibility fontSize="small" />}
+                              onClick={() => handleViewAll(storage.ID)}
+                              sx={{ fontWeight: 700, borderRadius: 0.75 }}
+                            >
+                              View all ({itemsInStorage.length})
+                            </Button>
+                          )}
+                        </Stack>
+                      </TableCell>
+                      <TableCell align="center">
+                        <Tooltip title="Edit Storage">
+                          <IconButton
                             size="small"
-                            variant="text"
-                            startIcon={<Visibility />}
-                            onClick={() => handleViewAll(storage.ID)}
+                            color="primary"
+                            onClick={() => handleEdit(storage)}
+                            sx={{
+                              border: `1px solid ${theme.palette.divider}`,
+                              borderRadius: 0.75,
+                              '&:hover': { bgcolor: theme.palette.action.hover }
+                            }}
                           >
-                            View all ({itemsInStorage.length})
-                          </Button>
-                        )}
-                      </Stack>
-                    </TableCell>
-                    <TableCell>
-                      <Tooltip title="Edit Storage">
-                        <IconButton color="primary" onClick={() => handleEdit(storage)}>
-                          <Edit />
-                        </IconButton>
-                      </Tooltip>
+                            <Edit fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+                {filteredStorages.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={3} align="center" sx={{ py: 6 }}>
+                      <Typography variant="body2" color="text.secondary">
+                        No storage locations found{search ? ' for this search.' : '.'}
+                      </Typography>
                     </TableCell>
                   </TableRow>
-                );
-              })}
-              {filteredStorages.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={3} align="center">
-                    <Typography color="text.secondary">No storage locations found.</Typography>
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Paper>
       )}
+
       {/* View All Items Modal */}
-      <Dialog open={viewAllOpen} onClose={() => setViewAllOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>All Items in this Location</DialogTitle>
-        <DialogContent>
+      <Dialog
+        open={viewAllOpen}
+        onClose={() => setViewAllOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 1,
+            border: `2px solid ${theme.palette.divider}`
+          }
+        }}
+      >
+        <DialogTitle
+          sx={{
+            fontWeight: 800,
+            py: 1.25,
+            borderBottom: `2px solid ${theme.palette.divider}`
+          }}
+        >
+          Items in Location
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
           <Stack direction="column" gap={1}>
             {viewAllItems.length === 0 ? (
               <Typography color="text.secondary">No items in this location.</Typography>
@@ -259,33 +435,70 @@ const StorageManagementPage = () => {
                   icon={item.type === "Book" ? <Book /> : <Article />}
                   label={
                     item.type === "Book"
-                      ? `Book: ${item.title} | Acc#: ${item.accessionNumber} | Avail: ${item.availability}${item.condition ? ` | Cond: ${item.condition}` : ""}`
-                      : `Doc: ${item.title} | Avail: ${item.availability}${item.condition ? ` | Cond: ${item.condition}` : ""}`
+                      ? `Book: ${item.title} • Acc# ${item.accessionNumber || '-'} • ${item.availability}${item.condition ? ` • ${item.condition}` : ""}`
+                      : `Doc: ${item.title} • ${item.availability}${item.condition ? ` • ${item.condition}` : ""}`
                   }
                   color={item.type === "Book" ? "primary" : "secondary"}
                   variant="outlined"
-                  sx={{ cursor: "pointer" }}
                   onClick={() => handleEditInventory(
                     { type: item.type, title: item.title, id: item.id }, item.inv
                   )}
+                  sx={{
+                    borderRadius: 0.75,
+                    fontSize: 12,
+                    fontWeight: 600
+                  }}
                 />
               ))
             )}
           </Stack>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setViewAllOpen(false)} color="primary">Close</Button>
+        <DialogActions
+          sx={{
+            borderTop: `2px solid ${theme.palette.divider}`,
+            py: 1
+          }}
+        >
+          <Button onClick={() => setViewAllOpen(false)} size="small" variant="contained">
+            Close
+          </Button>
         </DialogActions>
       </Dialog>
+
       {/* Edit Inventory Modal */}
-      <Dialog open={openEditInv} onClose={() => setOpenEditInv(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Edit {editItem?.type} Inventory</DialogTitle>
-        <DialogContent>
+      <Dialog
+        open={openEditInv}
+        onClose={() => setOpenEditInv(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 1,
+            border: `2px solid ${theme.palette.divider}`
+          }
+        }}
+      >
+        <DialogTitle
+          sx={{
+            fontWeight: 800,
+            py: 1.25,
+            borderBottom: `2px solid ${theme.palette.divider}`
+          }}
+        >
+          Edit {editItem?.type} Inventory
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
           <TextField
             label="Location"
             value={editInv?.location || ""}
             onChange={e => setEditInv({ ...editInv, location: e.target.value })}
-            fullWidth margin="normal" select SelectProps={{ native: true }}>
+            fullWidth
+            size="small"
+            margin="dense"
+            select
+            SelectProps={{ native: true }}
+            sx={{ borderRadius: 1 }}
+          >
             <option value="">Select Location</option>
             {storages.map(s => (
               <option key={s.ID} value={s.ID}>{s.Name}</option>
@@ -295,38 +508,120 @@ const StorageManagementPage = () => {
             label="Condition"
             value={editInv?.condition || ""}
             onChange={e => setEditInv({ ...editInv, condition: e.target.value })}
-            fullWidth margin="normal"
+            fullWidth
+            size="small"
+            margin="dense"
+            sx={{ borderRadius: 1 }}
           />
           <TextField
             label="Availability"
             value={editInv?.availability || ""}
             onChange={e => setEditInv({ ...editInv, availability: e.target.value })}
-            fullWidth margin="normal"
+            fullWidth
+            size="small"
+            margin="dense"
+            sx={{ borderRadius: 1 }}
           />
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenEditInv(false)} color="secondary" variant="outlined">Cancel</Button>
-          <Button onClick={handleSaveInventory} color="primary" variant="contained">Save</Button>
+        <DialogActions
+          sx={{
+            borderTop: `2px solid ${theme.palette.divider}`,
+            py: 1
+          }}
+        >
+          <Button
+            onClick={() => setOpenEditInv(false)}
+            variant="outlined"
+            size="small"
+            sx={{ borderRadius: 1 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSaveInventory}
+            variant="contained"
+            size="small"
+            sx={{ borderRadius: 1, fontWeight: 700 }}
+          >
+            Save
+          </Button>
         </DialogActions>
       </Dialog>
-      <Dialog open={open} onClose={handleClose} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ background: theme.palette.background.default, color: theme.palette.text.primary, fontWeight: 700 }}>
+
+      {/* Add / Edit Storage Modal */}
+      <Dialog
+        open={open}
+        onClose={handleClose}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 1,
+            border: `2px solid ${theme.palette.divider}`
+          }
+        }}
+      >
+        <DialogTitle
+          sx={{
+            fontWeight: 800,
+            py: 1.25,
+            borderBottom: `2px solid ${theme.palette.divider}`
+          }}
+        >
           {isEdit ? "Edit Storage Location" : "Add Storage Location"}
         </DialogTitle>
-        <DialogContent sx={{ background: theme.palette.background.paper }}>
+        <DialogContent sx={{ pt: 2 }}>
           <TextField
-            label="Name" name="name" value={form.name} onChange={handleChange} fullWidth required
-            sx={{ mb: 2, background: theme.palette.background.default, borderRadius: 1 }}
+            label="Name"
+            name="name"
+            value={form.name}
+            onChange={handleChange}
+            fullWidth
+            required
+            size="small"
             autoFocus
+            sx={{ borderRadius: 1 }}
           />
         </DialogContent>
-        <DialogActions sx={{ background: theme.palette.background.paper }}>
-          <Button onClick={handleClose} variant="outlined" color="secondary">Cancel</Button>
-          <Button onClick={handleSave} variant="contained" color="primary">{isEdit ? "Update" : "Add"}</Button>
+        <DialogActions
+          sx={{
+            borderTop: `2px solid ${theme.palette.divider}`,
+            py: 1
+          }}
+        >
+          <Button
+            onClick={handleClose}
+            variant="outlined"
+            size="small"
+            sx={{ borderRadius: 1 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSave}
+            variant="contained"
+            size="small"
+            sx={{ borderRadius: 1, fontWeight: 700 }}
+          >
+            {isEdit ? "Update" : "Add"}
+          </Button>
         </DialogActions>
       </Dialog>
-      <Snackbar open={toast.open} autoHideDuration={3000} onClose={() => setToast({ ...toast, open: false })} anchorOrigin={{ vertical: "bottom", horizontal: "right" }}>
-        <Alert onClose={() => setToast({ ...toast, open: false })} severity={toast.severity} variant="filled">{toast.message}</Alert>
+
+      <Snackbar
+        open={toast.open}
+        autoHideDuration={3000}
+        onClose={() => setToast({ ...toast, open: false })}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+      >
+        <Alert
+          onClose={() => setToast({ ...toast, open: false })}
+          severity={toast.severity}
+          variant="filled"
+          sx={{ borderRadius: 1, fontWeight: 600 }}
+        >
+          {toast.message}
+        </Alert>
       </Snackbar>
     </Box>
   );
