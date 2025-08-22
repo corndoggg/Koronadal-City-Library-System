@@ -100,33 +100,31 @@ const BrowseLibraryPage = () => {
     } catch { setBorrowed([]); }
   };
 
-  // Helpers
-  const filterItems = (items, keys) => items.filter(item => {
-    if (!search) return true;
-    if (searchKey === "All") {
-      return keys.some(k => (item[k] || "").toString().toLowerCase().includes(search.toLowerCase()));
-    }
-    return (item[searchKey] || "").toString().toLowerCase().includes(search.toLowerCase());
-  });
-
-  const getAvailableDocTypes = (doc) => {
-    const set = new Set();
-    if ((doc.inventory || []).some(inv => (inv.availability || inv.Availability) === "Available")) set.add("Physical");
-    if (doc.File_Path || doc.file_path) set.add("Digital");
-    return [...set];
+  // Add status helpers (ignore Rejected and Returned for occupancy)
+  const txStatus = (tx) => {
+    if (tx.ReturnStatus === 'Returned') return 'Returned';
+    if (tx.ApprovalStatus === 'Rejected') return 'Rejected';
+    if (tx.ApprovalStatus === 'Pending') return 'Pending';
+    if (tx.ApprovalStatus === 'Approved' && tx.RetrievalStatus !== 'Retrieved') return 'ApprovedAwaitingPickup';
+    if (tx.RetrievalStatus === 'Retrieved' && tx.ReturnStatus !== 'Returned') return 'Borrowed';
+    return tx.ApprovalStatus || 'Unknown';
   };
+  const statusOccupiesCopy = (status) =>
+    status === 'Pending' || status === 'ApprovedAwaitingPickup' || status === 'Borrowed';
 
+  // Update isItemBorrowedOrPending to use statusOccupiesCopy
   const isItemBorrowedOrPending = (item, isBook, type = null) =>
-    borrowed.some(tx =>
-      (tx.items || []).some(bi =>
+    borrowed.some(tx => {
+      const s = txStatus(tx);
+      if (!statusOccupiesCopy(s)) return false; // Rejected/Returned don't block
+      return (tx.items || []).some(bi =>
         isBook
-          ? bi.BookCopyID && item.inventory?.some(inv => inv.Copy_ID === bi.BookCopyID) && (tx.ReturnStatus !== "Returned")
+          ? bi.BookCopyID && item.inventory?.some(inv => inv.Copy_ID === bi.BookCopyID)
           : bi.DocumentStorageID &&
             item.inventory?.some(inv => inv.Storage_ID === bi.DocumentStorageID) &&
-            (tx.ReturnStatus !== "Returned") &&
             (!type || (bi.CopyType || bi.copyType) === type)
-      )
-    );
+      );
+    });
 
   const isInCart = (item, isBook, type = null) =>
     cart.some(ci =>
@@ -220,6 +218,33 @@ const BrowseLibraryPage = () => {
   const handleViewPdf = (filePath) => {
     setPdfUrl(`${API_BASE}${filePath}`);
     setPdfDialogOpen(true);
+  };
+
+  // Helpers: available doc types and text filtering
+  const getAvailableDocTypes = (doc) => {
+    const types = [];
+    const inv = doc?.inventory || [];
+    const hasPhysical = inv.some(i => (i.availability || i.Availability) === 'Available');
+    const hasDigital = !!(doc?.File_Path || doc?.file_path);
+    if (hasPhysical) types.push('Physical');
+    if (hasDigital) types.push('Digital');
+    return types;
+  };
+
+  const filterItems = (list, searchableKeys) => {
+    const q = (search || '').trim().toLowerCase();
+    if (!q) return list;
+
+    const matchValue = (val) => {
+      if (val === null || val === undefined) return false;
+      return String(val).toLowerCase().includes(q);
+    };
+
+    const keys = searchKey === 'All'
+      ? searchableKeys
+      : searchableKeys.includes(searchKey) ? [searchKey] : searchableKeys;
+
+    return (list || []).filter(item => keys.some(k => matchValue(item?.[k])));
   };
 
   // Sorting

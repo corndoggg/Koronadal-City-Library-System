@@ -201,3 +201,35 @@ def login_user():
     for k in ['Password','Position','Type','Department','AccountStatus','BorrowerID']:
         user.pop(k, None)
     return jsonify(user)
+
+# --- Approve a user account ---
+@users_bp.route('/users/<int:user_id>/approve', methods=['PUT'])
+def approve_user_account(user_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    # Update AccountStatus to 'Approved' for borrowers
+    cursor.execute("""
+        UPDATE Borrowers
+        SET AccountStatus='Registered'
+        WHERE UserID=%s
+    """, (user_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return jsonify({'message': 'User approved.'}), 200
+
+# --- Reject a user account ---
+@users_bp.route('/users/<int:user_id>/reject', methods=['PUT'])
+def reject_user_account(user_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    # Update AccountStatus to 'Rejected' for borrowers
+    cursor.execute("""
+        UPDATE Borrowers
+        SET AccountStatus='Rejected'
+        WHERE UserID=%s
+    """, (user_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return jsonify({'message': 'User rejected.'}), 200

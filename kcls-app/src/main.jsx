@@ -20,6 +20,8 @@ import BorrowerBorrowPage from './app/borrower/borrow/page.jsx';
 import LibrarianBorrowPage from './app/librarian/borrow/page.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import RegisterBorrowerPage from './app/register/page.jsx';
+import ReportsPage from './app/admin/reports/page.jsx';
+import DocumentApprovalPage from './app/admin/borrow/page.jsx';
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -38,7 +40,9 @@ createRoot(document.getElementById('root')).render(
               <Route path="dashboard" element={<DashboardPage />} />
               <Route path="books" element={<AdminBookManagementPage />} />
               <Route path="documents" element={<AdminDocumentManagementPage />} />
+              <Route path="borrows" element={<DocumentApprovalPage />} />
               <Route path="users" element={<UserManagementPage />} />
+              <Route path="reports" element={<ReportsPage />} />
             </Route>
           </Route>
           {/* Librarian routes */}

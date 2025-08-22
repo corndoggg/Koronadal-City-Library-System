@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import axios from 'axios';
 import {
   Box, Typography, Chip, CircularProgress, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Paper, Button, Tooltip, Dialog,
@@ -96,37 +96,64 @@ const LibrarianBorrowPage = () => {
     })();
   }, [transactions]);
 
+  // Fetch only librarian-visible transactions (books only)
   const fetchTransactions = async () => {
     setLoading(true);
-    try { setTransactions((await axios.get(`${API_BASE}/borrow`)).data || []); }
-    catch { setTransactions([]); }
-    setLoading(false);
+    try {
+      const res = await axios.get(`${API_BASE}/borrow?role=librarian`);
+      setTransactions(res.data || []);
+    } catch {
+      setTransactions([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // --- Actions ---
+  // Helper: status mapping (show Rejected correctly)
+  const txStatus = (tx) => {
+    if (tx?.ApprovalStatus === 'Rejected') return 'Rejected';
+    if (tx?.ReturnStatus === 'Returned') return 'Returned';
+    if (tx?.ApprovalStatus === 'Pending') return 'Pending';
+    if (tx?.ApprovalStatus === 'Approved' && tx?.RetrievalStatus !== 'Retrieved') return 'Approved (Awaiting Pickup)';
+    if (tx?.RetrievalStatus === 'Retrieved' && tx?.ReturnStatus !== 'Returned') return 'Borrowed';
+    return tx?.ApprovalStatus || 'Unknown';
+  };
+
+  // Guard: book-only transactions (should already be true due to API filter)
+  const isBookOnly = (tx) => (tx?.items || []).every(it => it.ItemType === 'Book');
+
+  // Actions must pass role=librarian
   const handleApprove = async (tx) => {
+    if (!isBookOnly(tx)) return;
     setActionLoading(true);
     try {
-      await axios.put(`${API_BASE}/borrow/${tx.BorrowID}/approve`, { approvalStatus: "Approved" });
-      fetchTransactions();
-      setModalOpen(false);
-    } finally { setActionLoading(false); }
+      await axios.put(`${API_BASE}/borrow/${tx.BorrowID}/approve?role=librarian`);
+      await fetchTransactions();
+    } finally {
+      setActionLoading(false);
+    }
   };
+
   const handleReject = async (tx) => {
+    if (!isBookOnly(tx)) return;
     setActionLoading(true);
     try {
-      await axios.put(`${API_BASE}/borrow/${tx.BorrowID}/reject`, { approvalStatus: "Rejected" });
-      fetchTransactions();
-      setModalOpen(false);
-    } finally { setActionLoading(false); }
+      await axios.put(`${API_BASE}/borrow/${tx.BorrowID}/reject?role=librarian`);
+      await fetchTransactions();
+    } finally {
+      setActionLoading(false);
+    }
   };
+
   const handleSetRetrieved = async (tx) => {
+    if (!isBookOnly(tx)) return;
     setActionLoading(true);
     try {
-      await axios.put(`${API_BASE}/borrow/${tx.BorrowID}/retrieved`, { retrievalStatus: "Retrieved" });
-      fetchTransactions();
-      setModalOpen(false);
-    } finally { setActionLoading(false); }
+      await axios.put(`${API_BASE}/borrow/${tx.BorrowID}/retrieved?role=librarian`);
+      await fetchTransactions();
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   // Return Modal Logic

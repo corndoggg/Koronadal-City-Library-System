@@ -26,7 +26,9 @@ const navLinksByRole = {
     { href: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { href: '/admin/books', icon: BookOpen, label: 'Books' },
     { href: '/admin/documents', icon: FileText, label: 'Documents' },
+    { href: '/admin/borrows', icon: Handshake, label: 'Borrows' },
     { href: '/admin/users', icon: UserCircle, label: 'Users' },
+    { href: '/admin/reports', icon: FileText, label: 'Reports' },
   ],
   borrower: [
     { href: '/borrower/browse', icon: Package, label: 'Browse' },
