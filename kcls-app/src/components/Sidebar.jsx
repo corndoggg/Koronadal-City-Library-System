@@ -1,18 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   Drawer, List, ListItemIcon, ListItemText, Tooltip, Box, Typography, Divider,
   ListItemButton, IconButton, Avatar, Snackbar, Alert, useMediaQuery,
-  Chip, Dialog, DialogTitle, DialogContent, DialogActions, Button
+  Chip, Dialog, DialogTitle, DialogContent, DialogActions, Button, Badge
 } from '@mui/material';
 import { useTheme, alpha } from '@mui/material/styles';
 import {
   LayoutDashboard, BookOpen, FileText, Handshake, Package, UserCircle,
   Menu as MenuIcon
 } from 'lucide-react';
-import { LightMode, DarkMode, Logout } from '@mui/icons-material';
+import { LightMode, DarkMode, Logout, Notifications as NotificationsIcon } from '@mui/icons-material';
 import { useThemeContext } from '../contexts/ThemeContext';
 import AccountInfoModal from './AccountInfoModal';
+import NotificationModal from './NotificationModal';
+import axios from 'axios';
+
+const API_BASE = import.meta.env.VITE_API_BASE;
 
 const navLinksByRole = {
   librarian: [
@@ -45,6 +49,11 @@ const Sidebar = () => {
   const [toast, setToast] = useState({ open: false, message: '', severity: 'info' });
   const [accountModalOpen, setAccountModalOpen] = useState(false);
   const [logoutOpen, setLogoutOpen] = useState(false);
+
+  // Notifications state
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const location = useLocation();
@@ -85,6 +94,45 @@ const Sidebar = () => {
       }}
     />
   );
+
+  // --- Notifications: unread counter polling ---
+  const fetchUnread = async () => {
+    try {
+      if (!user?.UserID) return;
+      const res = await axios.get(`${API_BASE}/users/${user.UserID}/notifications/unread-count`);
+      setUnreadCount(Number(res.data?.unread || 0));
+    } catch {
+      setUnreadCount(0);
+    }
+  };
+
+  useEffect(() => {
+    fetchUnread();
+    const id = setInterval(fetchUnread, 30000); // poll every 30s
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.UserID]);
+
+  // Refresh count when modal closes (after marking read)
+  useEffect(() => {
+    if (!notifOpen) fetchUnread();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notifOpen]);
+
+  // Optional: navigate to related entity from modal
+  const handleNotifNavigate = (type, id) => {
+    // Route per role
+    if (type === 'Borrow') {
+      navigate(role === 'admin' ? `/admin/borrows?id=${id}` :
+               role === 'librarian' ? `/librarian/borrows?id=${id}` :
+               `/borrower/borrow?id=${id}`);
+    } else if (type === 'Document') {
+      navigate(role === 'admin' ? `/admin/documents?id=${id}` : `/librarian/documents?id=${id}`);
+    } else if (type === 'Book') {
+      navigate(role === 'admin' ? `/admin/books?id=${id}` : `/librarian/books?id=${id}`);
+    }
+    setNotifOpen(false);
+  };
 
   return (
     <>
@@ -314,6 +362,15 @@ const Sidebar = () => {
                 }
               }}
             >
+              {/* Notifications button with unread badge */}
+              <Tooltip title="Notifications">
+                <IconButton size="small" onClick={() => setNotifOpen(true)}>
+                  <Badge color="error" badgeContent={unreadCount} max={99}>
+                    <NotificationsIcon fontSize="small" />
+                  </Badge>
+                </IconButton>
+              </Tooltip>
+
               <Tooltip title={`Switch to ${isDark ? 'light' : 'dark'} mode`}>
                 <IconButton size="small" onClick={handleThemeToggle}>
                   {isDark ? <LightMode fontSize="small" /> : <DarkMode fontSize="small" />}
@@ -324,9 +381,7 @@ const Sidebar = () => {
                   size="small"
                   color="error"
                   onClick={() => setLogoutOpen(true)}
-                  sx={{
-                    '&:hover': { background: alpha(theme.palette.error.main, 0.12) }
-                  }}
+                  sx={{ '&:hover': { background: alpha(theme.palette.error.main, 0.12) } }}
                 >
                   <Logout fontSize="small" />
                 </IconButton>
@@ -360,6 +415,14 @@ const Sidebar = () => {
         open={accountModalOpen}
         onClose={() => setAccountModalOpen(false)}
         user={user}
+      />
+
+      {/* Notifications Modal */}
+      <NotificationModal
+        open={notifOpen}
+        onClose={() => setNotifOpen(false)}
+        userId={user?.UserID}
+        onNavigate={handleNotifNavigate}
       />
 
       {/* Snackbar */}

@@ -1,5 +1,8 @@
 from flask import Blueprint, request, jsonify
 from app.db import get_db_connection
+from app.services.notifications import (
+    notify_submit, notify_approved, notify_rejected, notify_retrieved, notify_return_recorded
+)
 
 borrowreturn_bp = Blueprint('borrowreturn', __name__)
 
@@ -108,9 +111,13 @@ def add_borrow_transaction():
         else:
             results.append({**create_tx(doc_items,  'Pending', False), 'route': 'admin'})
 
+        # Create notifications for each newly created transaction
+        for res in results:
+            borrow_id = res['transaction']['BorrowID']
+            notify_submit(cursor, borrow_id, res['route'])
+
         conn.commit()
 
-        # FIX: avoid nested tuple from ternary + trailing ", 201"
         if len(results) == 1:
             return jsonify(results[0]), 201
         else:
@@ -252,6 +259,9 @@ def approve_borrow_transaction(borrow_id):
                     WHERE Storage_ID IN ({fmt})
                 """, tuple(storage_ids))
 
+        # Notify borrower
+        notify_approved(cursor, borrow_id)
+
         conn.commit()
         return jsonify({'message': 'Borrow transaction approved.'}), 200
     finally:
@@ -303,6 +313,9 @@ def reject_borrow_transaction(borrow_id):
             fmt = ','.join(['%s'] * len(storage_ids))
             cursor.execute(f"UPDATE Document_Inventory SET Availability='Available' WHERE Storage_ID IN ({fmt})", tuple(storage_ids))
 
+        # Notify borrower
+        notify_rejected(cursor, borrow_id)
+
         conn.commit()
         return jsonify({'message': 'Borrow transaction rejected.'}), 200
     finally:
@@ -327,6 +340,10 @@ def set_borrow_transaction_retrieved(borrow_id):
             SET RetrievalStatus='Retrieved'
             WHERE BorrowID=%s
         """, (borrow_id,))
+
+        # Notify staff
+        notify_retrieved(cursor, borrow_id, route)
+
         conn.commit()
         return jsonify({'message': 'Borrow transaction set as retrieved.'}), 200
     finally:
@@ -407,6 +424,9 @@ def add_return_transaction():
         cursor.execute("""
             UPDATE BorrowTransactions SET ReturnStatus='Returned' WHERE BorrowID=%s
         """, (data['borrowId'],))
+
+        # Notify borrower + staff
+        notify_return_recorded(cursor, data['borrowId'])
 
         conn.commit()
 

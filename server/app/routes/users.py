@@ -1,6 +1,11 @@
 from flask import Blueprint, jsonify, request
 from ..db import get_db_connection
 from datetime import datetime
+from ..services.notifications import (
+    notify_account_registration_submitted,
+    notify_account_approved,
+    notify_account_rejected,
+)
 
 users_bp = Blueprint('users', __name__)
 
@@ -54,6 +59,8 @@ def add_user():
             INSERT INTO Borrowers (UserID, Type, Department, AccountStatus)
             VALUES (%s, %s, %s, %s)
         """, (user_id, borrower['type'], borrower.get('department'), borrower['accountstatus']))
+        # Emit notification to admins about new registration
+        notify_account_registration_submitted(cursor, user_id)
 
     conn.commit()
     cursor.close()
@@ -207,12 +214,19 @@ def login_user():
 def approve_user_account(user_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-    # Update AccountStatus to 'Approved' for borrowers
+    # Update AccountStatus to 'Registered' for borrowers
     cursor.execute("""
         UPDATE Borrowers
         SET AccountStatus='Registered'
         WHERE UserID=%s
     """, (user_id,))
+    # Notify borrower (sender optional from query: ?senderUserId=123)
+    try:
+        sender_id = request.args.get('senderUserId', type=int)
+    except Exception:
+        sender_id = None
+    notify_account_approved(cursor, user_id, sender_user_id=sender_id)
+
     conn.commit()
     cursor.close()
     conn.close()
@@ -229,6 +243,13 @@ def reject_user_account(user_id):
         SET AccountStatus='Rejected'
         WHERE UserID=%s
     """, (user_id,))
+    # Notify borrower (sender optional from query)
+    try:
+        sender_id = request.args.get('senderUserId', type=int)
+    except Exception:
+        sender_id = None
+    notify_account_rejected(cursor, user_id, sender_user_id=sender_id)
+
     conn.commit()
     cursor.close()
     conn.close()

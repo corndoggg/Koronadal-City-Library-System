@@ -6,6 +6,7 @@ from .storages import storages_bp
 from .users import users_bp
 from .borrowreturn import borrowreturn_bp
 from .document_ai import bp as document_ai_bp
+from .notification import notification_bp
 
 def register_routes(app):
     app.register_blueprint(books_bp, url_prefix='/api')
@@ -16,3 +17,4 @@ def register_routes(app):
     app.register_blueprint(users_bp, url_prefix='/api')
     app.register_blueprint(borrowreturn_bp, url_prefix='/api')
     app.register_blueprint(document_ai_bp, url_prefix='/api')
+    app.register_blueprint(notification_bp, url_prefix='/api')
