@@ -25,6 +25,14 @@ const REPORT_TYPES = [
 
 const dateISO = d => d ? new Date(d).toISOString().slice(0,10) : '';
 
+const fullName = (u) => {
+  const f = (u.Firstname || '').trim();
+  const m = (u.Middlename || '').trim();
+  const l = (u.Lastname || '').trim();
+  const mi = m ? ` ${m[0]}.` : '';
+  return `${f}${mi} ${l}`.trim() || u.Username || `User #${u.UserID}`;
+};
+
 const ReportsPage = () => {
   const API_BASE = import.meta.env.VITE_API_BASE;
   const [tab, setTab] = useState(0);
@@ -38,6 +46,9 @@ const ReportsPage = () => {
   const [bookInvMap, setBookInvMap] = useState({});
   const [docInvMap, setDocInvMap] = useState({});
   const [dueMap, setDueMap] = useState({});
+  // NEW: maps for accurate lookups
+  const [copyToBookMap, setCopyToBookMap] = useState({});
+  const [borrowerNameMap, setBorrowerNameMap] = useState({});
 
   // Filters
   const [fromDate, setFromDate] = useState('');
@@ -49,23 +60,40 @@ const ReportsPage = () => {
     setLoading(true);
     setErr(null);
     try {
-      const [bRes, dRes, brRes] = await Promise.all([
+      // Fetch users too (for borrower names)
+      const [bRes, dRes, brRes, uRes] = await Promise.all([
         axios.get(`${API_BASE}/books`),
         axios.get(`${API_BASE}/documents`),
-        axios.get(`${API_BASE}/borrow`)
+        axios.get(`${API_BASE}/borrow`),
+        axios.get(`${API_BASE}/users`)
       ]);
       const bks = bRes.data || [];
       const docs = dRes.data || [];
       const brs = brRes.data || [];
+      const users = uRes.data || [];
+
+      // Build borrower name map: BorrowerID -> Full Name
+      const borrowerNames = {};
+      users
+        .filter(u => u.Role === 'Borrower' && u.borrower?.BorrowerID)
+        .forEach(u => { borrowerNames[u.borrower.BorrowerID] = fullName(u); });
+
+      // Build inventories and CopyID -> Book_ID map
       const bookInventories = {};
+      const copyMap = {};
       await Promise.all(
         bks.map(async b => {
           try {
             const inv = (await axios.get(`${API_BASE}/books/inventory/${b.Book_ID}`)).data || [];
             bookInventories[b.Book_ID] = inv;
+            inv.forEach(row => {
+              const copyId = row.Copy_ID ?? row.CopyID ?? row.copy_id ?? row.copyId;
+              if (copyId != null) copyMap[String(copyId)] = b.Book_ID;
+            });
           } catch { bookInventories[b.Book_ID] = []; }
         })
       );
+
       const docInventories = {};
       await Promise.all(
         docs.map(async d => {
@@ -75,6 +103,7 @@ const ReportsPage = () => {
           } catch { docInventories[d.Document_ID] = []; }
         })
       );
+
       const dueTemp = {};
       await Promise.all(
         brs.map(async tx => {
@@ -84,12 +113,15 @@ const ReportsPage = () => {
           } catch { dueTemp[tx.BorrowID] = tx.ReturnDate || null; }
         })
       );
+
       setBooks(bks);
       setDocuments(docs);
       setBorrows(brs);
       setBookInvMap(bookInventories);
       setDocInvMap(docInventories);
       setDueMap(dueTemp);
+      setCopyToBookMap(copyMap);
+      setBorrowerNameMap(borrowerNames);
     } catch (e) {
       setErr(e.message || 'Failed loading');
     } finally {
@@ -160,41 +192,54 @@ const ReportsPage = () => {
       };
     },
     top_borrowed_books: () => {
-      // Count by BookCopyID reference in items
+      // Count by BookCopyID
       const counts = {};
       filteredBorrows.forEach(tx => (tx.items||[]).forEach(it => {
-        if (it.ItemType === 'Book' && it.BookCopyID) counts[it.BookCopyID] = (counts[it.BookCopyID]||0)+1;
+        if (it.ItemType === 'Book' && it.BookCopyID != null) {
+          const key = String(it.BookCopyID);
+          counts[key] = (counts[key] || 0) + 1;
+        }
       }));
       const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0, limit);
       const rows = sorted.map(([copyId, c]) => {
-        // find book via inventory maps
-        const book = Object.entries(bookInvMap).find(([,inv]) => inv.some(i=>i.Copy_ID===copyId || i.CopyID===copyId));
-        const bookData = book ? books.find(b=>b.Book_ID===parseInt(book[0])) : null;
-        return [copyId, bookData?.Title || 'Unknown', c];
+        // Use copyToBookMap for accurate title lookup
+        const bookId = copyToBookMap[copyId];
+        const title = books.find(b => b.Book_ID === Number(bookId))?.Title
+          || (() => {
+               // Fallback: search by inventory if map missing
+               const found = Object.entries(bookInvMap).find(([,inv]) =>
+                 inv.some(i => String(i.Copy_ID ?? i.CopyID) === String(copyId)));
+               return found ? (books.find(b => b.Book_ID === Number(found[0]))?.Title) : null;
+             })()
+          || 'Unknown';
+        return [copyId, title, c];
       });
       return {
         title:`Top Borrowed Books (limit ${limit})`,
-        headers:['Book Copy ID','Title','Borrow Count'],
+        headers:['Book Copy ID','Book Title','Borrow Count'],
         rows
       };
     },
     borrower_activity: () => {
       const byBorrower = {};
       filteredBorrows.forEach(tx => {
-        const id = tx.BorrowerID || tx.UserID || 'Unknown';
-        if (!byBorrower[id]) byBorrower[id] = { total:0, returned:0, overdue:0 };
-        byBorrower[id].total++;
-        if (tx.ReturnStatus === 'Returned') byBorrower[id].returned++;
+        const borrowerId = tx.BorrowerID || tx.UserID || 'Unknown';
+        if (!byBorrower[borrowerId]) byBorrower[borrowerId] = { total:0, returned:0, overdue:0 };
+        byBorrower[borrowerId].total++;
+        if (tx.ReturnStatus === 'Returned') byBorrower[borrowerId].returned++;
         const due = dueMap[tx.BorrowID] ? new Date(dueMap[tx.BorrowID]) : null;
-        if (due && tx.ReturnStatus !== 'Returned' && due < new Date()) byBorrower[id].overdue++;
+        if (due && tx.ReturnStatus !== 'Returned' && due < new Date()) byBorrower[borrowerId].overdue++;
       });
       const rows = Object.entries(byBorrower)
-        .map(([id,v])=>[id, v.total, v.returned, v.overdue])
+        .map(([borrowerId, v])=>[
+          borrowerNameMap[Number(borrowerId)] || `Borrower #${borrowerId}`,
+          v.total, v.returned, v.overdue
+        ])
         .sort((a,b)=>b[1]-a[1])
         .slice(0, limit);
       return {
         title:`Borrower Activity (top ${limit})`,
-        headers:['Borrower ID','Total','Returned','Overdue'],
+        headers:['Borrower','Total','Returned','Overdue'],
         rows
       };
     },
