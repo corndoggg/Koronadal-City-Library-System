@@ -113,18 +113,11 @@ const DashboardPage = () => {
           } catch { docInventories[d.Document_ID] = []; }
         })
       );
-      // due dates
+      // due dates from /borrow payload
       const dueMapTemp = {};
-      await Promise.all(
-        brs.map(async tx => {
-          try {
-            const dd = await axios.get(`${API_BASE}/borrow/${tx.BorrowID}/due-date`);
-            dueMapTemp[tx.BorrowID] = dd.data?.DueDate || tx.ReturnDate || null;
-          } catch {
-            dueMapTemp[tx.BorrowID] = tx.ReturnDate || null;
-          }
-        })
-      );
+      for (const tx of brs) {
+        dueMapTemp[tx.BorrowID] = tx.ReturnDate || null;
+      }
 
       setBooks(bks);
       setDocuments(docs);

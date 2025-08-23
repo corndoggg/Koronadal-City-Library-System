@@ -15,6 +15,21 @@ const mono = {
 const getDesignTokens = (mode) => {
   const isLight = mode === 'light';
 
+  // Modern variable font stack (falls back to system UI)
+  const modernFontStack = [
+    '"Inter Variable"',
+    '"Plus Jakarta Sans Variable"',
+    '"Plus Jakarta Sans"',
+    'Inter',
+    'system-ui',
+    '-apple-system',
+    '"Segoe UI"',
+    'Roboto',
+    '"Helvetica Neue"',
+    'Arial',
+    'sans-serif'
+  ].join(', ');
+
   return {
     palette: {
       mode,
@@ -81,13 +96,30 @@ const getDesignTokens = (mode) => {
       },
     },
     typography: {
-      fontFamily: 'Inter, "Segoe UI", "Helvetica Neue", Arial, "Liberation Sans", sans-serif',
-      button: { textTransform: 'none', fontWeight: 600 },
-      h1: { fontWeight: 700 },
-      h2: { fontWeight: 700 },
-      h3: { fontWeight: 700 },
+      fontFamily: modernFontStack,
+      fontWeightRegular: 500,
+      fontWeightMedium: 600,
+      fontWeightBold: 700,
+      button: { textTransform: 'none', fontWeight: 600, letterSpacing: 0.2 },
+      h1: { fontWeight: 800, letterSpacing: -0.5, lineHeight: 1.1 },
+      h2: { fontWeight: 800, letterSpacing: -0.4, lineHeight: 1.15 },
+      h3: { fontWeight: 700, letterSpacing: -0.2, lineHeight: 1.2 },
+      h4: { fontWeight: 700, letterSpacing: -0.1, lineHeight: 1.25 },
+      subtitle1: { fontWeight: 600 },
+      body1: { letterSpacing: 0.1 },
+      body2: { letterSpacing: 0.1 },
     },
     components: {
+      // Font smoothing for crisper text
+      MuiCssBaseline: {
+        styleOverrides: {
+          html: {
+            WebkitFontSmoothing: 'antialiased',
+            MozOsxFontSmoothing: 'grayscale',
+            textRendering: 'optimizeLegibility',
+          },
+        },
+      },
       MuiPaper: {
         styleOverrides: {
           root: {
@@ -107,9 +139,7 @@ const getDesignTokens = (mode) => {
       },
       MuiChip: {
         styleOverrides: {
-          root: {
-            borderRadius: 4,
-          },
+          root: { borderRadius: 4 },
         },
       },
     },

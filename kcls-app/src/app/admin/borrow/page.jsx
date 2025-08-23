@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import {
   Box, Paper, Typography, TextField, InputAdornment, IconButton, Tooltip, Chip,
@@ -13,11 +13,13 @@ import {
 
 const API_BASE = import.meta.env.VITE_API_BASE;
 const returnConditions = ["Good", "Slightly Damaged", "Heavily Damaged", "Lost"];
+// Auto fine per day from env
+const FINE_PER_DAY = parseFloat(import.meta.env.VITE_FINE) || 0;
 
 const DocumentApprovalPage = () => {
   const theme = useTheme();
   const [transactions, setTransactions] = useState([]);
-  const [borrowers, setBorrowers] = useState([]);
+  const [borrowerNameById, setBorrowerNameById] = useState({});
   const [docDetails, setDocDetails] = useState({});
   const [dueDates, setDueDates] = useState({});
   const [loading, setLoading] = useState(false);
@@ -30,32 +32,13 @@ const DocumentApprovalPage = () => {
   const [returnModalOpen, setReturnModalOpen] = useState(false);
   const [returnTx, setReturnTx] = useState(null);
   const [returnData, setReturnData] = useState({});
+  // NEW: remarks for return
+  const [returnRemarks, setReturnRemarks] = useState("");
 
-  useEffect(() => { fetchTransactions(); fetchBorrowers(); }, []);
+  // Only fetch transactions on mount
+  useEffect(() => { fetchTransactions(); }, []);
 
-  const fetchBorrowers = async () => {
-    try {
-      const res = await axios.get(`${API_BASE}/users/borrowers`);
-      setBorrowers(res.data || []);
-    } catch {
-      try {
-        const res = await axios.get(`${API_BASE}/users?type=borrower`);
-        setBorrowers(res.data || []);
-      } catch {
-        setBorrowers([]);
-      }
-    }
-  };
-
-  const getBorrowerInfo = (userId) => {
-    const b = borrowers.find(x => x.UserID === userId || x.BorrowerID === userId);
-    if (!b) return String(userId || "");
-    const first = b.Firstname || "";
-    const mid = b.Middlename ? ` ${b.Middlename[0]}.` : "";
-    const last = b.Lastname || "";
-    return `${first}${mid} ${last}`.trim();
-  };
-
+  // Fetch transactions
   const fetchTransactions = async () => {
     setLoading(true);
     try {
@@ -68,60 +51,107 @@ const DocumentApprovalPage = () => {
     }
   };
 
-  // Due dates
+  // Due dates (from /borrow payload)
   useEffect(() => {
-    (async () => {
-      if (!transactions.length) return;
-      const map = {};
-      await Promise.all(transactions.map(async (tx) => {
-        try {
-          const r = await axios.get(`${API_BASE}/borrow/${tx.BorrowID}/due-date`);
-          map[tx.BorrowID] = r.data?.DueDate || null;
-        } catch { map[tx.BorrowID] = tx.ReturnDate || null; }
-      }));
-      setDueDates(map);
-    })();
+    if (!transactions.length) { setDueDates({}); return; }
+    const map = {};
+    for (const tx of transactions) {
+      map[tx.BorrowID] = tx.ReturnDate || null;
+    }
+    setDueDates(map);
   }, [transactions]);
 
-  // Load document metadata (by storage IDs)
+  // Load document metadata (parallelized by storage IDs)
   useEffect(() => {
     (async () => {
       if (!transactions.length) return;
       const storageIds = [...new Set(transactions.flatMap(tx => (tx.items || [])
         .filter(i => i.ItemType === "Document" && i.DocumentStorageID).map(i => i.DocumentStorageID)))];
-      const info = {};
-      for (const storageId of storageIds) {
-        try {
-          const inv = await axios.get(`${API_BASE}/documents/inventory/storage/${storageId}`);
-          const invRow = Array.isArray(inv.data) ? inv.data[0] : inv.data;
-          const doc = await axios.get(`${API_BASE}/documents/${invRow?.Document_ID || storageId}`);
-          if (doc.data?.Title) info[storageId] = { ...doc.data, ...invRow };
-        } catch { /* ignore */ }
+      if (!storageIds.length) return;
+
+      try {
+        const entries = await Promise.all(storageIds.map(async (storageId) => {
+          try {
+            const invRes = await axios.get(`${API_BASE}/documents/inventory/storage/${storageId}`);
+            const invRow = Array.isArray(invRes.data) ? invRes.data[0] : invRes.data;
+            const docId = invRow?.Document_ID ?? storageId;
+            const docRes = await axios.get(`${API_BASE}/documents/${docId}`);
+            if (docRes.data?.Title) {
+              return [storageId, { ...docRes.data, ...invRow }];
+            }
+          } catch { /* ignore per item */ }
+          return null;
+        }));
+        const info = {};
+        entries.filter(Boolean).forEach(([id, val]) => { info[id] = val; });
+        setDocDetails(info);
+      } catch {
+        // ignore
       }
-      setDocDetails(info);
     })();
   }, [transactions]);
 
-  // Status helpers
-  const deriveStatus = (tx) => {
-    const dueRaw = dueDates[tx.BorrowID];
-    const due = dueRaw ? new Date(dueRaw) : null;
+  // Prefetch borrower names via /users/borrower/:borrowerId
+  useEffect(() => {
+    (async () => {
+      if (!transactions.length) return;
+      const uniqueIds = [...new Set(transactions.map(tx => tx.BorrowerID).filter(Boolean))];
+      const missing = uniqueIds.filter(id => !borrowerNameById[id]);
+      if (!missing.length) return;
+
+      try {
+        const results = await Promise.all(missing.map(id =>
+          axios.get(`${API_BASE}/users/borrower/${id}`).then(r => ({ id, data: r.data })).catch(() => null)
+        ));
+        const updates = {};
+        results.filter(Boolean).forEach(({ id, data }) => {
+          const f = (data.Firstname || '').trim();
+          const m = (data.Middlename || '').trim();
+          const l = (data.Lastname || '').trim();
+          const mi = m ? ` ${m[0]}.` : '';
+          updates[id] = `${f}${mi} ${l}`.trim() || data.Username || `Borrower #${id}`;
+        });
+        if (Object.keys(updates).length) {
+          setBorrowerNameById(prev => ({ ...prev, ...updates }));
+        }
+      } catch { /* ignore */ }
+    })();
+  }, [transactions, borrowerNameById]);
+
+  // Simplified: use cache or fallback label
+  const getBorrowerInfo = (borrowerId) => {
+    if (!borrowerId) return String(borrowerId || "");
+    return borrowerNameById[borrowerId];
+  };
+
+  // Compute status once per transaction
+  const deriveStatus = (tx, due) => {
+    const dueDate = due ? new Date(due) : null;
     const today = new Date();
     if (tx.ReturnStatus === "Returned") return { label: "Returned", color: "success" };
     if (tx.ApprovalStatus === "Rejected") return { label: "Rejected", color: "error" };
     if (tx.ApprovalStatus === "Pending") return { label: "Pending Approval", color: "warning" };
     if (tx.ApprovalStatus === "Approved" && tx.RetrievalStatus !== "Retrieved") {
-      if (due && due < today) return { label: "Overdue (Awaiting Retrieval)", color: "error" };
+      if (dueDate && dueDate < today) return { label: "Overdue (Awaiting Retrieval)", color: "error" };
       return { label: "Approved", color: "info" };
     }
     if (tx.RetrievalStatus === "Retrieved" && tx.ReturnStatus !== "Returned") {
-      if (due && due < today) return { label: "Overdue", color: "error" };
+      if (dueDate && dueDate < today) return { label: "Overdue", color: "error" };
       return { label: "Borrowed", color: "secondary" };
     }
     return { label: tx.ApprovalStatus || "Unknown", color: "default" };
   };
+
+  const statusMap = useMemo(() => {
+    const map = {};
+    for (const tx of transactions) {
+      map[tx.BorrowID] = deriveStatus(tx, dueDates[tx.BorrowID]);
+    }
+    return map;
+  }, [transactions, dueDates]);
+
   const StatusChip = ({ tx }) => {
-    const s = deriveStatus(tx);
+    const s = statusMap[tx.BorrowID] || { label: "Unknown", color: "default" };
     return (
       <Chip
         size="small"
@@ -155,67 +185,53 @@ const DocumentApprovalPage = () => {
     } finally { setActionLoading(false); }
   };
 
-  // Return modal
-  const openReturnModal = (tx) => {
-    setReturnTx(tx);
-    const data = {};
-    (tx.items || []).forEach(i => { data[i.BorrowedItemID] = { condition: "Good", fine: 0, finePaid: false }; });
-    setReturnData(data);
-    setReturnModalOpen(true);
-  };
-  const handleReturnChange = (id, field, value) =>
-    setReturnData(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
-  const submitReturn = async () => {
-    if (!returnTx) return;
-    setActionLoading(true);
-    try {
-      const items = (returnTx.items || []).map(i => ({
-        borrowedItemId: i.BorrowedItemID,
-        returnCondition: returnData[i.BorrowedItemID]?.condition || "Good",
-        fine: parseFloat(returnData[i.BorrowedItemID]?.fine) || 0,
-        finePaid: returnData[i.BorrowedItemID]?.finePaid ? "Yes" : "No"
-      }));
-      await axios.post(`${API_BASE}/return`, {
-        borrowId: returnTx.BorrowID,
-        returnDate: new Date().toISOString().slice(0, 10),
-        items
-      });
-      setReturnModalOpen(false);
-      await fetchTransactions();
-    } finally { setActionLoading(false); }
-  };
-
   // Search/filter/sort
-  const filtered = transactions.filter(tx => {
-    const borrower = getBorrowerInfo(tx.BorrowerID) || "";
-    const q = search.toLowerCase();
-    return (
-      borrower.toLowerCase().includes(q) ||
-      (tx.Purpose || "").toLowerCase().includes(q) ||
-      (tx.BorrowDate || "").toLowerCase().includes(q) ||
-      (dueDates[tx.BorrowID] || "").toLowerCase().includes(q) ||
-      String(tx.BorrowID).includes(q)
-    );
-  });
-  const statusPriority = (tx) => {
-    const d = deriveStatus(tx).label;
-    if (d.startsWith("Overdue")) return 0;
-    if (d === "Pending Approval") return 1;
-    if (d === "Approved") return 2;
-    if (d === "Borrowed") return 3;
-    if (d === "Returned") return 4;
-    if (d === "Rejected") return 5;
+  const filtered = useMemo(() => {
+    const q = (search || "").toLowerCase();
+    if (!q) return transactions;
+    return transactions.filter(tx => {
+      const borrower = (getBorrowerInfo(tx.BorrowerID) || "").toLowerCase();
+      return (
+        borrower.includes(q) ||
+        (tx.Purpose || "").toLowerCase().includes(q) ||
+        (tx.BorrowDate || "").toLowerCase().includes(q) ||
+        (dueDates[tx.BorrowID] || "").toLowerCase().includes(q) ||
+        String(tx.BorrowID).includes(q)
+      );
+    });
+  }, [transactions, search, dueDates]);
+
+  const statusPriority = (label) => {
+    if (label.startsWith("Overdue")) return 0;
+    if (label === "Pending Approval") return 1;
+    if (label === "Approved") return 2;
+    if (label === "Borrowed") return 3;
+    if (label === "Returned") return 4;
+    if (label === "Rejected") return 5;
     return 6;
   };
-  const rows = [...filtered].sort((a, b) => statusPriority(a) - statusPriority(b));
 
-  const summary = [
-    { label: "Pending", value: transactions.filter(t => deriveStatus(t).label === "Pending Approval").length, color: theme.palette.warning.main },
-    { label: "Approved", value: transactions.filter(t => deriveStatus(t).label === "Approved").length, color: theme.palette.info.main },
-    { label: "Borrowed", value: transactions.filter(t => deriveStatus(t).label === "Borrowed").length, color: theme.palette.secondary.main },
-    { label: "Overdue", value: transactions.filter(t => deriveStatus(t).label.startsWith("Overdue")).length, color: theme.palette.error.main },
-    { label: "Returned", value: transactions.filter(t => deriveStatus(t).label === "Returned").length, color: theme.palette.success.main }
-  ];
+  const rows = useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      const la = (statusMap[a.BorrowID]?.label) || "Unknown";
+      const lb = (statusMap[b.BorrowID]?.label) || "Unknown";
+      return statusPriority(la) - statusPriority(lb);
+    });
+  }, [filtered, statusMap]);
+
+  const summary = useMemo(() => {
+    const labels = Object.values(statusMap).map(s => s.label);
+    const count = (t) => labels.filter(l => l === t || (t === "Overdue" && l.startsWith("Overdue"))).length;
+    return [
+      { label: "Pending", value: count("Pending Approval"), color: theme.palette.warning.main },
+      { label: "Approved", value: count("Approved"), color: theme.palette.info.main },
+      { label: "Borrowed", value: count("Borrowed"), color: theme.palette.secondary.main },
+      { label: "Overdue", value: count("Overdue"), color: theme.palette.error.main },
+      { label: "Returned", value: count("Returned"), color: theme.palette.success.main }
+    ];
+    // theme is stable; safe to use directly
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusMap]);
 
   const InfoBlock = ({ label, value }) => (
     <Box sx={{ p: 1, border: `1px solid ${theme.palette.divider}`, borderRadius: 1, minWidth: 140, flex: '1 1 auto', bgcolor: 'background.paper' }}>
@@ -235,7 +251,6 @@ const DocumentApprovalPage = () => {
     </Stack>
   );
 
-  // Detail modal
   const renderTxModal = () => {
     if (!selectedTx) return null;
     const dueDate = dueDates[selectedTx.BorrowID];
@@ -316,6 +331,42 @@ const DocumentApprovalPage = () => {
     );
   };
 
+  const openReturnModal = (tx) => {
+    setReturnTx(tx);
+    const baseFine = calcFineForBorrow(tx.BorrowID);
+    const data = {};
+    (tx.items || []).forEach(i => {
+      data[i.BorrowedItemID] = { condition: "Good", fine: baseFine, finePaid: false };
+    });
+    setReturnData(data);
+    // reset remarks when opening
+    setReturnRemarks("");
+    setReturnModalOpen(true);
+  };
+  const handleReturnChange = (id, field, value) =>
+    setReturnData(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
+  const submitReturn = async () => {
+    if (!returnTx) return;
+    setActionLoading(true);
+    try {
+      const items = (returnTx.items || []).map(i => ({
+        borrowedItemId: i.BorrowedItemID,
+        returnCondition: returnData[i.BorrowedItemID]?.condition || "Good",
+        fine: parseFloat(returnData[i.BorrowedItemID]?.fine) || 0,
+        finePaid: returnData[i.BorrowedItemID]?.finePaid ? "Yes" : "No"
+      }));
+      await axios.post(`${API_BASE}/return`, {
+        borrowId: returnTx.BorrowID,
+        returnDate: new Date().toISOString().slice(0, 10),
+        items,
+        // include remarks
+        remarks: returnRemarks || undefined
+      });
+      setReturnModalOpen(false);
+      await fetchTransactions();
+    } finally { setActionLoading(false); }
+  };
+
   const renderReturnModal = () => !returnTx ? null : (
     <Dialog open={returnModalOpen} onClose={() => setReturnModalOpen(false)} maxWidth="sm" fullWidth
       PaperProps={{ sx: { borderRadius: 1, border: `2px solid ${theme.palette.divider}` } }}>
@@ -323,41 +374,61 @@ const DocumentApprovalPage = () => {
         Return Items • Borrow #{returnTx.BorrowID}
       </DialogTitle>
       <DialogContent dividers sx={{ display: 'flex', flexDirection: 'column', gap: 2, bgcolor: 'background.default' }}>
-        {(returnTx.items || []).map(item => (
-          <Box key={item.BorrowedItemID} sx={{ p: 1.5, border: `1.5px solid ${theme.palette.divider}`, borderRadius: 1, bgcolor: 'background.paper' }}>
-            <Stack direction="row" spacing={1} alignItems="center">
-              <Avatar sx={{ bgcolor: theme.palette.secondary.main, width: 36, height: 36, borderRadius: 1 }}>
-                <Article fontSize="small" />
-              </Avatar>
-              <Typography fontWeight={700} fontSize={13}>Doc Storage #{item.DocumentStorageID}</Typography>
-            </Stack>
-            <FormControl fullWidth size="small" sx={{ mt: 1 }}>
-              <InputLabel>Return Condition</InputLabel>
-              <Select
-                label="Return Condition"
-                value={returnData[item.BorrowedItemID]?.condition || "Good"}
-                onChange={e => handleReturnChange(item.BorrowedItemID, "condition", e.target.value)}
-              >
-                {returnConditions.map(o => <MenuItem key={o} value={o}>{o}</MenuItem>)}
-              </Select>
-            </FormControl>
-            <TextField
-              label="Fine"
-              type="number"
-              size="small"
-              value={returnData[item.BorrowedItemID]?.fine || 0}
-              onChange={e => handleReturnChange(item.BorrowedItemID, "fine", e.target.value)}
-              inputProps={{ min: 0, step: "0.01" }}
-              sx={{ mt: 1 }}
-            />
-            <FormControlLabel
-              sx={{ m: 0, mt: 0.5 }}
-              control={<Checkbox checked={!!returnData[item.BorrowedItemID]?.finePaid}
-                onChange={e => handleReturnChange(item.BorrowedItemID, "finePaid", e.target.checked)} />}
-              label="Fine Paid"
-            />
-          </Box>
-        ))}
+        {(returnTx.items || []).map(item => {
+          const dueRaw = dueDates[returnTx.BorrowID];
+          const today = startOfDay(new Date());
+          const due = dueRaw ? startOfDay(new Date(dueRaw)) : null;
+          const days = due ? Math.max(0, Math.floor((today - due) / 86400000)) : 0;
+          const autoFine = (days * FINE_PER_DAY).toFixed(2);
+          return (
+            <Box key={item.BorrowedItemID} sx={{ p: 1.5, border: `1.5px solid ${theme.palette.divider}`, borderRadius: 1, bgcolor: 'background.paper' }}>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Avatar sx={{ bgcolor: theme.palette.secondary.main, width: 36, height: 36, borderRadius: 1 }}>
+                  <Article fontSize="small" />
+                </Avatar>
+                <Typography fontWeight={700} fontSize={13}>Doc Storage #{item.DocumentStorageID}</Typography>
+              </Stack>
+              <FormControl fullWidth size="small" sx={{ mt: 1 }}>
+                <InputLabel>Return Condition</InputLabel>
+                <Select
+                  label="Return Condition"
+                  value={returnData[item.BorrowedItemID]?.condition || "Good"}
+                  onChange={e => handleReturnChange(item.BorrowedItemID, "condition", e.target.value)}
+                >
+                  {returnConditions.map(o => <MenuItem key={o} value={o}>{o}</MenuItem>)}
+                </Select>
+              </FormControl>
+              <TextField
+                label="Fine"
+                type="number"
+                size="small"
+                value={returnData[item.BorrowedItemID]?.fine ?? 0}
+                onChange={e => handleReturnChange(item.BorrowedItemID, "fine", e.target.value)}
+                inputProps={{ min: 0, step: "0.01" }}
+                sx={{ mt: 1 }}
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+                Auto: {FINE_PER_DAY.toFixed(2)}/day × {days} day(s) = {autoFine}
+              </Typography>
+              <FormControlLabel
+                sx={{ m: 0, mt: 0.5 }}
+                control={<Checkbox checked={!!returnData[item.BorrowedItemID]?.finePaid}
+                  onChange={e => handleReturnChange(item.BorrowedItemID, "finePaid", e.target.checked)} />}
+                label="Fine Paid"
+              />
+            </Box>
+          );
+        })}
+        {/* Remarks at bottom */}
+        <TextField
+          label="Remarks"
+          placeholder="Optional notes (e.g., reason for delay, condition details)"
+          value={returnRemarks}
+          onChange={(e) => setReturnRemarks(e.target.value)}
+          multiline
+          minRows={3}
+          fullWidth
+        />
       </DialogContent>
       <DialogActions sx={{ borderTop: `2px solid ${theme.palette.divider}`, py: 1 }}>
         <Button onClick={() => setReturnModalOpen(false)} variant="outlined" size="small" sx={{ borderRadius: 1 }}>Cancel</Button>
@@ -421,12 +492,13 @@ const DocumentApprovalPage = () => {
               <TableBody sx={{ '& tr:hover': { backgroundColor: theme.palette.action.hover }, '& td': { borderBottom: `1px solid ${theme.palette.divider}` } }}>
                 {rows.map(tx => {
                   const due = dueDates[tx.BorrowID];
+                  const s = statusMap[tx.BorrowID] || { label: "Unknown", color: "default" };
                   return (
                     <TableRow key={tx.BorrowID}>
                       <TableCell><StatusChip tx={tx} /></TableCell>
                       <TableCell><Typography fontSize={12} fontWeight={600}>{tx.BorrowDate?.slice(0, 10) || "—"}</Typography></TableCell>
                       <TableCell>
-                        <Typography fontSize={12} fontWeight={700} color={deriveStatus(tx).label.startsWith("Overdue") ? 'error.main' : 'text.primary'}>
+                        <Typography fontSize={12} fontWeight={700} color={s.label.startsWith("Overdue") ? 'error.main' : 'text.primary'}>
                           {due ? due.slice(0, 10) : "—"}
                         </Typography>
                       </TableCell>

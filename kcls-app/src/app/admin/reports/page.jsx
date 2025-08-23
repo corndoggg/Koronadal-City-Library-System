@@ -1,4 +1,3 @@
-// Reports Page (requires: npm i jspdf jspdf-autotable chart.js react-chartjs-2)
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Box, Paper, Typography, Tabs, Tab, Divider, Stack, IconButton, Tooltip,
@@ -104,15 +103,11 @@ const ReportsPage = () => {
         })
       );
 
+      // Build due map directly from /borrow payload
       const dueTemp = {};
-      await Promise.all(
-        brs.map(async tx => {
-          try {
-            const dd = await axios.get(`${API_BASE}/borrow/${tx.BorrowID}/due-date`);
-            dueTemp[tx.BorrowID] = dd.data?.DueDate || tx.ReturnDate || null;
-          } catch { dueTemp[tx.BorrowID] = tx.ReturnDate || null; }
-        })
-      );
+      for (const tx of brs) {
+        dueTemp[tx.BorrowID] = tx.ReturnDate || null;
+      }
 
       setBooks(bks);
       setDocuments(docs);

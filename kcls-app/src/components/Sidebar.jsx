@@ -1,22 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import React, { useState } from 'react';
+import { NavLink } from 'react-router-dom';
 import {
-  Drawer, List, ListItemIcon, ListItemText, Tooltip, Box, Typography, Divider,
-  ListItemButton, IconButton, Avatar, Snackbar, Alert, useMediaQuery,
-  Chip, Dialog, DialogTitle, DialogContent, DialogActions, Button, Badge
+  Drawer, List, ListItemIcon, ListItemText, Tooltip, Box, Typography, ListItemButton, IconButton, useMediaQuery
 } from '@mui/material';
 import { useTheme, alpha } from '@mui/material/styles';
 import {
   LayoutDashboard, BookOpen, FileText, Handshake, Package, UserCircle,
   Menu as MenuIcon
 } from 'lucide-react';
-import { LightMode, DarkMode, Logout, Notifications as NotificationsIcon } from '@mui/icons-material';
-import { useThemeContext } from '../contexts/ThemeContext';
-import AccountInfoModal from './AccountInfoModal';
-import NotificationModal from './NotificationModal';
-import axios from 'axios';
-
-const API_BASE = import.meta.env.VITE_API_BASE;
+import { DRAWER_WIDTH, TOPBAR_HEIGHT } from '../constants/layout';
 
 const navLinksByRole = {
   librarian: [
@@ -40,24 +32,10 @@ const navLinksByRole = {
   ],
 };
 
-const drawerWidth = 240;
-
 const Sidebar = () => {
   const theme = useTheme();
-  const isDark = theme.palette.mode === 'dark';
-  const { toggleColorMode } = useThemeContext();
-  const [toast, setToast] = useState({ open: false, message: '', severity: 'info' });
-  const [accountModalOpen, setAccountModalOpen] = useState(false);
-  const [logoutOpen, setLogoutOpen] = useState(false);
-
-  // Notifications state
-  const [notifOpen, setNotifOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
-
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
-  const location = useLocation();
-  const navigate = useNavigate();
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const role = user.Role === 'Staff' && user.staff?.Position === 'Librarian'
@@ -68,71 +46,7 @@ const Sidebar = () => {
     ? 'borrower'
     : 'admin';
 
-  const roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
   const navLinks = navLinksByRole[role] || [];
-
-  const showToast = (msg, sev = 'info') => setToast({ open: true, message: msg, severity: sev });
-  const handleThemeToggle = () => { toggleColorMode(); showToast(`Switched to ${isDark ? 'light' : 'dark'} mode`, 'success'); };
-
-  const handleLogout = () => {
-    localStorage.removeItem('user');
-    navigate('/login', { replace: true });
-  };
-
-  const activeIndicator = (isActive) => isActive && (
-    <Box
-      sx={{
-        position: 'absolute',
-        left: 6,
-        top: '50%',
-        transform: 'translateY(-50%)',
-        width: 4,
-        height: 28,
-        borderRadius: 2,
-        bgcolor: theme.palette.primary.main,
-        boxShadow: `0 0 0 1px ${alpha(theme.palette.primary.main, 0.3)}`
-      }}
-    />
-  );
-
-  // --- Notifications: unread counter polling ---
-  const fetchUnread = async () => {
-    try {
-      if (!user?.UserID) return;
-      const res = await axios.get(`${API_BASE}/users/${user.UserID}/notifications/unread-count`);
-      setUnreadCount(Number(res.data?.unread || 0));
-    } catch {
-      setUnreadCount(0);
-    }
-  };
-
-  useEffect(() => {
-    fetchUnread();
-    const id = setInterval(fetchUnread, 30000); // poll every 30s
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.UserID]);
-
-  // Refresh count when modal closes (after marking read)
-  useEffect(() => {
-    if (!notifOpen) fetchUnread();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [notifOpen]);
-
-  // Optional: navigate to related entity from modal
-  const handleNotifNavigate = (type, id) => {
-    // Route per role
-    if (type === 'Borrow') {
-      navigate(role === 'admin' ? `/admin/borrows?id=${id}` :
-               role === 'librarian' ? `/librarian/borrows?id=${id}` :
-               `/borrower/borrow?id=${id}`);
-    } else if (type === 'Document') {
-      navigate(role === 'admin' ? `/admin/documents?id=${id}` : `/librarian/documents?id=${id}`);
-    } else if (type === 'Book') {
-      navigate(role === 'admin' ? `/admin/books?id=${id}` : `/librarian/books?id=${id}`);
-    }
-    setNotifOpen(false);
-  };
 
   return (
     <>
@@ -144,30 +58,28 @@ const Sidebar = () => {
             sx={{
               position: 'fixed', top: 12, left: 12, zIndex: 1400,
               backgroundColor: theme.palette.background.paper,
-              boxShadow: theme.shadows[3],
+              border: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
               '&:hover': { backgroundColor: theme.palette.action.hover },
             }}
             size="small"
           >
-            <MenuIcon size={20} />
+            <MenuIcon size={18} />
           </IconButton>
         </Tooltip>
       )}
       <Drawer
         sx={{
-          width: drawerWidth,
+          width: DRAWER_WIDTH,
           flexShrink: 0,
           '& .MuiDrawer-paper': {
-            width: drawerWidth,
+            width: DRAWER_WIDTH,
             boxSizing: 'border-box',
-            bgcolor: theme.palette.background.default,
-            borderRight: `2px solid ${alpha(theme.palette.divider, 0.9)}`,
+            bgcolor: theme.palette.background.paper,
+            borderRight: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
             display: 'flex',
             flexDirection: 'column',
-            justifyContent: 'space-between',
             overflowX: 'hidden',
-            borderRadius: 0,              // boxy
-            boxShadow: '0 0 0 1px rgba(0,0,0,0.05)',
+            borderRadius: 0,
           },
         }}
         {...(isMobile
@@ -179,89 +91,73 @@ const Sidebar = () => {
           sx={{
             display: 'flex',
             alignItems: 'center',
-            gap: 1.5,
-            px: 2,
-            py: 1.75,
-            bgcolor: alpha(theme.palette.primary.main, 0.1),
+            gap: 1,
+            px: 1.5,
+            height: TOPBAR_HEIGHT,
+            bgcolor: theme.palette.background.paper,
             color: theme.palette.text.primary,
-            borderBottom: `2px solid ${alpha(theme.palette.primary.main, 0.25)}`,
-            boxShadow: 'inset 0 -1px 0 rgba(0,0,0,0.08)',
-            borderRadius: 0,    // boxy
+            borderBottom: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
           }}
         >
           <Box component="img" src="/logo.png" alt="Logo"
             sx={{
-              width: 40, height: 40, objectFit: 'contain',
-              border: `1px solid ${alpha(theme.palette.primary.main, 0.4)}`,
+              width: 26, height: 26, objectFit: 'contain',
+              border: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
               bgcolor: '#fff',
-              p: 0.5,
-              borderRadius: 1    // slight
+              p: 0.25,
+              borderRadius: 1,
             }}
           />
-          <Typography variant="subtitle2" fontWeight={800} fontSize={12} noWrap letterSpacing={0.5}>
+          <Typography variant="subtitle2" fontWeight={800} fontSize={12} noWrap letterSpacing={0.3}>
             Koronadal City Library
           </Typography>
         </Box>
 
         {/* Navigation */}
-        <Box sx={{ flexGrow: 1, mt: 1.5, px: 1.5 }}>
+        <Box sx={{ flexGrow: 1, mt: 0.5, px: 1 }}>
           <List
             sx={{
-              pt: 0,
+              pt: 0.5,
               display: 'flex',
               flexDirection: 'column',
-              gap: 1,
+              gap: 0.25,
             }}
           >
             {navLinks.map(({ href, icon: Icon, label }) => (
               <NavLink key={href} to={href} style={{ textDecoration: 'none' }}>
                 {({ isActive }) => {
-                  const activeBg = alpha(theme.palette.primary.main, 0.14);
+                  const activeBg = alpha(theme.palette.primary.main, 0.08);
                   return (
                     <ListItemButton
                       selected={isActive}
                       sx={{
                         position: 'relative',
-                        borderRadius: 1, // sharper
-                        px: 2,
-                        py: 1.1,
-                        minHeight: 46,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 1.5,
-                        border: `1.5px solid ${isActive
-                          ? alpha(theme.palette.primary.main, 0.6)
-                          : alpha(theme.palette.divider, 0.8)}`,
-                        backgroundColor: isActive ? activeBg : alpha(theme.palette.background.paper, 0.7),
-                        boxShadow: isActive ? `0 0 0 1px ${alpha(theme.palette.primary.main, .4)}` : '0 1px 0 rgba(0,0,0,0.04)',
-                        transition: 'border-color .18s, background .18s, transform .18s',
+                        borderRadius: 8,
+                        px: 1.25,
+                        py: 0.6,
+                        minHeight: 36,
+                        gap: 0.75,
                         color: isActive ? theme.palette.primary.main : theme.palette.text.secondary,
+                        backgroundColor: isActive ? activeBg : 'transparent',
+                        transition: 'background-color .18s, color .18s',
                         '&:hover': {
                           backgroundColor: isActive
-                            ? alpha(theme.palette.primary.main, 0.18)
-                            : alpha(theme.palette.primary.main, 0.08),
-                          borderColor: isActive
-                            ? theme.palette.primary.main
-                            : alpha(theme.palette.primary.main, 0.5),
-                          transform: 'translateY(-2px)',
+                            ? alpha(theme.palette.primary.main, 0.12)
+                            : alpha(theme.palette.primary.main, 0.06),
+                          color: isActive ? theme.palette.primary.main : theme.palette.text.primary,
                         }
                       }}
+                      onClick={() => { if (isMobile) setShowMobileSidebar(false); }}
                     >
-                      {activeIndicator(isActive)}
-                      <ListItemIcon
-                        sx={{
-                          minWidth: 0,
-                          color: isActive ? theme.palette.primary.main : theme.palette.text.primary,
-                        }}
-                      >
-                        <Icon size={22} />
+                      <ListItemIcon sx={{ minWidth: 0, color: 'inherit' }}>
+                        <Icon size={18} />
                       </ListItemIcon>
                       <ListItemText
                         primary={label}
                         primaryTypographyProps={{
-                          fontSize: 14.5,
+                          fontSize: 13,
                           fontWeight: isActive ? 700 : 500,
-                          letterSpacing: 0.3,
+                          letterSpacing: 0.2,
                         }}
                       />
                     </ListItemButton>
@@ -271,169 +167,7 @@ const Sidebar = () => {
             ))}
           </List>
         </Box>
-
-        {/* Footer / Profile */}
-        <Box
-          sx={{
-            px: 1.5,
-            py: 1.75,
-            borderTop: `2px solid ${alpha(theme.palette.divider, 0.9)}`,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 1.25,
-            background: alpha(theme.palette.background.paper, 0.9)
-          }}
-        >
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1.25,
-              cursor: 'pointer',
-              p: 1,
-              borderRadius: 1,
-              border: `1.5px solid ${alpha(theme.palette.primary.main, 0.4)}`,
-              background: alpha(theme.palette.primary.main, 0.05),
-              '&:hover': {
-                background: alpha(theme.palette.primary.main, 0.1),
-                borderColor: theme.palette.primary.main
-              },
-              transition: 'all .18s'
-            }}
-            onClick={() => setAccountModalOpen(true)}   // CHANGED: open modal directly
-          >
-            <Avatar
-              variant="rounded"
-              sx={{
-                width: 42,
-                height: 42,
-                bgcolor: theme.palette.primary.main,
-                color: '#fff',
-                fontSize: 15,
-                fontWeight: 600,
-                border: '2px solid #fff',
-                boxShadow: '0 0 0 1.5px ' + alpha(theme.palette.primary.main, 0.6),
-                borderRadius: 1
-              }}
-            >
-              {(user.Firstname?.[0] || '') + (user.Lastname?.[0] || '') || <UserCircle size={18} />}
-            </Avatar>
-            <Box sx={{ minWidth: 0, flexGrow: 1 }}>
-              <Typography
-                variant="body2"
-                fontWeight={700}
-                lineHeight={1.1}
-                noWrap
-              >
-                {user.Firstname ? `${user.Firstname} ${user.Lastname}` : 'Profile'}
-              </Typography>
-              <Chip
-                size="small"
-                label={roleLabel}
-                sx={{
-                  mt: 0.5,
-                  height: 20,
-                  fontSize: 10,
-                  fontWeight: 700,
-                  borderRadius: 0.75,
-                  border: `1px solid ${alpha(theme.palette.primary.main, 0.4)}`,
-                  bgcolor: alpha(theme.palette.primary.main, 0.1),
-                  color: theme.palette.primary.main,
-                  letterSpacing: 0.6
-                }}
-              />
-            </Box>
-          </Box>
-
-            <Box
-              sx={{
-                display: 'flex',
-                gap: 1,
-                '& > *': {
-                  flex: 1,
-                  border: `1.5px solid ${alpha(theme.palette.divider, 0.9)}`,
-                  borderRadius: 1,
-                  bgcolor: alpha(theme.palette.background.paper, 0.6),
-                  transition: 'all .18s'
-                },
-                '& > *:hover': {
-                  borderColor: alpha(theme.palette.primary.main, 0.6),
-                  background: alpha(theme.palette.primary.main, 0.08)
-                }
-              }}
-            >
-              {/* Notifications button with unread badge */}
-              <Tooltip title="Notifications">
-                <IconButton size="small" onClick={() => setNotifOpen(true)}>
-                  <Badge color="error" badgeContent={unreadCount} max={99}>
-                    <NotificationsIcon fontSize="small" />
-                  </Badge>
-                </IconButton>
-              </Tooltip>
-
-              <Tooltip title={`Switch to ${isDark ? 'light' : 'dark'} mode`}>
-                <IconButton size="small" onClick={handleThemeToggle}>
-                  {isDark ? <LightMode fontSize="small" /> : <DarkMode fontSize="small" />}
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Logout">
-                <IconButton
-                  size="small"
-                  color="error"
-                  onClick={() => setLogoutOpen(true)}
-                  sx={{ '&:hover': { background: alpha(theme.palette.error.main, 0.12) } }}
-                >
-                  <Logout fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            </Box>
-        </Box>
       </Drawer>
-
-      {/* Logout Confirm Dialog */}
-      <Dialog open={logoutOpen} onClose={() => setLogoutOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 700 }}>Confirm Logout</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary">
-            Are you sure you want to log out?
-          </Typography>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setLogoutOpen(false)} variant="text">Cancel</Button>
-          <Button
-            onClick={handleLogout}
-            color="error"
-            variant="contained"
-            disableElevation
-          >
-            Logout
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <AccountInfoModal
-        open={accountModalOpen}
-        onClose={() => setAccountModalOpen(false)}
-        user={user}
-      />
-
-      {/* Notifications Modal */}
-      <NotificationModal
-        open={notifOpen}
-        onClose={() => setNotifOpen(false)}
-        userId={user?.UserID}
-        onNavigate={handleNotifNavigate}
-      />
-
-      {/* Snackbar */}
-      <Snackbar
-        open={toast.open}
-        autoHideDuration={2000}
-        onClose={() => setToast({ ...toast, open: false })}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-      >
-        <Alert severity={toast.severity} variant="filled">{toast.message}</Alert>
-      </Snackbar>
     </>
   );
 };

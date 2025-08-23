@@ -1,6 +1,7 @@
 import React from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
+import Topbar from '../components/Topbar';
 import {
   Box,
   CssBaseline,
@@ -25,11 +26,10 @@ const LibrarianpageLayout = () => {
           transition: 'margin-left 0.3s ease',
         }}
       >
+        <Topbar />
         <Box
           component="main"
           sx={{
-            p: 2,
-            pt: 2,
             minHeight: '100vh',
             bgcolor: theme.palette.background.default,
           }}

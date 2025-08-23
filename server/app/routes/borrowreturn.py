@@ -228,7 +228,7 @@ def get_borrower_transactions(borrower_id):
 @borrowreturn_bp.route('/borrow/<int:borrow_id>/approve', methods=['PUT'])
 def approve_borrow_transaction(borrow_id):
     role = (request.args.get('role') or 'librarian').lower()
-
+    
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:

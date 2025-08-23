@@ -15,6 +15,8 @@ import { alpha } from "@mui/material/styles";
 
 const API_BASE = import.meta.env.VITE_API_BASE;
 const returnConditions = ["Good", "Slightly Damaged", "Heavily Damaged", "Lost"];
+// Auto fine per day from env
+const FINE_PER_DAY = parseFloat(import.meta.env.VITE_FINE) || 0;
 
 const LibrarianBorrowPage = () => {
   const theme = useTheme();
@@ -27,40 +29,76 @@ const LibrarianBorrowPage = () => {
   const [actionLoading, setActionLoading] = useState(false);
   const [bookDetails, setBookDetails] = useState({});
   const [docDetails, setDocDetails] = useState({});
-  const [users, setUsers] = useState([]);
   const [dueDates, setDueDates] = useState({});
+  // Cache for BorrowerID -> Full Name
+  const [borrowerNameById, setBorrowerNameById] = useState({});
 
   const [returnModalOpen, setReturnModalOpen] = useState(false);
   const [returnData, setReturnData] = useState({});
   const [returnTx, setReturnTx] = useState(null);
+  // NEW: remarks for return
+  const [returnRemarks, setReturnRemarks] = useState("");
 
   const [search, setSearch] = useState("");
 
-  useEffect(() => { fetchTransactions(); fetchUsers(); }, []);
+  // Fetch only librarian-visible transactions (books only)
+  useEffect(() => { fetchTransactions(); }, []);
 
-  const fetchUsers = async () => {
-    try { setUsers((await axios.get(`${API_BASE}/users`)).data || []); }
-    catch { setUsers([]); }
-  };
-  const getBorrowerInfo = (id) => {
-    const u = users.find(u => u.UserID === id);
-    return u ? `${u.Firstname || ""} ${u.Middlename || ""} ${u.Lastname || ""}`.trim() : "";
+  const fetchTransactions = async () => {
+    setLoading(true);
+    try {
+      const res = await axios.get(`${API_BASE}/borrow?role=librarian`);
+      setTransactions(res.data || []);
+    } catch {
+      setTransactions([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
+  // Prefetch borrower names for visible transactions via /users/borrower/:borrowerId
   useEffect(() => {
     if (!transactions.length) return;
+    const uniqueBorrowerIds = [...new Set(transactions.map(tx => tx.BorrowerID).filter(Boolean))];
+    const missing = uniqueBorrowerIds.filter(id => !borrowerNameById[id]);
+    if (!missing.length) return;
+
     (async () => {
-      const newDueDates = {};
-      await Promise.all(transactions.map(async (tx) => {
+      const updates = {};
+      for (const id of missing) {
         try {
-          const r = await axios.get(`${API_BASE}/borrow/${tx.BorrowID}/due-date`);
-          newDueDates[tx.BorrowID] = r.data.DueDate;
+          const res = await axios.get(`${API_BASE}/users/borrower/${id}`);
+          const u = res.data || {};
+          const f = (u.Firstname || '').trim();
+          const m = (u.Middlename || '').trim();
+          const l = (u.Lastname || '').trim();
+          const mi = m ? ` ${m[0]}.` : '';
+          const name = `${f}${mi} ${l}`.trim() || u.Username || `Borrower #${id}`;
+          updates[id] = name;
         } catch {
-          newDueDates[tx.BorrowID] = tx.ReturnDate || null;
+          // ignore; fallback will label by ID if missing
         }
-      }));
-      setDueDates(newDueDates);
+      }
+      if (Object.keys(updates).length) {
+        setBorrowerNameById(prev => ({ ...prev, ...updates }));
+      }
     })();
+  }, [transactions]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Simplified: use cache or fallback label
+  const getBorrowerInfo = (borrowerId) => {
+    if (!borrowerId) return '';
+    return borrowerNameById[borrowerId] || `Borrower #${borrowerId}`;
+  };
+
+  // Due dates (from /borrow payload)
+  useEffect(() => {
+    if (!transactions.length) { setDueDates({}); return; }
+    const map = {};
+    for (const tx of transactions) {
+      map[tx.BorrowID] = tx.ReturnDate || null;
+    }
+    setDueDates(map);
   }, [transactions]);
 
   // fetch related item metadata
@@ -86,7 +124,7 @@ const LibrarianBorrowPage = () => {
       for (const storageId of docStorageIds) {
         try {
           const invResp = await axios.get(`${API_BASE}/documents/inventory/storage/${storageId}`);
-            const invData = Array.isArray(invResp.data) ? invResp.data[0] : invResp.data;
+          const invData = Array.isArray(invResp.data) ? invResp.data[0] : invResp.data;
           const docResp = await axios.get(`${API_BASE}/documents/${invData?.Document_ID || storageId}`);
           if (docResp.data?.Title) docInfo[storageId] = { ...docResp.data, ...invData };
         } catch { /* ignore */ }
@@ -95,19 +133,6 @@ const LibrarianBorrowPage = () => {
       setDocDetails(docInfo);
     })();
   }, [transactions]);
-
-  // Fetch only librarian-visible transactions (books only)
-  const fetchTransactions = async () => {
-    setLoading(true);
-    try {
-      const res = await axios.get(`${API_BASE}/borrow?role=librarian`);
-      setTransactions(res.data || []);
-    } catch {
-      setTransactions([]);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // Helper: status mapping (show Rejected correctly)
   const txStatus = (tx) => {
@@ -156,14 +181,28 @@ const LibrarianBorrowPage = () => {
     }
   };
 
+  // Helper: compute auto fine by overdue days for a borrow
+  const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const calcFineForBorrow = (borrowId, dueDatesMap) => {
+    const dueRaw = dueDatesMap[borrowId];
+    if (!dueRaw) return 0;
+    const today = startOfDay(new Date());
+    const due = startOfDay(new Date(dueRaw));
+    const days = Math.max(0, Math.floor((today - due) / 86400000));
+    return days * FINE_PER_DAY;
+  };
+
   // Return Modal Logic
   const openReturnModal = (tx) => {
     setReturnTx(tx);
+    const baseFine = calcFineForBorrow(tx.BorrowID, dueDates);
     const data = {};
     (tx.items || []).forEach(item => {
-      data[item.BorrowedItemID] = { condition: "Good", fine: 0, finePaid: false };
+      data[item.BorrowedItemID] = { condition: "Good", fine: baseFine, finePaid: false };
     });
     setReturnData(data);
+    // reset remarks when opening
+    setReturnRemarks("");
     setReturnModalOpen(true);
   };
   const handleReturnChange = (itemId, field, value) =>
@@ -182,6 +221,8 @@ const LibrarianBorrowPage = () => {
         borrowId: returnTx.BorrowID,
         returnDate: new Date().toISOString().slice(0, 10),
         items,
+        // include remarks
+        remarks: returnRemarks || undefined
       });
       setReturnModalOpen(false);
       fetchTransactions();
@@ -223,33 +264,6 @@ const LibrarianBorrowPage = () => {
     );
   };
 
-  // Search filter
-  const filteredTransactions = transactions.filter(tx => {
-    const borrower = getBorrowerInfo(tx.BorrowerID) || "";
-    const searchLower = search.toLowerCase();
-    return (
-      borrower.toLowerCase().includes(searchLower) ||
-      (tx.Purpose || "").toLowerCase().includes(searchLower) ||
-      (tx.BorrowDate || "").toLowerCase().includes(searchLower) ||
-      (dueDates[tx.BorrowID] || "").toLowerCase().includes(searchLower) ||
-      String(tx.BorrowID).includes(searchLower)
-    );
-  });
-
-  // Sort by priority
-  const statusPriority = (tx) => {
-    const d = deriveStatus(tx).label;
-    if (d.startsWith("Overdue")) return 0;
-    if (d === "Pending Approval") return 1;
-    if (d === "Approved") return 2;
-    if (d === "Borrowed") return 3;
-    if (d === "Returned") return 4;
-    if (d === "Rejected") return 5;
-    return 6;
-  };
-  const sortedTransactions = [...filteredTransactions].sort((a, b) => statusPriority(a) - statusPriority(b));
-
-  // Summary counts
   const countBy = (predicate) => transactions.filter(predicate).length;
   const summary = [
     { label: "Pending", value: countBy(t => deriveStatus(t).label === "Pending Approval"), color: theme.palette.warning.main },
@@ -267,91 +281,102 @@ const LibrarianBorrowPage = () => {
       maxWidth="sm"
       fullWidth
       PaperProps={{
-        sx: {
-          borderRadius: 1,
-          border: `2px solid ${theme.palette.divider}`
-        }
+        sx: { borderRadius: 1, border: `2px solid ${theme.palette.divider}` }
       }}
     >
-      <DialogTitle
-        sx={{
-          fontWeight: 800,
-          py: 1.25,
-          borderBottom: `2px solid ${theme.palette.divider}`
-        }}
-      >
+      <DialogTitle sx={{ fontWeight: 800, py: 1.25, borderBottom: `2px solid ${theme.palette.divider}` }}>
         Return Items • Borrow #{returnTx.BorrowID}
       </DialogTitle>
       <DialogContent
         dividers
-        sx={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 2,
-          bgcolor: theme.palette.background.default
-        }}
+        sx={{ display: 'flex', flexDirection: 'column', gap: 2, bgcolor: theme.palette.background.default }}
       >
-        {(returnTx.items || []).map(item => (
-          <Box
-            key={item.BorrowedItemID}
-            sx={{
-              p: 1.5,
-              border: `1.5px solid ${theme.palette.divider}`,
-              borderRadius: 1,
-              bgcolor: 'background.paper',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 1
-            }}
-          >
-            <Stack direction="row" alignItems="center" spacing={1}>
-              <Avatar
-                sx={{
-                  bgcolor: item.ItemType === "Book" ? theme.palette.primary.main : theme.palette.secondary.main,
-                  width: 36,
-                  height: 36,
-                  fontSize: 18,
-                  borderRadius: 1
-                }}
-              >
-                {item.ItemType === "Book" ? <Book fontSize="small" /> : <Article fontSize="small" />}
-              </Avatar>
-              <Typography fontWeight={700} fontSize={13}>
-                {item.ItemType === "Book"
-                  ? `Book Copy #${item.BookCopyID}`
-                  : `Doc Storage #${item.DocumentStorageID}`}
+        {(returnTx.items || []).map(item => {
+          const dueRaw = dueDates[returnTx.BorrowID];
+          const today = startOfDay(new Date());
+          const due = dueRaw ? startOfDay(new Date(dueRaw)) : null;
+          const days = due ? Math.max(0, Math.floor((today - due) / 86400000)) : 0;
+          const autoFine = (days * FINE_PER_DAY).toFixed(2);
+          return (
+            <Box
+              key={item.BorrowedItemID}
+              sx={{
+                p: 1.5,
+                border: `1.5px solid ${theme.palette.divider}`,
+                borderRadius: 1,
+                bgcolor: 'background.paper',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 1
+              }}
+            >
+              <Stack direction="row" alignItems="center" spacing={1}>
+                <Avatar
+                  sx={{
+                    bgcolor: item.ItemType === "Book" ? theme.palette.primary.main : theme.palette.secondary.main,
+                    width: 36,
+                    height: 36,
+                    fontSize: 18,
+                    borderRadius: 1
+                  }}
+                >
+                  {item.ItemType === "Book" ? <Book fontSize="small" /> : <Article fontSize="small" />}
+                </Avatar>
+                <Typography fontWeight={700} fontSize={13}>
+                  {item.ItemType === "Book"
+                    ? `Book Copy #${item.BookCopyID}`
+                    : `Doc Storage #${item.DocumentStorageID}`}
+                </Typography>
+              </Stack>
+              <FormControl fullWidth size="small">
+                <InputLabel>Return Condition</InputLabel>
+                <Select
+                  label="Return Condition"
+                  value={returnData[item.BorrowedItemID]?.condition || "Good"}
+                  onChange={e => handleReturnChange(item.BorrowedItemID, "condition", e.target.value)}
+                >
+                  {returnConditions.map(opt => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
+                </Select>
+              </FormControl>
+              <TextField
+                label="Fine"
+                type="number"
+                size="small"
+                value={returnData[item.BorrowedItemID]?.fine ?? 0}
+                onChange={e => handleReturnChange(item.BorrowedItemID, "fine", e.target.value)}
+                inputProps={{ min: 0, step: "0.01" }}
+              />
+              <Typography variant="caption" color="text.secondary">
+                Auto: {FINE_PER_DAY.toFixed(2)}/day × {days} day(s) = {autoFine}
               </Typography>
-            </Stack>
-            <FormControl fullWidth size="small">
-              <InputLabel>Return Condition</InputLabel>
-              <Select
-                label="Return Condition"
-                value={returnData[item.BorrowedItemID]?.condition || "Good"}
-                onChange={e => handleReturnChange(item.BorrowedItemID, "condition", e.target.value)}
-              >
-                {returnConditions.map(opt => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
-              </Select>
-            </FormControl>
-            <TextField
-              label="Fine"
-              type="number"
-              size="small"
-              value={returnData[item.BorrowedItemID]?.fine || 0}
-              onChange={e => handleReturnChange(item.BorrowedItemID, "fine", e.target.value)}
-              inputProps={{ min: 0, step: "0.01" }}
-            />
-            <FormControlLabel
-              sx={{ m: 0 }}
-              control={
-                <Checkbox
-                  checked={!!returnData[item.BorrowedItemID]?.finePaid}
-                  onChange={e => handleReturnChange(item.BorrowedItemID, "finePaid", e.target.checked)}
-                />
-              }
-              label="Fine Paid"
-            />
-          </Box>
-        ))}
+              <FormControlLabel
+                sx={{ m: 0 }}
+                control={
+                  <Checkbox
+                    checked={!!returnData[item.BorrowedItemID]?.finePaid}
+                    onChange={e => handleReturnChange(item.BorrowedItemID, "finePaid", e.target.checked)}
+                  />
+                }
+                label="Fine Paid"
+              />
+            </Box>
+          );
+        })}
+        {/* Remarks at bottom */}
+        <TextField
+          label="Remarks"
+          placeholder="Optional notes (e.g., reason for delay, condition details)"
+          value={returnRemarks}
+          onChange={(e) => setReturnRemarks(e.target.value)}
+          multiline
+          minRows={2}
+          maxRows={4}
+          size="small"
+          sx={{
+            '& .MuiOutlinedInput-root': { borderRadius: 1 },
+            '& .MuiInputBase-root': { bgcolor: 'background.default' }
+          }}
+        />
       </DialogContent>
       <DialogActions
         sx={{
@@ -369,10 +394,10 @@ const LibrarianBorrowPage = () => {
         </Button>
         <Button
           onClick={handleReturnSubmit}
-            variant="contained"
-            size="small"
-            disabled={actionLoading}
-            sx={{ borderRadius: 1, fontWeight: 700 }}
+          variant="contained"
+          size="small"
+          disabled={actionLoading}
+          sx={{ borderRadius: 1, fontWeight: 700 }}
         >
           {actionLoading ? "Processing..." : "Submit Return"}
         </Button>
@@ -431,80 +456,80 @@ const LibrarianBorrowPage = () => {
             <InfoBlock label="Status" value={<StatusChip tx={selectedTx} />} />
           </Box>
 
-            <Box
-              sx={{
-                p: 1.5,
-                border: `1.5px solid ${theme.palette.divider}`,
-                borderRadius: 1,
-                bgcolor: 'background.paper'
-              }}
-            >
-              <Typography fontWeight={800} fontSize={13} mb={1}>
-                Items ({selectedTx.items?.length || 0})
-              </Typography>
-              <Stack spacing={1.25}>
-                {(selectedTx.items || []).map(item => (
-                  <Box
-                    key={item.BorrowedItemID}
-                    sx={{
-                      p: 1,
-                      border: `1px solid ${theme.palette.divider}`,
-                      borderRadius: 1,
-                      bgcolor: 'background.default'
-                    }}
-                  >
-                    <Stack direction="row" alignItems="center" spacing={1}>
-                      <Avatar
-                        sx={{
-                          bgcolor: item.ItemType === "Book" ? theme.palette.primary.main : theme.palette.secondary.main,
-                          width: 34,
-                          height: 34,
-                          fontSize: 16,
-                          borderRadius: 1
-                        }}
-                      >
-                        {item.ItemType === "Book" ? <Book fontSize="small" /> : <Article fontSize="small" />}
-                      </Avatar>
-                      <Chip
-                        size="small"
-                        color={item.ItemType === "Book" ? "primary" : "secondary"}
-                        label={
-                          item.ItemType === "Book"
-                            ? `Book Copy #${item.BookCopyID}`
-                            : `Doc Storage #${item.DocumentStorageID}`
-                        }
-                        sx={{ fontWeight: 600, borderRadius: 0.75 }}
+          <Box
+            sx={{
+              p: 1.5,
+              border: `1.5px solid ${theme.palette.divider}`,
+              borderRadius: 1,
+              bgcolor: 'background.paper'
+            }}
+          >
+            <Typography fontWeight={800} fontSize={13} mb={1}>
+              Items ({selectedTx.items?.length || 0})
+            </Typography>
+            <Stack spacing={1.25}>
+              {(selectedTx.items || []).map(item => (
+                <Box
+                  key={item.BorrowedItemID}
+                  sx={{
+                    p: 1,
+                    border: `1px solid ${theme.palette.divider}`,
+                    borderRadius: 1,
+                    bgcolor: 'background.default'
+                  }}
+                >
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <Avatar
+                      sx={{
+                        bgcolor: item.ItemType === "Book" ? theme.palette.primary.main : theme.palette.secondary.main,
+                        width: 34,
+                        height: 34,
+                        fontSize: 16,
+                        borderRadius: 1
+                      }}
+                    >
+                      {item.ItemType === "Book" ? <Book fontSize="small" /> : <Article fontSize="small" />}
+                    </Avatar>
+                    <Chip
+                      size="small"
+                      color={item.ItemType === "Book" ? "primary" : "secondary"}
+                      label={
+                        item.ItemType === "Book"
+                          ? `Book Copy #${item.BookCopyID}`
+                          : `Doc Storage #${item.DocumentStorageID}`
+                      }
+                      sx={{ fontWeight: 600, borderRadius: 0.75 }}
+                    />
+                  </Stack>
+                  <Box mt={1} ml={0.5}>
+                    {item.ItemType === "Book" && bookDetails[item.BookCopyID] && (
+                      <MetaLine
+                        data={[
+                          ["Title", bookDetails[item.BookCopyID].Title],
+                          ["Author", bookDetails[item.BookCopyID].Author],
+                          ["Edition", bookDetails[item.BookCopyID].Edition],
+                          ["Publisher", bookDetails[item.BookCopyID].Publisher],
+                          ["Year", bookDetails[item.BookCopyID].Year],
+                          ["ISBN", bookDetails[item.BookCopyID].ISBN]
+                        ]}
                       />
-                    </Stack>
-                    <Box mt={1} ml={0.5}>
-                      {item.ItemType === "Book" && bookDetails[item.BookCopyID] && (
-                        <MetaLine
-                          data={[
-                            ["Title", bookDetails[item.BookCopyID].Title],
-                            ["Author", bookDetails[item.BookCopyID].Author],
-                            ["Edition", bookDetails[item.BookCopyID].Edition],
-                            ["Publisher", bookDetails[item.BookCopyID].Publisher],
-                            ["Year", bookDetails[item.BookCopyID].Year],
-                            ["ISBN", bookDetails[item.BookCopyID].ISBN]
-                          ]}
-                        />
-                      )}
-                      {item.ItemType === "Document" && docDetails[item.DocumentStorageID] && (
-                        <MetaLine
-                          data={[
-                            ["Title", docDetails[item.DocumentStorageID].Title],
-                            ["Author", docDetails[item.DocumentStorageID].Author],
-                            ["Category", docDetails[item.DocumentStorageID].Category],
-                            ["Department", docDetails[item.DocumentStorageID].Department],
-                            ["Year", docDetails[item.DocumentStorageID].Year]
-                          ]}
-                        />
-                      )}
-                    </Box>
+                    )}
+                    {item.ItemType === "Document" && docDetails[item.DocumentStorageID] && (
+                      <MetaLine
+                        data={[
+                          ["Title", docDetails[item.DocumentStorageID].Title],
+                          ["Author", docDetails[item.DocumentStorageID].Author],
+                          ["Category", docDetails[item.DocumentStorageID].Category],
+                          ["Department", docDetails[item.DocumentStorageID].Department],
+                          ["Year", docDetails[item.DocumentStorageID].Year]
+                        ]}
+                      />
+                    )}
                   </Box>
-                ))}
-              </Stack>
-            </Box>
+                </Box>
+              ))}
+            </Stack>
+          </Box>
         </DialogContent>
         <DialogActions
           sx={{
@@ -626,6 +651,31 @@ const LibrarianBorrowPage = () => {
       ))}
     </Stack>
   );
+
+  // Search, table, and UI
+  const filteredTransactions = transactions.filter(tx => {
+    const borrower = getBorrowerInfo(tx.BorrowerID) || "";
+    const searchLower = search.toLowerCase();
+    return (
+      borrower.toLowerCase().includes(searchLower) ||
+      (tx.Purpose || "").toLowerCase().includes(searchLower) ||
+      (tx.BorrowDate || "").toLowerCase().includes(searchLower) ||
+      (dueDates[tx.BorrowID] || "").toLowerCase().includes(searchLower) ||
+      String(tx.BorrowID).includes(searchLower)
+    );
+  });
+
+  const statusPriority = (tx) => {
+    const d = deriveStatus(tx).label;
+    if (d.startsWith("Overdue")) return 0;
+    if (d === "Pending Approval") return 1;
+    if (d === "Approved") return 2;
+    if (d === "Borrowed") return 3;
+    if (d === "Returned") return 4;
+    if (d === "Rejected") return 5;
+    return 6;
+  };
+  const sortedTransactions = [...filteredTransactions].sort((a, b) => statusPriority(a) - statusPriority(b));
 
   return (
     <Box p={3} sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>

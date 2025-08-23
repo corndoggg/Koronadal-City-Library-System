@@ -1,6 +1,7 @@
 import React from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
+import Topbar from '../components/Topbar';
 import {
   Box,
   CssBaseline,
@@ -25,6 +26,7 @@ const AdminpageLayout = () => {
           transition: 'margin-left 0.3s ease',
         }}
       >
+        <Topbar />
         <Box
           component="main"
           sx={{

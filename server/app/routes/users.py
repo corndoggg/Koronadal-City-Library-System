@@ -254,3 +254,34 @@ def reject_user_account(user_id):
     cursor.close()
     conn.close()
     return jsonify({'message': 'User rejected.'}), 200
+
+# --- Get User Details by BorrowerID ---
+@users_bp.route('/users/borrower/<int:borrower_id>', methods=['GET'])
+def get_user_by_borrower_id(borrower_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT u.UserID, u.Username, u.Role,
+               ud.Firstname, ud.Middlename, ud.Lastname, ud.Email, ud.ContactNumber,
+               ud.Street, ud.Barangay, ud.City, ud.Province, ud.DateOfBirth,
+               b.BorrowerID, b.Type, b.Department, b.AccountStatus
+        FROM Borrowers b
+        JOIN Users u ON u.UserID = b.UserID
+        LEFT JOIN UserDetails ud ON u.UserID = ud.UserID
+        WHERE b.BorrowerID = %s
+    """, (borrower_id,))
+    user = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    if not user:
+        return jsonify({'error': 'Borrower not found'}), 404
+    # Structure output similar to /users
+    user['borrower'] = {
+        'BorrowerID': user['BorrowerID'],
+        'Type': user['Type'],
+        'Department': user['Department'],
+        'AccountStatus': user['AccountStatus']
+    }
+    for k in ['BorrowerID', 'Type', 'Department', 'AccountStatus']:
+        user.pop(k, None)
+    return jsonify(user)
