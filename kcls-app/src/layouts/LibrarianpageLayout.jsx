@@ -5,16 +5,14 @@ import Topbar from '../components/Topbar';
 import {
   Box,
   CssBaseline,
-  useMediaQuery,
   useTheme,
 } from '@mui/material';
 import { motion } from 'framer-motion';
-
-const drawerWidth = 240;
+import { useSidebar } from '../contexts/SidebarContext';
 
 const LibrarianpageLayout = () => {
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const { isMobile, drawerWidth } = useSidebar();
 
   return (
     <>

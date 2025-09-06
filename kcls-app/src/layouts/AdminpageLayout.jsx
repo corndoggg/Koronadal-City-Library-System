@@ -5,16 +5,14 @@ import Topbar from '../components/Topbar';
 import {
   Box,
   CssBaseline,
-  useMediaQuery,
   useTheme,
 } from '@mui/material';
 import { motion } from 'framer-motion';
-
-const drawerWidth = 240;
+import { useSidebar } from '../contexts/SidebarContext';
 
 const AdminpageLayout = () => {
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const { isMobile, drawerWidth } = useSidebar();
 
   return (
     <>
@@ -30,8 +28,6 @@ const AdminpageLayout = () => {
         <Box
           component="main"
           sx={{
-            p: 2,
-            pt: 2,
             minHeight: '100vh',
             bgcolor: theme.palette.background.default,
           }}

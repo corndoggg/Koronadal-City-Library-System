@@ -9,13 +9,16 @@ import axios from 'axios';
 import AccountInfoModal from './AccountInfoModal';
 import NotificationModal from './NotificationModal';
 import { useThemeContext } from '../contexts/ThemeContext';
-import { TOPBAR_HEIGHT, DRAWER_WIDTH } from '../constants/layout';
+import { TOPBAR_HEIGHT } from '../constants/layout';
+import { useSidebar } from '../contexts/SidebarContext';
+import { Menu as MenuIcon, KeyboardDoubleArrowLeft, KeyboardDoubleArrowRight } from '@mui/icons-material';
 
 const API_BASE = import.meta.env.VITE_API_BASE;
 
 const Topbar = () => {
   const theme = useTheme();
   const { toggleColorMode } = useThemeContext();
+  const { isMobile, collapsed, toggleCollapse, openMobile } = useSidebar();
   const navigate = useNavigate();
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
@@ -93,61 +96,78 @@ const Topbar = () => {
           zIndex: 1100,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'flex-end',
+          justifyContent: 'space-between', // left controls + right actions
           gap: 1,
-          px: 2,
+          px: 1,
           height: TOPBAR_HEIGHT,
           py: 0,
           bgcolor: theme.palette.background.paper,
           borderBottom: `2px solid ${alpha(theme.palette.divider, 0.9)}`,
-          // REMOVE these to avoid extra gap (layout already offsets content)
-          // ml: { xs: 0, sm: `${DRAWER_WIDTH}px` },
-          // width: { xs: '100%', sm: `calc(100% - ${DRAWER_WIDTH}px)` },
           width: '100%',
         }}
       >
-        {/* Notifications */}
-        <Tooltip title="Notifications">
-          <IconButton size="small" onClick={() => setNotifOpen(true)}>
-            <Badge color="error" badgeContent={unreadCount} max={99}>
-              <NotificationsIcon fontSize="small" />
-            </Badge>
-          </IconButton>
-        </Tooltip>
+        {/* Left: sidebar toggle */}
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          {isMobile ? (
+            <Tooltip title="Open menu">
+              <IconButton size="small" onClick={openMobile}>
+                <MenuIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          ) : (
+            <Tooltip title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+              <IconButton size="small" onClick={toggleCollapse}>
+                {collapsed ? <KeyboardDoubleArrowRight fontSize="small" /> : <KeyboardDoubleArrowLeft fontSize="small" />}
+              </IconButton>
+            </Tooltip>
+          )}
+        </Box>
 
-        {/* Theme toggle */}
-        <Tooltip title={`Switch to ${isDark ? 'light' : 'dark'} mode`}>
-          <IconButton size="small" onClick={toggleColorMode}>
-            {isDark ? <LightMode fontSize="small" /> : <DarkMode fontSize="small" />}
-          </IconButton>
-        </Tooltip>
+        {/* Right: actions */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {/* Notifications */}
+          <Tooltip title="Notifications">
+            <IconButton size="small" onClick={() => setNotifOpen(true)}>
+              <Badge color="error" badgeContent={unreadCount} max={99}>
+                <NotificationsIcon fontSize="small" />
+              </Badge>
+            </IconButton>
+          </Tooltip>
 
-        {/* Account */}
-        <Tooltip title="Account">
-          <IconButton size="small" onClick={() => setAccountModalOpen(true)}>
-            <Avatar
-              variant="rounded"
-              sx={{
-                width: 28, height: 28, bgcolor: theme.palette.primary.main, color: '#fff',
-                fontSize: 12, fontWeight: 700, borderRadius: 1
-              }}
+          {/* Theme toggle */}
+          <Tooltip title={`Switch to ${isDark ? 'light' : 'dark'} mode`}>
+            <IconButton size="small" onClick={toggleColorMode}>
+              {isDark ? <LightMode fontSize="small" /> : <DarkMode fontSize="small" />}
+            </IconButton>
+          </Tooltip>
+
+          {/* Account */}
+          <Tooltip title="Account">
+            <IconButton size="small" onClick={() => setAccountModalOpen(true)}>
+              <Avatar
+                variant="rounded"
+                sx={{
+                  width: 28, height: 28, bgcolor: theme.palette.primary.main, color: '#fff',
+                  fontSize: 12, fontWeight: 700, borderRadius: 1
+                }}
+              >
+                {(user.Firstname?.[0] || '') + (user.Lastname?.[0] || '')}
+              </Avatar>
+            </IconButton>
+          </Tooltip>
+
+          {/* Logout */}
+          <Tooltip title="Logout">
+            <IconButton
+              size="small"
+              color="error"
+              onClick={() => setLogoutOpen(true)}
+              sx={{ '&:hover': { background: alpha(theme.palette.error.main, 0.12) } }}
             >
-              {(user.Firstname?.[0] || '') + (user.Lastname?.[0] || '')}
-            </Avatar>
-          </IconButton>
-        </Tooltip>
-
-        {/* Logout */}
-        <Tooltip title="Logout">
-          <IconButton
-            size="small"
-            color="error"
-            onClick={() => setLogoutOpen(true)}
-            sx={{ '&:hover': { background: alpha(theme.palette.error.main, 0.12) } }}
-          >
-            <Logout fontSize="small" />
-          </IconButton>
-        </Tooltip>
+              <Logout fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Box>
       </Box>
 
       {/* Logout Confirm Dialog */}

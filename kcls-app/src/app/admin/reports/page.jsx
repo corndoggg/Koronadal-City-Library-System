@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Box, Paper, Typography, Tabs, Tab, Divider, Stack, IconButton, Tooltip,
-  Button, TextField, MenuItem, Chip, Skeleton, Grid
+  Button, TextField, MenuItem, Chip, Skeleton, Grid,
+  Dialog, DialogTitle, DialogContent, DialogActions, Pagination, FormControl, Select, InputLabel
 } from '@mui/material';
-import { Download, RefreshCw, FileText, Printer, Filter } from 'lucide-react';
+import { Download, RefreshCw, FileText, Printer, Filter, Eye } from 'lucide-react';
 import axios from 'axios';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -54,6 +55,29 @@ const ReportsPage = () => {
   const [toDate, setToDate] = useState('');
   const [reportType, setReportType] = useState(REPORT_TYPES[0].key);
   const [limit, setLimit] = useState(10);
+
+  // Pagination
+  const [page, setPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const rowsPerPageOptions = [10, 25, 50, 100];
+
+  // Export scope (all rows or current page)
+  const [exportScope, setExportScope] = useState('all'); // 'all' | 'page'
+
+  // PDF preview
+  const [pdfOpen, setPdfOpen] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState('');
+  const [pdfFileName, setPdfFileName] = useState('');
+
+  // Admin name for PDF footer
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const adminName = useMemo(() => {
+    const f = (user.Firstname || '').trim();
+    const m = (user.Middlename || '').trim();
+    const l = (user.Lastname || '').trim();
+    const mi = m ? ` ${m[0]}.` : '';
+    return `${f}${mi} ${l}`.trim() || user.Username || `User #${user.UserID || ''}`.trim();
+  }, [user]);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -265,6 +289,18 @@ const ReportsPage = () => {
 
   const currentReport = dataBuilders[reportType]();
 
+  // Reset page on data change
+  useEffect(() => {
+    setPage(1);
+  }, [reportType, fromDate, toDate, limit, currentReport.title]);
+
+  // Paginate rows
+  const totalRows = currentReport.rows.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / rowsPerPage));
+  const startIdx = (page - 1) * rowsPerPage;
+  const endIdx = Math.min(totalRows, startIdx + rowsPerPage);
+  const pagedRows = currentReport.rows.slice(startIdx, endIdx);
+
   // Chart (for selected report types)
   const chartData = useMemo(() => {
     switch(reportType){
@@ -299,16 +335,18 @@ const ReportsPage = () => {
   }, [reportType, currentReport]);
 
   const exportCSV = () => {
+    const rows = exportScope === 'page' ? pagedRows : currentReport.rows;
     const lines = [
       `"${currentReport.title}"`,
+      `"Generated: ${new Date().toLocaleString()} by ${adminName}"`,
       currentReport.headers.map(h=>`"${h}"`).join(',')
     ];
-    currentReport.rows.forEach(r=>{
+    rows.forEach(r=>{
       lines.push(r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(','));
     });
     const blob = new Blob([lines.join('\r\n')], { type:'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); // FIX: missing '=' previously
+    const a = document.createElement('a');
     a.href = url;
     a.download = `${currentReport.title.replace(/\s+/g,'_')}.csv`;
     document.body.appendChild(a);
@@ -317,76 +355,87 @@ const ReportsPage = () => {
     URL.revokeObjectURL(url);
   };
 
-  const exportPDF = async () => {
+  // Build PDF blob and open preview
+  const previewPDF = async () => {
     try {
       const doc = new jsPDF({ orientation: 'p', unit: 'pt', format: 'a4' });
       const marginX = 40;
-      let cursorY = 42;
+      let cursorY = 46;
 
+      // Header
       doc.setFontSize(16);
       doc.text(currentReport.title, marginX, cursorY);
       cursorY += 18;
 
+      doc.setFontSize(10);
+      doc.text(`Generated: ${new Date().toLocaleString()}  •  By: ${adminName}`, marginX, cursorY);
+      cursorY += 14;
+
       if (fromDate || toDate) {
-        doc.setFontSize(10);
         doc.text(`Date Range: ${fromDate || '—'} to ${toDate || '—'}`, marginX, cursorY);
         cursorY += 14;
       }
 
-      // Prefer plugin function call (ESM friendly)
+      // Table
+      const rows = exportScope === 'page' ? pagedRows : currentReport.rows;
       if (autoTable) {
         autoTable(doc, {
           startY: cursorY,
           head: [currentReport.headers],
-          body: currentReport.rows,
+          body: rows,
           styles: { fontSize: 9 },
           headStyles: { fillColor: [25,118,210] },
           alternateRowStyles: { fillColor: [245,245,245] },
+          margin: { left: marginX, right: marginX },
           didDrawPage: (data) => {
-            // Footer
             const pageSize = doc.internal.pageSize;
+            const pageWidth = pageSize.getWidth();
             const pageHeight = pageSize.getHeight();
             doc.setFontSize(8);
             doc.text(
-              `Generated: ${new Date().toLocaleString()}`,
+              `Generated: ${new Date().toLocaleString()} • ${adminName}`,
               marginX,
               pageHeight - 18
             );
             doc.text(
               `Page ${doc.internal.getNumberOfPages()}`,
-              pageSize.getWidth() - marginX - 50,
+              pageWidth - marginX - 50,
               pageHeight - 18
             );
           }
         });
-      } else if (typeof doc.autoTable === 'function') {
-        // Fallback if plugin attached itself globally
-        doc.autoTable({
-          startY: cursorY,
-          head: [currentReport.headers],
-          body: currentReport.rows
-        });
       } else {
-        // Final fallback: simple manual list
         doc.setFontSize(10);
         cursorY += 6;
-        doc.text('autoTable plugin not loaded. Showing raw rows:', marginX, cursorY);
-        cursorY += 14;
-        currentReport.rows.forEach(r => {
+        rows.forEach(r => {
           if (cursorY > doc.internal.pageSize.getHeight() - 40) {
             doc.addPage();
             cursorY = 40;
           }
-            doc.text(r.join(' | '), marginX, cursorY);
-            cursorY += 12;
+          doc.text(r.join(' | '), marginX, cursorY);
+          cursorY += 12;
         });
       }
 
-      doc.save(`${currentReport.title.replace(/\s+/g,'_')}.pdf`);
+      const blob = doc.output('blob');
+      const url = URL.createObjectURL(blob);
+      setPdfUrl(url);
+      setPdfFileName(`${currentReport.title.replace(/\s+/g,'_')}.pdf`);
+      setPdfOpen(true);
     } catch (e) {
       console.error(e);
-      alert('PDF export failed: ' + e.message);
+      alert('PDF generation failed: ' + e.message);
     }
+  };
+
+  const downloadPDFFromPreview = () => {
+    if (!pdfUrl) return;
+    const a = document.createElement('a');
+    a.href = pdfUrl;
+    a.download = pdfFileName || 'report.pdf';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   };
 
   return (
@@ -512,12 +561,12 @@ const ReportsPage = () => {
           <Button
             size="small"
             variant="contained"
-            startIcon={<Printer size={14} />}
-            onClick={exportPDF}
+            startIcon={<Eye size={14} />}
+            onClick={previewPDF}   // changed from exportPDF
             disabled={loading}
             sx={{ fontWeight:700 }}
           >
-            PDF
+            Preview PDF
           </Button>
         </Box>
       </Paper>
@@ -552,61 +601,80 @@ const ReportsPage = () => {
                 ))}
               </Stack>
             ) : (
-              <Box
-                sx={{
-                  overflow:'auto',
-                  border: t=>`1px solid ${t.palette.divider}`,
-                  borderRadius:1
-                }}
-              >
-                <table
-                  style={{
-                    borderCollapse:'collapse', width:'100%', fontSize:13
+              <>
+                <Box
+                  sx={{
+                    overflow:'auto',
+                    border: t=>`1px solid ${t.palette.divider}`,
+                    borderRadius:1
                   }}
                 >
-                  <thead style={{ background:'#f5f5f5' }}>
-                    <tr>
-                      {currentReport.headers.map(h=>(
-                        <th
-                          key={h}
-                          style={{
-                            textAlign:'left', padding:'6px 8px',
-                            borderBottom:'1px solid #ddd', fontWeight:700
-                          }}
-                        >
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {currentReport.rows.map((r,idx)=>(
-                      <tr key={idx} style={{ background: idx%2? 'rgba(0,0,0,0.02)' : 'transparent' }}>
-                        {r.map((c,i)=>(
-                          <td
-                            key={i}
+                  <table
+                    style={{
+                      borderCollapse:'collapse', width:'100%', fontSize:13
+                    }}
+                  >
+                    <thead style={{ background:'#f5f5f5' }}>
+                      <tr>
+                        {currentReport.headers.map(h=>(
+                          <th
+                            key={h}
                             style={{
-                              padding:'6px 8px', borderBottom:'1px solid #eee',
-                              fontWeight: i===0 ? 600 : 500
+                              textAlign:'left', padding:'6px 8px',
+                              borderBottom:'1px solid #ddd', fontWeight:700,
+                              position:'sticky', top:0, background:'#f5f5f5', zIndex:1
                             }}
                           >
-                            {c}
-                          </td>
+                            {h}
+                          </th>
                         ))}
                       </tr>
-                    ))}
-                    {!currentReport.rows.length && (
-                      <tr>
-                        <td colSpan={currentReport.headers.length} style={{ padding:10, textAlign:'center' }}>
-                          <Typography variant="caption" color="text.secondary">
-                            No data for current filters.
-                          </Typography>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </Box>
+                    </thead>
+                    <tbody>
+                      {pagedRows.map((r,idx)=>(
+                        <tr key={idx} style={{ background: ((startIdx+idx)%2)? 'rgba(0,0,0,0.02)' : 'transparent' }}>
+                          {r.map((c,i)=>(
+                            <td
+                              key={i}
+                              style={{
+                                padding:'6px 8px', borderBottom:'1px solid #eee',
+                                fontWeight: i===0 ? 600 : 500
+                              }}
+                            >
+                              {c}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                      {!pagedRows.length && (
+                        <tr>
+                          <td colSpan={currentReport.headers.length} style={{ padding:10, textAlign:'center' }}>
+                            <Typography variant="caption" color="text.secondary">
+                              No data for current filters.
+                            </Typography>
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </Box>
+
+                {/* Pagination bar */}
+                <Stack direction="row" alignItems="center" spacing={1} mt={1}>
+                  <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                    Showing {totalRows ? startIdx + 1 : 0} - {endIdx} of {totalRows}
+                  </Typography>
+                  <Box ml="auto" />
+                  <Pagination
+                    count={totalPages}
+                    page={page}
+                    onChange={(_,v)=>setPage(v)}
+                    size="small"
+                    siblingCount={0}
+                    boundaryCount={1}
+                  />
+                </Stack>
+              </>
             )}
             {(!loading && (fromDate || toDate)) && (
               <Typography variant="caption" color="text.secondary" mt={1}>
@@ -677,6 +745,41 @@ const ReportsPage = () => {
           <Chip size="small" label="Collection gaps" />
         </Stack>
       </Paper>
+
+      {/* PDF Preview Dialog */}
+      <Dialog
+        open={pdfOpen}
+        onClose={() => {
+          setPdfOpen(false);
+          if (pdfUrl) { URL.revokeObjectURL(pdfUrl); setPdfUrl(''); }
+        }}
+        maxWidth="lg"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontWeight: 800 }}>
+          PDF Preview — {currentReport.title}
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 0 }}>
+          {pdfUrl ? (
+            <iframe
+              title="Report PDF Preview"
+              src={pdfUrl}
+              style={{ width: '100%', height: '75vh', border: 'none' }}
+            />
+          ) : (
+            <Box p={2}><Typography variant="body2">Generating preview…</Typography></Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setPdfOpen(false);
+            if (pdfUrl) { URL.revokeObjectURL(pdfUrl); setPdfUrl(''); }
+          }}>Close</Button>
+          <Button variant="contained" onClick={downloadPDFFromPreview} startIcon={<Printer size={14} />}>
+            Download PDF
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

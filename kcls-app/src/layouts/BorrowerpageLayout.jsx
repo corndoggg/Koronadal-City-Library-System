@@ -1,37 +1,20 @@
 import React from 'react';
 import { Outlet } from 'react-router-dom';
-import Sidebar from '../components/Sidebar';
-import Topbar from '../components/Topbar';
-import {
-  Box,
-  CssBaseline,
-  useMediaQuery,
-  useTheme,
-} from '@mui/material';
+import BorrowerTopbar from '../components/BorrowerTopbar';
+import { Box, CssBaseline, useTheme } from '@mui/material';
 import { motion } from 'framer-motion';
-
-const drawerWidth = 240;
 
 const BorrowerpageLayout = () => {
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   return (
     <>
       <CssBaseline />
-      <Sidebar />
-      <Box
-        sx={{
-          ml: !isMobile ? `${drawerWidth}px` : 0,
-          transition: 'margin-left 0.3s ease',
-        }}
-      >
-        <Topbar />
+      <Box>
+        <BorrowerTopbar />
         <Box
           component="main"
           sx={{
-            p: 2,
-            pt: 2,
             minHeight: '100vh',
             bgcolor: theme.palette.background.default,
           }}

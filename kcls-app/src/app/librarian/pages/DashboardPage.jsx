@@ -1,16 +1,12 @@
 // Enhanced dashboard with charts (requires: npm i chart.js react-chartjs-2)
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   Box, Grid, Paper, Typography, Divider, IconButton, Tooltip, Chip,
-  Stack, Skeleton, Button
+  Stack, Skeleton, Button, FormControl, Select, MenuItem, InputLabel
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
-import {
-  RefreshCw
-} from 'lucide-react';
-import {
-  Bar, Doughnut, Line
-} from 'react-chartjs-2';
+import { RefreshCw, X } from 'lucide-react';
+import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS, CategoryScale, LinearScale, BarElement, ArcElement,
   PointElement, LineElement, Tooltip as ChartTooltip, Legend, TimeScale
@@ -82,6 +78,13 @@ const DashboardPage = () => {
   const [docInvMap, setDocInvMap] = useState({});
   const [dueMap, setDueMap] = useState({});
 
+  // UI controls
+  const [rangeMonths, setRangeMonths] = useState(12);
+  const [autoMs, setAutoMs] = useState(0); // 0=manual, 30000=30s, 60000=60s
+  const [statusFilter, setStatusFilter] = useState(''); // 'Pending' | 'Awaiting Pickup' | 'Active' | 'Overdue' | 'Returned' | 'Rejected'
+
+  const statusBarRef = useRef(null);
+
   const fetchAll = useCallback(async () => {
     setLoading(true);
     setErr(null);
@@ -94,6 +97,7 @@ const DashboardPage = () => {
       const bks = bRes.data || [];
       const docs = dRes.data || [];
       const brs = brRes.data || [];
+
       // inventories
       const bookInventories = {};
       await Promise.all(
@@ -113,7 +117,7 @@ const DashboardPage = () => {
           } catch { docInventories[d.Document_ID] = []; }
         })
       );
-      // due dates from /borrow payload
+      // due dates from /borrow payload (fallback)
       const dueMapTemp = {};
       for (const tx of brs) {
         dueMapTemp[tx.BorrowID] = tx.ReturnDate || null;
@@ -135,6 +139,31 @@ const DashboardPage = () => {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
+  // Auto refresh
+  useEffect(() => {
+    if (!autoMs) return;
+    const id = setInterval(fetchAll, autoMs);
+    return () => clearInterval(id);
+  }, [autoMs, fetchAll]);
+
+  // Derive borrow status (labels aligned with charts)
+  const deriveStatusLabel = useCallback((tx) => {
+    const now = new Date();
+    const due = dueMap[tx.BorrowID] ? new Date(dueMap[tx.BorrowID]) : null;
+    if (tx.ReturnStatus === 'Returned') return 'Returned';
+    if (tx.ApprovalStatus === 'Rejected') return 'Rejected';
+    if (tx.ApprovalStatus === 'Pending') return 'Pending';
+    if (tx.ApprovalStatus === 'Approved' && tx.RetrievalStatus !== 'Retrieved') {
+      if (due && due < now) return 'Overdue'; // overdue even if awaiting pickup
+      return 'Awaiting Pickup';
+    }
+    if (tx.RetrievalStatus === 'Retrieved' && tx.ReturnStatus !== 'Returned') {
+      if (due && due < now) return 'Overdue';
+      return 'Active';
+    }
+    return 'Pending';
+  }, [dueMap]);
+
   // Metrics
   const metrics = useMemo(() => {
     const bookCopies = Object.values(bookInvMap).reduce((a, v) => a + v.length, 0);
@@ -147,16 +176,14 @@ const DashboardPage = () => {
 
     // Borrow statuses
     let pending = 0, awaiting = 0, active = 0, returned = 0, rejected = 0, overdue = 0;
-    const now = new Date();
     borrows.forEach(tx => {
-      let status;
-      if (tx.ReturnStatus === 'Returned') { status = 'Returned'; returned++; }
-      else if (tx.ApprovalStatus === 'Rejected') { status = 'Rejected'; rejected++; }
-      else if (tx.ApprovalStatus === 'Pending') { status = 'Pending'; pending++; }
-      else if (tx.ApprovalStatus === 'Approved' && tx.RetrievalStatus !== 'Retrieved') { status = 'Awaiting'; awaiting++; }
-      else if (tx.RetrievalStatus === 'Retrieved' && tx.ReturnStatus !== 'Returned') { status = 'Borrowed'; active++; }
-      const due = dueMap[tx.BorrowID] ? new Date(dueMap[tx.BorrowID]) : null;
-      if (due && status !== 'Returned' && due < now) overdue++;
+      const s = deriveStatusLabel(tx);
+      if (s === 'Pending') pending++;
+      else if (s === 'Awaiting Pickup') awaiting++;
+      else if (s === 'Active') active++;
+      else if (s === 'Returned') returned++;
+      else if (s === 'Rejected') rejected++;
+      else if (s === 'Overdue') overdue++;
     });
 
     return {
@@ -170,24 +197,42 @@ const DashboardPage = () => {
       borrowTotal: borrows.length,
       pending, awaiting, active, returned, rejected, overdue
     };
-  }, [books, documents, borrows, bookInvMap, docInvMap, dueMap]);
+  }, [books, documents, borrows, bookInvMap, docInvMap, deriveStatusLabel]);
+
+  // Filtered borrows for trend (by status + time range)
+  const filteredTrendBorrows = useMemo(() => {
+    const cutoff = new Date();
+    cutoff.setDate(1);
+    cutoff.setHours(0, 0, 0, 0);
+    cutoff.setMonth(cutoff.getMonth() - (rangeMonths - 1));
+    return (borrows || []).filter(tx => {
+      if (!tx.BorrowDate) return false;
+      const d = new Date(tx.BorrowDate);
+      if (d < cutoff) return false;
+      if (statusFilter && deriveStatusLabel(tx) !== statusFilter) return false;
+      return true;
+    });
+  }, [borrows, rangeMonths, statusFilter, deriveStatusLabel]);
 
   // Chart Data
   // 1. Availability Distribution (Books + Documents)
-  const availabilityDoughnut = useMemo(() => ({
-    labels: ['Book Available', 'Book Unavailable', 'Doc Phys Available', 'Doc Phys Unavailable', 'Digital Docs'],
-    datasets: [{
-      data: [
-        metrics.bookAvailable,
-        metrics.bookCopies - metrics.bookAvailable,
-        metrics.docPhysAvailable,
-        metrics.docPhysCopies - metrics.docPhysAvailable,
-        metrics.digitalDocs
-      ],
-      backgroundColor: ['#2e7d32', '#81c784', '#1976d2', '#90caf9', '#9c27b0'],
-      borderWidth: 1
-    }]
-  }), [metrics]);
+  const availabilityDoughnut = useMemo(() => {
+    const vals = [
+      metrics.bookAvailable,
+      Math.max(0, metrics.bookCopies - metrics.bookAvailable),
+      metrics.docPhysAvailable,
+      Math.max(0, metrics.docPhysCopies - metrics.docPhysAvailable),
+      metrics.digitalDocs
+    ];
+    return {
+      labels: ['Book Available', 'Book Unavailable', 'Doc Phys Available', 'Doc Phys Unavailable', 'Digital Docs'],
+      datasets: [{
+        data: vals,
+        backgroundColor: ['#2e7d32', '#81c784', '#1976d2', '#90caf9', '#9c27b0'],
+        borderWidth: 1
+      }]
+    };
+  }, [metrics]);
 
   // 2. Borrow Status Bar
   const borrowStatusBar = useMemo(() => ({
@@ -208,21 +253,21 @@ const DashboardPage = () => {
     }]
   }), [metrics]);
 
-  // 3. Monthly Borrow Trend (group by month of BorrowDate) last 12 months
+  // 3. Monthly Borrow Trend over selected range
   const borrowTrend = useMemo(() => {
     const map = {};
     const now = new Date();
-    for (let i = 11; i >= 0; i--) {
+    const labels = [];
+    for (let i = rangeMonths - 1; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const key = `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}`;
+      labels.push(key);
       map[key] = 0;
     }
-    borrows.forEach(tx => {
-      if (!tx.BorrowDate) return;
-      const d = tx.BorrowDate.slice(0,7);
-      if (d in map) map[d] += 1;
+    filteredTrendBorrows.forEach(tx => {
+      const k = tx.BorrowDate.slice(0,7);
+      if (k in map) map[k] += 1;
     });
-    const labels = Object.keys(map);
     return {
       labels,
       datasets: [{
@@ -236,7 +281,7 @@ const DashboardPage = () => {
         pointHoverRadius: 6
       }]
     };
-  }, [borrows]);
+  }, [filteredTrendBorrows, rangeMonths, alpha]);
 
   // 4. Top 5 Book Categories (by count of titles)
   const topCategories = useMemo(() => {
@@ -261,7 +306,33 @@ const DashboardPage = () => {
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { legend: { position: 'bottom' } }
+    plugins: {
+      legend: { position: 'bottom' },
+      tooltip: {
+        callbacks: {
+          label: (ctx) => {
+            const raw = ctx.parsed;
+            const total = ctx.dataset.data.reduce((a,b)=>a+(+b||0),0);
+            const pct = total ? ((raw/total)*100).toFixed(1) : 0;
+            return `${ctx.label}: ${number(raw)} (${pct}%)`;
+          }
+        }
+      }
+    }
+  };
+
+  const barOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: (ctx) => `${ctx.label}: ${number(ctx.parsed.y ?? ctx.parsed)}`,
+        }
+      }
+    },
+    scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } }
   };
 
   const lineOptions = {
@@ -304,6 +375,10 @@ const DashboardPage = () => {
     }
   ];
 
+  const borrowTotals = borrowStatusBar.datasets[0].data.reduce((a,b)=>a+(b||0),0);
+  const availTotals = availabilityDoughnut.datasets[0].data.reduce((a,b)=>a+(b||0),0);
+  const trendTotals = borrowTrend.datasets[0].data.reduce((a,b)=>a+(b||0),0);
+
   return (
     <Box p={3} sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
       <Paper
@@ -316,27 +391,39 @@ const DashboardPage = () => {
           <Typography fontWeight={800} fontSize={18}>Dashboard Overview</Typography>
           <Typography variant="caption" color="text.secondary" fontWeight={600}>Visual metrics & trends</Typography>
         </Box>
-        <Box ml="auto" display="flex" gap={1} alignItems="center">
+
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ ml: 'auto' }} flexWrap="wrap">
+          <FormControl size="small" sx={{ minWidth: 140 }}>
+            <InputLabel>Trend Range</InputLabel>
+            <Select label="Trend Range" value={rangeMonths} onChange={e => setRangeMonths(Number(e.target.value))}>
+              <MenuItem value={3}>Last 3 months</MenuItem>
+              <MenuItem value={6}>Last 6 months</MenuItem>
+              <MenuItem value={12}>Last 12 months</MenuItem>
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={{ minWidth: 150 }}>
+            <InputLabel>Auto Refresh</InputLabel>
+            <Select label="Auto Refresh" value={autoMs} onChange={e => setAutoMs(Number(e.target.value))}>
+              <MenuItem value={0}>Manual</MenuItem>
+              <MenuItem value={30000}>Every 30s</MenuItem>
+              <MenuItem value={60000}>Every 1m</MenuItem>
+            </Select>
+          </FormControl>
+
           {lastUpdated && (
-            <Chip
-              size="small"
-              label={`Updated ${lastUpdated.toLocaleTimeString()}`}
-              sx={{ fontWeight:600 }}
-            />
+            <Chip size="small" label={`Updated ${lastUpdated.toLocaleTimeString()}`} sx={{ fontWeight:600 }} />
           )}
           <Tooltip title="Refresh">
             <IconButton
               size="small"
               onClick={fetchAll}
               disabled={loading}
-              sx={{
-                border: theme=>`1.5px solid ${theme.palette.divider}`, borderRadius:1
-              }}
+              sx={{ border: theme=>`1.5px solid ${theme.palette.divider}`, borderRadius:1 }}
             >
               <RefreshCw size={16} />
             </IconButton>
           </Tooltip>
-        </Box>
+        </Stack>
       </Paper>
 
       {err && (
@@ -378,9 +465,13 @@ const DashboardPage = () => {
             <Divider sx={{ my:1 }} />
             {loading ? (
               <Skeleton variant="rounded" height={240} />
-            ) : (
+            ) : availTotals ? (
               <Box flexGrow={1}>
                 <Doughnut data={availabilityDoughnut} options={chartOptions} />
+              </Box>
+            ) : (
+              <Box sx={{ flexGrow:1, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                <Typography variant="caption" color="text.secondary">No availability data.</Typography>
               </Box>
             )}
           </Paper>
@@ -393,17 +484,44 @@ const DashboardPage = () => {
               border: theme=>`2px solid ${theme.palette.divider}`, borderRadius:1
             }}
           >
-            <Typography fontWeight={800} fontSize={14}>Borrow Status</Typography>
+            <Stack direction="row" alignItems="center" gap={1}>
+              <Typography fontWeight={800} fontSize={14}>Borrow Status</Typography>
+              {!!statusFilter && (
+                <Chip
+                  size="small"
+                  color="primary"
+                  variant="outlined"
+                  onDelete={()=>setStatusFilter('')}
+                  deleteIcon={<X size={14} />}
+                  label={`Filter: ${statusFilter}`}
+                  sx={{ ml: 'auto', fontWeight:700 }}
+                />
+              )}
+            </Stack>
             <Divider sx={{ my:1 }} />
             {loading ? (
               <Skeleton variant="rounded" height={240} />
-            ) : (
+            ) : borrowTotals ? (
               <Box flexGrow={1}>
-                <Bar data={borrowStatusBar} options={{
-                  ...chartOptions,
-                  plugins:{ legend:{ display:false } },
-                  scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } }
-                }} />
+                <Bar
+                  ref={statusBarRef}
+                  data={borrowStatusBar}
+                  options={barOptions}
+                  onClick={(evt) => {
+                    const chart = statusBarRef.current;
+                    if (!chart) return;
+                    const points = chart.getElementsAtEventForMode(evt.native || evt, 'nearest', { intersect: true }, false);
+                    if (points.length) {
+                      const idx = points[0].index;
+                      const label = borrowStatusBar.labels[idx];
+                      setStatusFilter(label === statusFilter ? '' : label);
+                    }
+                  }}
+                />
+              </Box>
+            ) : (
+              <Box sx={{ flexGrow:1, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                <Typography variant="caption" color="text.secondary">No borrow data.</Typography>
               </Box>
             )}
           </Paper>
@@ -423,7 +541,7 @@ const DashboardPage = () => {
             ) : (
               <Box flexGrow={1}>
                 <Bar data={topCategories} options={{
-                  ...chartOptions,
+                  ...barOptions,
                   plugins:{ legend:{ display:false } },
                   indexAxis:'y',
                   scales:{ x:{ beginAtZero:true, ticks:{ precision:0 } } }
@@ -440,13 +558,20 @@ const DashboardPage = () => {
               border: theme=>`2px solid ${theme.palette.divider}`, borderRadius:1
             }}
           >
-            <Typography fontWeight={800} fontSize={14}>Monthly Borrow Trend (12 mo)</Typography>
+            <Stack direction="row" alignItems="center" gap={1}>
+              <Typography fontWeight={800} fontSize={14}>Monthly Borrow Trend ({rangeMonths} mo)</Typography>
+              {!!statusFilter && <Chip size="small" label={`Filtered: ${statusFilter}`} sx={{ fontWeight:700 }} />}
+            </Stack>
             <Divider sx={{ my:1 }} />
             {loading ? (
               <Skeleton variant="rounded" height={240} />
-            ) : (
+            ) : trendTotals ? (
               <Box flexGrow={1}>
                 <Line data={borrowTrend} options={lineOptions} />
+              </Box>
+            ) : (
+              <Box sx={{ flexGrow:1, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                <Typography variant="caption" color="text.secondary">No trend data in selected range.</Typography>
               </Box>
             )}
           </Paper>
@@ -465,6 +590,7 @@ const DashboardPage = () => {
           <Chip size="small" label="Category concentration" />
           <Chip size="small" label="Seasonality" />
           <Chip size="small" label="Overdue impact" />
+          {!!statusFilter && <Chip size="small" color="primary" label={`Status filter: ${statusFilter}`} />}
         </Stack>
       </Paper>
     </Box>

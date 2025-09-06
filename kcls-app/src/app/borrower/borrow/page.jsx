@@ -434,31 +434,44 @@ const BorrowerBorrowPage = () => {
               <Stack direction="row" gap={1} flexWrap="wrap">
                 {(tx.items || []).slice(0, 4).map((item) => {
                   const isBook = item.ItemType === "Book";
+                  // Use fetched details to get Title, fall back to IDs if not ready
+                  const meta = isBook ? bookDetails[item.BookCopyID] : docDetails[item.DocumentStorageID];
+                  const title =
+                    (meta && meta.Title) ||
+                    (isBook ? `Book Copy #${item.BookCopyID}` : `Doc Storage #${item.DocumentStorageID}`);
                   return (
-                    <Chip
-                      key={item.BorrowedItemID}
-                      size="small"
-                      avatar={
-                        <Avatar
-                          sx={{
-                            bgcolor: isBook ? "primary.main" : "secondary.main",
-                            color: "#fff",
-                            width: 28,
-                            height: 28,
-                            borderRadius: 1
-                          }}
-                        >
-                          {isBook ? <Book fontSize="small" /> : <Article fontSize="small" />}
-                        </Avatar>
-                      }
-                      label={
-                        isBook
-                          ? `Book Copy #${item.BookCopyID}`
-                          : `Doc Storage #${item.DocumentStorageID}`
-                      }
-                      variant="outlined"
-                      sx={{ fontWeight: 600, borderRadius: 0.75, pl: 0.5 }}
-                    />
+                    <Tooltip key={item.BorrowedItemID} title={title}>
+                      <Chip
+                        size="small"
+                        avatar={
+                          <Avatar
+                            sx={{
+                              bgcolor: isBook ? "primary.main" : "secondary.main",
+                              color: "#fff",
+                              width: 28,
+                              height: 28,
+                              borderRadius: 1
+                            }}
+                          >
+                            {isBook ? <Book fontSize="small" /> : <Article fontSize="small" />}
+                          </Avatar>
+                        }
+                        label={title}
+                        variant="outlined"
+                        sx={{
+                          fontWeight: 600,
+                          borderRadius: 0.75,
+                          pl: 0.5,
+                          maxWidth: 220,
+                          '& .MuiChip-label': {
+                            display: 'block',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }
+                        }}
+                      />
+                    </Tooltip>
                   );
                 })}
                 {(tx.items || []).length > 4 && (
@@ -591,13 +604,23 @@ const BorrowerBorrowPage = () => {
                           </Avatar>
                           <Chip
                             label={
-                              isBook
-                                ? `Book Copy #${item.BookCopyID}`
-                                : `Doc Storage #${item.DocumentStorageID}`
+                              // Use Title instead of IDs
+                              (b && b.Title) ||
+                              (isBook ? `Book Copy #${item.BookCopyID}` : `Doc Storage #${item.DocumentStorageID}`)
                             }
                             size="small"
                             color={isBook ? "primary" : "secondary"}
-                            sx={{ fontWeight: 600, borderRadius: 0.75 }}
+                            sx={{
+                              fontWeight: 600,
+                              borderRadius: 0.75,
+                              maxWidth: 320,
+                              '& .MuiChip-label': {
+                                display: 'block',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap'
+                              }
+                            }}
                           />
                         </Stack>
                         {b ? (

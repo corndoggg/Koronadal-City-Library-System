@@ -7,17 +7,19 @@ import {
   Checkbox, FormControlLabel, CircularProgress
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
+import { useSystemSettings } from '../../../contexts/SystemSettingsContext.jsx'; // added
 import {
   Search, Refresh, Visibility, CheckCircle, Cancel, TaskAlt, Undo, DoneAll, Article
 } from "@mui/icons-material";
 
 const API_BASE = import.meta.env.VITE_API_BASE;
 const returnConditions = ["Good", "Slightly Damaged", "Heavily Damaged", "Lost"];
-// Auto fine per day from env
-const FINE_PER_DAY = parseFloat(import.meta.env.VITE_FINE) || 0;
+// const FINE_PER_DAY = parseFloat(import.meta.env.VITE_FINE) || 0; // remove this line
 
 const DocumentApprovalPage = () => {
   const theme = useTheme();
+  const { settings } = useSystemSettings(); // added
+  const finePerDay = Number(settings?.fine ?? 0); // added
   const [transactions, setTransactions] = useState([]);
   const [borrowerNameById, setBorrowerNameById] = useState({});
   const [docDetails, setDocDetails] = useState({});
@@ -333,13 +335,12 @@ const DocumentApprovalPage = () => {
 
   const openReturnModal = (tx) => {
     setReturnTx(tx);
-    const baseFine = calcFineForBorrow(tx.BorrowID);
+    const baseFine = calcFineForBorrow(tx.BorrowID); // uses context-backed fine
     const data = {};
     (tx.items || []).forEach(i => {
       data[i.BorrowedItemID] = { condition: "Good", fine: baseFine, finePaid: false };
     });
     setReturnData(data);
-    // reset remarks when opening
     setReturnRemarks("");
     setReturnModalOpen(true);
   };
@@ -379,7 +380,7 @@ const DocumentApprovalPage = () => {
           const today = startOfDay(new Date());
           const due = dueRaw ? startOfDay(new Date(dueRaw)) : null;
           const days = due ? Math.max(0, Math.floor((today - due) / 86400000)) : 0;
-          const autoFine = (days * FINE_PER_DAY).toFixed(2);
+          const autoFine = (days * finePerDay).toFixed(2); // changed
           return (
             <Box key={item.BorrowedItemID} sx={{ p: 1.5, border: `1.5px solid ${theme.palette.divider}`, borderRadius: 1, bgcolor: 'background.paper' }}>
               <Stack direction="row" spacing={1} alignItems="center">
@@ -408,7 +409,7 @@ const DocumentApprovalPage = () => {
                 sx={{ mt: 1 }}
               />
               <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
-                Auto: {FINE_PER_DAY.toFixed(2)}/day × {days} day(s) = {autoFine}
+                Auto: {finePerDay.toFixed(2)}/day × {days} day(s) = {autoFine} {/* changed */}
               </Typography>
               <FormControlLabel
                 sx={{ m: 0, mt: 0.5 }}

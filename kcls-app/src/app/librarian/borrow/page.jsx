@@ -12,14 +12,16 @@ import {
   Undo, TaskAlt, Refresh
 } from "@mui/icons-material";
 import { alpha } from "@mui/material/styles";
+import { useSystemSettings } from '../../../contexts/SystemSettingsContext.jsx'; // added
 
 const API_BASE = import.meta.env.VITE_API_BASE;
 const returnConditions = ["Good", "Slightly Damaged", "Heavily Damaged", "Lost"];
-// Auto fine per day from env
-const FINE_PER_DAY = parseFloat(import.meta.env.VITE_FINE) || 0;
+// const FINE_PER_DAY = parseFloat(import.meta.env.VITE_FINE) || 0; // remove this line
 
 const LibrarianBorrowPage = () => {
   const theme = useTheme();
+  const { settings } = useSystemSettings(); // added
+  const finePerDay = Number(settings?.fine ?? 0); // added
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -189,7 +191,7 @@ const LibrarianBorrowPage = () => {
     const today = startOfDay(new Date());
     const due = startOfDay(new Date(dueRaw));
     const days = Math.max(0, Math.floor((today - due) / 86400000));
-    return days * FINE_PER_DAY;
+    return days * finePerDay; // changed
   };
 
   // Return Modal Logic
@@ -296,7 +298,7 @@ const LibrarianBorrowPage = () => {
           const today = startOfDay(new Date());
           const due = dueRaw ? startOfDay(new Date(dueRaw)) : null;
           const days = due ? Math.max(0, Math.floor((today - due) / 86400000)) : 0;
-          const autoFine = (days * FINE_PER_DAY).toFixed(2);
+          const autoFine = (days * finePerDay).toFixed(2); // changed
           return (
             <Box
               key={item.BorrowedItemID}
@@ -347,7 +349,7 @@ const LibrarianBorrowPage = () => {
                 inputProps={{ min: 0, step: "0.01" }}
               />
               <Typography variant="caption" color="text.secondary">
-                Auto: {FINE_PER_DAY.toFixed(2)}/day × {days} day(s) = {autoFine}
+                Auto: {finePerDay.toFixed(2)}/day × {days} day(s) = {autoFine} {/* changed */}
               </Typography>
               <FormControlLabel
                 sx={{ m: 0 }}
