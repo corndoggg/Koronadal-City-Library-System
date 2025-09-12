@@ -9,7 +9,7 @@ import { SidebarProvider } from './contexts/SidebarContext';
 import { SystemSettingsProvider } from './contexts/SystemSettingsContext.jsx';
 import './global.css';
 
-import DashboardPage from './app/librarian/pages/DashboardPage.jsx';
+import DashboardPage from './app/dashboard/page.jsx';
 import BookManagementPage from './app/librarian/books/page.jsx';
 import AdminBookManagementPage from './app/admin/books/page.jsx';
 import DocumentManagementPage from './app/librarian/documents/page.jsx';

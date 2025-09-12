@@ -21,7 +21,9 @@ const LibrarianDocumentManagementPage = () => {
   const [isEdit, setIsEdit] = useState(false);
   const [editDoc, setEditDoc] = useState(null);
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
-  const [pdfUrl, setPdfUrl] = useState('');
+  const [pdfUrl, setPdfUrl] = useState(''); 
+  const [loading, setLoading] = useState(false);
+  const [locations, setLocations] = useState([]);
 
   useEffect(() => { fetchDocuments(); fetchLocations(); }, []);
   useEffect(() => { handleSearch(); }, [search, documents]);
