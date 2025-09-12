@@ -102,6 +102,15 @@ const AdminDocumentManagementPage = () => {
 
   const handleViewPdf = (filePath) => { setPdfUrl(`${API_BASE}${filePath}`); setPdfDialogOpen(true); };
 
+  // New: close viewer and cleanup blob URL
+  const handleClosePdf = () => {
+    try {
+      if (pdfUrl && pdfUrl.startsWith('blob:')) URL.revokeObjectURL(pdfUrl);
+    } catch {}
+    setPdfUrl('');
+    setPdfDialogOpen(false);
+  };
+
   const indexOfLast = currentPage * rowsPerPage, indexOfFirst = indexOfLast - rowsPerPage, currentDocs = filteredDocs.slice(indexOfFirst, indexOfLast);
   const placeholderImg = 'https://placehold.co/400x180?text=PDF+Document';
 
@@ -383,7 +392,7 @@ const AdminDocumentManagementPage = () => {
 
       <DocumentPDFViewer
         open={pdfDialogOpen}
-        onClose={() => setPdfDialogOpen(false)}
+        onClose={handleClosePdf}
         fileUrl={pdfUrl}
         title="Viewing PDF Document"
       />
@@ -416,4 +425,3 @@ const AdminDocumentManagementPage = () => {
 };
 
 export default AdminDocumentManagementPage;
-                          <Visibility fontSize="small" />

@@ -23,6 +23,7 @@ const DocumentApprovalPage = () => {
   const [transactions, setTransactions] = useState([]);
   const [borrowerNameById, setBorrowerNameById] = useState({});
   const [docDetails, setDocDetails] = useState({});
+  const [docMetaById, setDocMetaById] = useState({}); // NEW: docs by DocumentID for digital
   const [dueDates, setDueDates] = useState({});
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
@@ -63,7 +64,15 @@ const DocumentApprovalPage = () => {
     setDueDates(map);
   }, [transactions]);
 
-  // Load document metadata (parallelized by storage IDs)
+  // Detect digital vs physical by presence of DocumentStorageID
+  const isDigitalDocItem = (item) => item.ItemType === "Document" && !item.DocumentStorageID;
+  const isDigitalOnlyTx = (tx) => {
+    const items = tx?.items || [];
+    return items.length > 0 && items.every(i => i.ItemType === "Document" && !i.DocumentStorageID);
+  };
+  const hasAnyPhysical = (tx) => (tx?.items || []).some(i => i.ItemType === "Document" && !!i.DocumentStorageID);
+
+  // Load document metadata (physical by Storage_ID)
   useEffect(() => {
     (async () => {
       if (!transactions.length) return;
@@ -81,15 +90,36 @@ const DocumentApprovalPage = () => {
             if (docRes.data?.Title) {
               return [storageId, { ...docRes.data, ...invRow }];
             }
-          } catch { /* ignore per item */ }
+          } catch {}
           return null;
         }));
         const info = {};
         entries.filter(Boolean).forEach(([id, val]) => { info[id] = val; });
         setDocDetails(info);
-      } catch {
-        // ignore
-      }
+      } catch {}
+    })();
+  }, [transactions]);
+
+  // Helper: prefer Document_ID with safe fallbacks
+  const getDocumentId = (obj) => obj?.Document_ID ?? obj?.DocumentID ?? obj?.documentId ?? obj?.DocumentId;
+
+  // NEW: Load metadata for digital items by Document_ID
+  useEffect(() => {
+    (async () => {
+      if (!transactions.length) return;
+      const docIds = [...new Set(transactions.flatMap(tx => (tx.items || [])
+        .filter(i => i.ItemType === "Document" && !i.DocumentStorageID && getDocumentId(i))
+        .map(i => getDocumentId(i))))];
+      if (!docIds.length) return;
+
+      const map = {};
+      await Promise.all(docIds.map(async id => {
+        try {
+          const r = await axios.get(`${API_BASE}/documents/${id}`);
+          if (r.data?.Title) map[id] = r.data;
+        } catch {}
+      }));
+      setDocMetaById(map);
     })();
   }, [transactions]);
 
@@ -126,10 +156,25 @@ const DocumentApprovalPage = () => {
     return borrowerNameById[borrowerId];
   };
 
-  // Compute status once per transaction
+  // Compute status once per transaction (with digital semantics)
   const deriveStatus = (tx, due) => {
     const dueDate = due ? new Date(due) : null;
     const today = new Date();
+    const digitalOnly = isDigitalOnlyTx(tx);
+
+    // Digital flow
+    if (digitalOnly) {
+      if (tx.ApprovalStatus === "Pending") return { label: "Pending Approval", color: "warning" };
+      // If auto-marked returned, treat as expired regardless of due date
+      if (tx.ReturnStatus === "Returned") return { label: "Expired", color: "error" };
+      if (tx.ApprovalStatus === "Approved") {
+        if (dueDate && dueDate < today) return { label: "Expired", color: "error" };
+        return { label: "Active (Digital)", color: "info" };
+      }
+      return { label: tx.ApprovalStatus || "Unknown", color: "default" };
+    }
+
+    // Physical/mixed flow
     if (tx.ReturnStatus === "Returned") return { label: "Returned", color: "success" };
     if (tx.ApprovalStatus === "Rejected") return { label: "Rejected", color: "error" };
     if (tx.ApprovalStatus === "Pending") return { label: "Pending Approval", color: "warning" };
@@ -165,9 +210,39 @@ const DocumentApprovalPage = () => {
   };
 
   // Actions (admin role)
+  // Approve dialog for digital-only: pick expiration/due date
+  const [approveDlgOpen, setApproveDlgOpen] = useState(false);
+  const [approveDue, setApproveDue] = useState("");
+  const [approveTarget, setApproveTarget] = useState(null);
+
+  const openApprove = (tx) => {
+    if (isDigitalOnlyTx(tx)) {
+      setApproveTarget(tx);
+      setApproveDue((dueDates[tx.BorrowID] || "").slice(0, 10));
+      setApproveDlgOpen(true);
+    } else {
+      approveTx(tx); // physical/mixed, approve immediately
+    }
+  };
+
+  const confirmApprove = async () => {
+    if (!approveTarget) return;
+    setActionLoading(true);
+    try {
+      await axios.put(`${API_BASE}/borrow/${approveTarget.BorrowID}/approve?role=admin`, approveDue ? {
+        returnDate: approveDue // backend treats as expiration for digital
+      } : {});
+      setApproveDlgOpen(false);
+      setApproveTarget(null);
+      setApproveDue("");
+      await fetchTransactions();
+    } finally { setActionLoading(false); }
+  };
+
   const approveTx = async (tx) => {
     setActionLoading(true);
     try {
+      // For physical/mixed, approving without body; for digital-only, we route via openApprove
       await axios.put(`${API_BASE}/borrow/${tx.BorrowID}/approve?role=admin`);
       await fetchTransactions();
     } finally { setActionLoading(false); }
@@ -187,32 +262,49 @@ const DocumentApprovalPage = () => {
     } finally { setActionLoading(false); }
   };
 
-  // Search/filter/sort
+  // Add: search-based filter
   const filtered = useMemo(() => {
-    const q = (search || "").toLowerCase();
+    const q = (search || "").trim().toLowerCase();
     if (!q) return transactions;
-    return transactions.filter(tx => {
+    return transactions.filter((tx) => {
       const borrower = (getBorrowerInfo(tx.BorrowerID) || "").toLowerCase();
+      const purpose = (tx.Purpose || "").toLowerCase();
+      const idStr = String(tx.BorrowID || "");
+      const borrowDate = (tx.BorrowDate || "").toLowerCase();
+      const due = (dueDates[tx.BorrowID] || "").toLowerCase();
+      const statusLabel = (statusMap[tx.BorrowID]?.label || "").toLowerCase();
       return (
         borrower.includes(q) ||
-        (tx.Purpose || "").toLowerCase().includes(q) ||
-        (tx.BorrowDate || "").toLowerCase().includes(q) ||
-        (dueDates[tx.BorrowID] || "").toLowerCase().includes(q) ||
-        String(tx.BorrowID).includes(q)
+        purpose.includes(q) ||
+        idStr.includes(q) ||
+        borrowDate.includes(q) ||
+        due.includes(q) ||
+        statusLabel.includes(q)
       );
     });
-  }, [transactions, search, dueDates]);
+  }, [transactions, search, borrowerNameById, dueDates, statusMap]);
 
+  // Add: fine helpers used by return modal
+  const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const calcFineForBorrow = (borrowId) => {
+    const dueRaw = dueDates[borrowId];
+    if (!dueRaw) return 0;
+    const today = startOfDay(new Date());
+    const due = startOfDay(new Date(dueRaw));
+    const days = Math.max(0, Math.floor((today - due) / 86400000));
+    return days * finePerDay;
+  };
+
+  // Search/filter/sort (treat Expired like Overdue)
   const statusPriority = (label) => {
-    if (label.startsWith("Overdue")) return 0;
+    if (label.startsWith("Overdue") || label === "Expired") return 0;
     if (label === "Pending Approval") return 1;
-    if (label === "Approved") return 2;
+    if (label === "Approved" || label === "Active (Digital)") return 2;
     if (label === "Borrowed") return 3;
     if (label === "Returned") return 4;
     if (label === "Rejected") return 5;
     return 6;
   };
-
   const rows = useMemo(() => {
     return [...filtered].sort((a, b) => {
       const la = (statusMap[a.BorrowID]?.label) || "Unknown";
@@ -223,17 +315,17 @@ const DocumentApprovalPage = () => {
 
   const summary = useMemo(() => {
     const labels = Object.values(statusMap).map(s => s.label);
-    const count = (t) => labels.filter(l => l === t || (t === "Overdue" && l.startsWith("Overdue"))).length;
+    const count = (t) => labels.filter(l =>
+      l === t || (t === "Overdue" && (l.startsWith("Overdue") || l === "Expired"))
+    ).length;
     return [
       { label: "Pending", value: count("Pending Approval"), color: theme.palette.warning.main },
-      { label: "Approved", value: count("Approved"), color: theme.palette.info.main },
+      { label: "Approved", value: count("Approved") + count("Active (Digital)"), color: theme.palette.info.main },
       { label: "Borrowed", value: count("Borrowed"), color: theme.palette.secondary.main },
       { label: "Overdue", value: count("Overdue"), color: theme.palette.error.main },
       { label: "Returned", value: count("Returned"), color: theme.palette.success.main }
     ];
-    // theme is stable; safe to use directly
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusMap]);
+  }, [statusMap]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const InfoBlock = ({ label, value }) => (
     <Box sx={{ p: 1, border: `1px solid ${theme.palette.divider}`, borderRadius: 1, minWidth: 140, flex: '1 1 auto', bgcolor: 'background.paper' }}>
@@ -258,6 +350,7 @@ const DocumentApprovalPage = () => {
     const dueDate = dueDates[selectedTx.BorrowID];
     const borrowerInfo = getBorrowerInfo(selectedTx.BorrowerID);
     const items = selectedTx.items || [];
+    const digitalOnly = isDigitalOnlyTx(selectedTx);
     return (
       <Dialog open={modalOpen} onClose={() => setModalOpen(false)} maxWidth="md" fullWidth
         PaperProps={{ sx: { borderRadius: 1, border: `2px solid ${theme.palette.divider}` } }}>
@@ -268,41 +361,54 @@ const DocumentApprovalPage = () => {
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
             <InfoBlock label="Borrower" value={borrowerInfo} />
             <InfoBlock label="Purpose" value={selectedTx.Purpose || "—"} />
+            <InfoBlock label={digitalOnly ? "Expires" : "Due Date"} value={dueDate ? dueDate.slice(0, 10) : "—"} />
             <InfoBlock label="Borrow Date" value={selectedTx.BorrowDate?.slice(0, 10) || "—"} />
-            <InfoBlock label="Due Date" value={dueDate ? dueDate.slice(0, 10) : "—"} />
             <InfoBlock label="Status" value={<StatusChip tx={selectedTx} />} />
           </Box>
           <Box sx={{ p: 1.5, border: `1.5px solid ${theme.palette.divider}`, borderRadius: 1, bgcolor: 'background.paper' }}>
             <Typography fontWeight={800} fontSize={13} mb={1}>Items ({items.length})</Typography>
             <Stack spacing={1.25}>
-              {items.map(item => (
-                <Box key={item.BorrowedItemID} sx={{ p: 1, border: `1px solid ${theme.palette.divider}`, borderRadius: 1, bgcolor: 'background.default' }}>
-                  <Stack direction="row" alignItems="center" spacing={1}>
-                    <Avatar sx={{ bgcolor: theme.palette.secondary.main, width: 34, height: 34, borderRadius: 1 }}>
-                      <Article fontSize="small" />
-                    </Avatar>
-                    <Chip size="small" color="secondary" label={`Doc Storage #${item.DocumentStorageID}`} sx={{ fontWeight: 600, borderRadius: 0.75 }} />
-                  </Stack>
-                  {docDetails[item.DocumentStorageID] && (
-                    <Box mt={1} ml={0.5}>
-                      <MetaLine data={[
-                        ["Title", docDetails[item.DocumentStorageID].Title],
-                        ["Author", docDetails[item.DocumentStorageID].Author],
-                        ["Category", docDetails[item.DocumentStorageID].Category],
-                        ["Department", docDetails[item.DocumentStorageID].Department],
-                        ["Year", docDetails[item.DocumentStorageID].Year]
-                      ]} />
-                    </Box>
-                  )}
-                </Box>
-              ))}
+              {items.map(item => {
+                const isDigital = isDigitalDocItem(item);
+                const did = isDigital ? getDocumentId(item) : null;
+                const meta = isDigital
+                  ? (did && docMetaById[did])
+                  : (item.DocumentStorageID && docDetails[item.DocumentStorageID]);
+                return (
+                  <Box key={item.BorrowedItemID} sx={{ p: 1, border: `1px solid ${theme.palette.divider}`, borderRadius: 1, bgcolor: 'background.default' }}>
+                    <Stack direction="row" alignItems="center" spacing={1}>
+                      <Avatar sx={{ bgcolor: theme.palette.secondary.main, width: 34, height: 34, borderRadius: 1 }}>
+                        <Article fontSize="small" />
+                      </Avatar>
+                      <Chip
+                        size="small"
+                        color="secondary"
+                        label={isDigital ? `Doc #${did}` : `Doc Storage #${item.DocumentStorageID}`}
+                        sx={{ fontWeight: 600, borderRadius: 0.75 }}
+                      />
+                      <Chip size="small" variant="outlined" label={isDigital ? "Digital" : "Physical"} sx={{ borderRadius: 0.75 }} />
+                    </Stack>
+                    {meta && (
+                      <Box mt={1} ml={0.5}>
+                        <MetaLine data={[
+                          ["Title", meta.Title],
+                          ["Author", meta.Author],
+                          ["Category", meta.Category],
+                          ["Department", meta.Department],
+                          ["Year", meta.Year]
+                        ]} />
+                      </Box>
+                    )}
+                  </Box>
+                );
+              })}
             </Stack>
           </Box>
         </DialogContent>
         <DialogActions sx={{ borderTop: `2px solid ${theme.palette.divider}`, py: 1 }}>
           {selectedTx.ApprovalStatus === "Pending" && (
             <>
-              <Button onClick={() => approveTx(selectedTx)} variant="contained" size="small" color="success"
+              <Button onClick={() => openApprove(selectedTx)} variant="contained" size="small" color="success"
                 startIcon={<CheckCircle />} disabled={actionLoading} sx={{ borderRadius: 1, fontWeight: 700 }}>
                 Approve
               </Button>
@@ -312,19 +418,20 @@ const DocumentApprovalPage = () => {
               </Button>
             </>
           )}
-          {selectedTx.ApprovalStatus === "Approved" && selectedTx.RetrievalStatus !== "Retrieved" && (
+          {/* Hide retrieval/return for digital-only */}
+          {!isDigitalOnlyTx(selectedTx) && selectedTx.ApprovalStatus === "Approved" && selectedTx.RetrievalStatus !== "Retrieved" && (
             <Button onClick={() => markRetrieved(selectedTx)} variant="contained" size="small" color="primary"
               startIcon={<TaskAlt />} disabled={actionLoading} sx={{ borderRadius: 1, fontWeight: 700 }}>
               Mark Retrieved
             </Button>
           )}
-          {selectedTx.RetrievalStatus === "Retrieved" && selectedTx.ReturnStatus !== "Returned" && (
+          {!isDigitalOnlyTx(selectedTx) && selectedTx.RetrievalStatus === "Retrieved" && selectedTx.ReturnStatus !== "Returned" && (
             <Button onClick={() => openReturnModal(selectedTx)} variant="contained" size="small" color="secondary"
               startIcon={<Undo />} disabled={actionLoading} sx={{ borderRadius: 1, fontWeight: 700 }}>
               Return
             </Button>
           )}
-          {selectedTx.ReturnStatus === "Returned" && (
+          {selectedTx.ReturnStatus === "Returned" && !isDigitalOnlyTx(selectedTx) && (
             <Chip label="Completed" color="success" size="small" icon={<DoneAll />} sx={{ borderRadius: 0.75, fontWeight: 700 }} />
           )}
           <Button onClick={() => setModalOpen(false)} variant="text" size="small" sx={{ ml: 'auto', fontWeight: 600 }}>Close</Button>
@@ -494,6 +601,7 @@ const DocumentApprovalPage = () => {
                 {rows.map(tx => {
                   const due = dueDates[tx.BorrowID];
                   const s = statusMap[tx.BorrowID] || { label: "Unknown", color: "default" };
+                  const digitalOnly = isDigitalOnlyTx(tx); // NEW
                   return (
                     <TableRow key={tx.BorrowID}>
                       <TableCell><StatusChip tx={tx} /></TableCell>
@@ -514,10 +622,11 @@ const DocumentApprovalPage = () => {
                             </Button>
                           </Tooltip>
 
+                          {/* Pending: allow Approve/Reject (digital or physical) */}
                           {tx.ApprovalStatus === "Pending" && (
                             <>
                               <Tooltip title="Approve">
-                                <IconButton size="small" color="success" onClick={() => approveTx(tx)}
+                                <IconButton size="small" color="success" onClick={() => openApprove(tx)}
                                   sx={{ border: `1px solid ${alpha(theme.palette.success.main, .5)}`, borderRadius: 0.75 }}>
                                   <CheckCircle fontSize="small" />
                                 </IconButton>
@@ -531,7 +640,8 @@ const DocumentApprovalPage = () => {
                             </>
                           )}
 
-                          {tx.ApprovalStatus === "Approved" && tx.RetrievalStatus !== "Retrieved" && (
+                          {/* Digital-only: no retrieval/return actions */}
+                          {!digitalOnly && tx.ApprovalStatus === "Approved" && tx.RetrievalStatus !== "Retrieved" && (
                             <Tooltip title="Mark Retrieved">
                               <Button size="small" variant="contained" onClick={() => markRetrieved(tx)}
                                 sx={{ borderRadius: 0.75, fontWeight: 700 }}>
@@ -540,7 +650,7 @@ const DocumentApprovalPage = () => {
                             </Tooltip>
                           )}
 
-                          {tx.RetrievalStatus === "Retrieved" && tx.ReturnStatus !== "Returned" && (
+                          {!digitalOnly && tx.RetrievalStatus === "Retrieved" && tx.ReturnStatus !== "Returned" && (
                             <Tooltip title="Return Items">
                               <Button size="small" color="secondary" variant="contained" onClick={() => openReturnModal(tx)}
                                 sx={{ borderRadius: 0.75, fontWeight: 700 }}>
@@ -549,7 +659,7 @@ const DocumentApprovalPage = () => {
                             </Tooltip>
                           )}
 
-                          {tx.ReturnStatus === "Returned" && (
+                          {tx.ReturnStatus === "Returned" && !digitalOnly && (
                             <Chip size="small" label="Completed" color="success" icon={<DoneAll fontSize="small" />}
                               sx={{ borderRadius: 0.75, fontWeight: 600 }} />
                           )}
@@ -571,6 +681,33 @@ const DocumentApprovalPage = () => {
 
       {renderTxModal()}
       {renderReturnModal()}
+
+      {/* Approve dialog for digital-only */}
+      <Dialog open={approveDlgOpen} onClose={() => setApproveDlgOpen(false)} maxWidth="xs" fullWidth
+        PaperProps={{ sx: { borderRadius: 1, border: `2px solid ${theme.palette.divider}` } }}>
+        <DialogTitle sx={{ fontWeight: 800, py: 1.25, borderBottom: `2px solid ${theme.palette.divider}` }}>
+          Approve Digital Borrow
+        </DialogTitle>
+        <DialogContent dividers sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+          <Typography variant="caption" color="text.secondary">
+            Set an expiration date for this digital transaction.
+          </Typography>
+          <TextField
+            label="Expiration (Due) Date"
+            type="date"
+            size="small"
+            value={approveDue}
+            onChange={e => setApproveDue(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ borderTop: `2px solid ${theme.palette.divider}`, py: 1 }}>
+          <Button variant="outlined" size="small" onClick={() => setApproveDlgOpen(false)} sx={{ borderRadius: 1 }}>Cancel</Button>
+          <Button variant="contained" size="small" onClick={confirmApprove} disabled={actionLoading || !approveDue} sx={{ borderRadius: 1, fontWeight: 700 }}>
+            {actionLoading ? "Saving…" : "Approve"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

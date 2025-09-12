@@ -29,6 +29,7 @@ import {
   Close
 } from "@mui/icons-material";
 import { alpha } from "@mui/material/styles";
+import DocumentPDFViewer from "../../../components/DocumentPDFViewer"; // added
 
 const BorrowerBorrowPage = () => {
   const API_BASE = import.meta.env.VITE_API_BASE;
@@ -47,6 +48,9 @@ const BorrowerBorrowPage = () => {
   const [search, setSearch] = useState("");
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedTx, setSelectedTx] = useState(null);
+  const [docMetaById, setDocMetaById] = useState({}); // added: digital docs by DocumentID
+  const [pdfDialogOpen, setPdfDialogOpen] = useState(false); // added
+  const [pdfUrl, setPdfUrl] = useState(""); // added
 
   // fetch transactions
   useEffect(() => {
@@ -85,20 +89,29 @@ const BorrowerBorrowPage = () => {
     })();
   }, [transactions, API_BASE]);
 
-  // fetch item metadata
+  // Helper: prefer Document_ID (fallbacks for any legacy payloads)
+  const getDocumentId = (obj) => obj?.Document_ID ?? obj?.DocumentID ?? obj?.documentId ?? obj?.DocumentId;
+
+  // fetch item metadata (books, physical docs by storage, digital docs by document id)
   useEffect(() => {
     if (!transactions.length) return;
     (async () => {
       let bookCopyIds = [];
       let docStorageIds = [];
+      let docIds = [];
       transactions.forEach((tx) =>
         (tx.items || []).forEach((it) => {
           if (it.ItemType === "Book" && it.BookCopyID) bookCopyIds.push(it.BookCopyID);
           if (it.ItemType === "Document" && it.DocumentStorageID) docStorageIds.push(it.DocumentStorageID);
+          if (it.ItemType === "Document" && !it.DocumentStorageID) {
+            const did = getDocumentId(it);
+            if (did) docIds.push(did);
+          }
         })
       );
       bookCopyIds = [...new Set(bookCopyIds)];
       docStorageIds = [...new Set(docStorageIds)];
+      docIds = [...new Set(docIds)];
 
       const bInfo = {};
       for (const id of bookCopyIds) {
@@ -120,18 +133,53 @@ const BorrowerBorrowPage = () => {
         } catch {}
       }
 
+      const dById = {};
+      for (const did of [...new Set(docIds)]) {
+        try {
+          const r = await axios.get(`${API_BASE}/documents/${did}`);
+          if (r.data?.Title) dById[did] = r.data;
+        } catch {}
+      }
+
       setBookDetails(bInfo);
       setDocDetails(dInfo);
+      setDocMetaById(dById); // added
     })();
   }, [transactions, API_BASE]);
 
-  // derive status
+  // Helpers: Digital/Physical detection (no DocType; digital if no DocumentStorageID)
+  const isDigitalDocItem = (item) => item.ItemType === "Document" && !item.DocumentStorageID; // added
+  const isDigitalOnlyTx = (tx) => {
+    const items = tx?.items || [];
+    return items.length > 0 && items.every(i => i.ItemType === "Document" && !i.DocumentStorageID);
+  }; // changed
+  const hasAnyPhysical = (tx) => (tx?.items || []).some(i =>
+    (i.ItemType === "Book") || (i.ItemType === "Document" && !!i.DocumentStorageID)
+  ); // changed
+
+  // status derivation: treat digital 'Returned' as Expired and hide PDF button
   const deriveStatus = (tx) => {
     const dueRaw = dueDates[tx.BorrowID];
     const due = dueRaw ? new Date(dueRaw) : null;
     const today = new Date();
-    if (tx.ReturnStatus === "Returned") return { label: "Returned", color: "success", tone: "success" };
+
+    const digitalOnly = (tx.items || []).length > 0 &&
+      (tx.items || []).every(i => i.ItemType === "Document" && !i.DocumentStorageID);
+
     if (tx.ApprovalStatus === "Rejected") return { label: "Rejected", color: "error", tone: "error" };
+
+    if (digitalOnly) {
+      // Auto-returned digital is always Expired
+      if (tx.ReturnStatus === "Returned") return { label: "Expired", color: "error", tone: "error" };
+      if (tx.ApprovalStatus === "Pending") return { label: "Pending Approval", color: "warning", tone: "warning" };
+      if (tx.ApprovalStatus === "Approved") {
+        if (due && due < today) return { label: "Expired", color: "error", tone: "error" };
+        return { label: "Active (Digital)", color: "info", tone: "info" };
+      }
+      return { label: tx.ApprovalStatus || "Unknown", color: "default", tone: "default" };
+    }
+
+    if (tx.ReturnStatus === "Returned") return { label: "Returned", color: "success", tone: "success" };
     if (tx.ApprovalStatus === "Pending") return { label: "Pending Approval", color: "warning", tone: "warning" };
     if (tx.ApprovalStatus === "Approved" && tx.RetrievalStatus !== "Retrieved") {
       if (due && due < today) return { label: "Overdue (Awaiting Pickup)", color: "error", tone: "error" };
@@ -156,12 +204,12 @@ const BorrowerBorrowPage = () => {
     );
   };
 
-  // sorting (priority)
+  // status sorting (treat Expired like Overdue)
   const statusOrder = (tx) => {
     const lbl = deriveStatus(tx).label;
-    if (lbl.startsWith("Overdue")) return 0;
+    if (lbl.startsWith("Overdue") || lbl === "Expired") return 0;
     if (lbl === "Pending Approval") return 1;
-    if (lbl === "Approved") return 2;
+    if (lbl === "Approved" || lbl === "Active (Digital)") return 2;
     if (lbl === "Borrowed") return 3;
     if (lbl === "Returned") return 4;
     if (lbl === "Rejected") return 5;
@@ -187,9 +235,12 @@ const BorrowerBorrowPage = () => {
   const summary = useMemo(
     () => [
       { label: "Pending", value: count((t) => deriveStatus(t).label === "Pending Approval"), color: "warning.main" },
-      { label: "Approved", value: count((t) => deriveStatus(t).label === "Approved"), color: "info.main" },
+      { label: "Approved", value: count((t) => {
+          const l = deriveStatus(t).label;
+          return l === "Approved" || l === "Active (Digital)";
+        }), color: "info.main" },
       { label: "Borrowed", value: count((t) => deriveStatus(t).label === "Borrowed"), color: "secondary.main" },
-      { label: "Overdue", value: count((t) => deriveStatus(t).label.startsWith("Overdue")), color: "error.main" },
+      { label: "Overdue", value: count((t) => deriveStatus(t).label.startsWith("Overdue") || deriveStatus(t).label === "Expired"), color: "error.main" },
       { label: "Returned", value: count((t) => deriveStatus(t).label === "Returned"), color: "success.main" }
     ],
     [transactions, dueDates]
@@ -203,6 +254,12 @@ const BorrowerBorrowPage = () => {
   const closeDetail = () => {
     setDetailOpen(false);
     setSelectedTx(null);
+  };
+
+  const handleViewPdf = (filePath) => { // added
+    if (!filePath) return;
+    setPdfUrl(`${API_BASE}${filePath}`);
+    setPdfDialogOpen(true);
   };
 
   const MetaLine = ({ k, v }) =>
@@ -374,6 +431,8 @@ const BorrowerBorrowPage = () => {
         {sorted.map((tx) => {
           const st = deriveStatus(tx);
           const due = dueDates[tx.BorrowID];
+          const digitalOnly = isDigitalOnlyTx(tx);
+          const digitalActive = digitalOnly && st.label === "Active (Digital)"; // NEW
           return (
             <Paper
               key={tx.BorrowID}
@@ -411,7 +470,7 @@ const BorrowerBorrowPage = () => {
                       : "text.secondary"
                   }
                 >
-                  Due: {due ? due.slice(0, 10) : "—"}
+                  {digitalOnly ? "Expires" : "Due"}: {due ? due.slice(0, 10) : "—"}
                 </Typography>
                 <Box ml="auto" />
                 <Tooltip title="View details">
@@ -431,14 +490,22 @@ const BorrowerBorrowPage = () => {
 
               <Divider />
 
+              {/* Item chips */}
               <Stack direction="row" gap={1} flexWrap="wrap">
                 {(tx.items || []).slice(0, 4).map((item) => {
                   const isBook = item.ItemType === "Book";
-                  // Use fetched details to get Title, fall back to IDs if not ready
-                  const meta = isBook ? bookDetails[item.BookCopyID] : docDetails[item.DocumentStorageID];
+                  const isDigital = !isBook && !item.DocumentStorageID;
+                  const did = isDigital ? getDocumentId(item) : null;
+                  const meta = isBook
+                    ? bookDetails[item.BookCopyID]
+                    : (item.DocumentStorageID
+                        ? docDetails[item.DocumentStorageID]
+                        : (did && docMetaById[did]));
                   const title =
                     (meta && meta.Title) ||
-                    (isBook ? `Book Copy #${item.BookCopyID}` : `Doc Storage #${item.DocumentStorageID}`);
+                    (isBook
+                      ? `Book Copy #${item.BookCopyID}`
+                      : (isDigital ? `Doc #${did}` : `Doc Storage #${item.DocumentStorageID}`));
                   return (
                     <Tooltip key={item.BorrowedItemID} title={title}>
                       <Chip
@@ -474,6 +541,15 @@ const BorrowerBorrowPage = () => {
                     </Tooltip>
                   );
                 })}
+                {(tx.items || []).filter(it => it.ItemType === "Document").slice(0, 1).map(it => (
+                  <Chip
+                    key={`${tx.BorrowID}-doctype`}
+                    size="small"
+                    variant="outlined"
+                    label={`Docs: ${isDigitalOnlyTx(tx) ? "Digital" : (hasAnyPhysical(tx) ? "Physical/Mixed" : "Digital")}`}
+                    sx={{ borderRadius: 0.75 }}
+                  />
+                ))}
                 {(tx.items || []).length > 4 && (
                   <Chip
                     size="small"
@@ -482,6 +558,46 @@ const BorrowerBorrowPage = () => {
                   />
                 )}
               </Stack>
+
+              {/* NEW: Inline metadata + View PDF for digital items */}
+              {(() => {
+                const st = deriveStatus(tx);
+                const digitalActive = st.label === "Active (Digital)"; // will be false if Returned->Expired
+                const digitalItems = (tx.items || []).filter(i => i.ItemType === "Document" && !i.DocumentStorageID);
+                if (!digitalItems.length) return null;
+                return (
+                  <Stack spacing={0.5} sx={{ px: 0.5 }}>
+                    {digitalItems.map((it) => {
+                      const did = getDocumentId(it);
+                      const meta = did && docMetaById[did];
+                      const filePath = meta?.File_Path || meta?.file_path || meta?.FilePath;
+                      return (
+                        <Stack key={`${tx.BorrowID}-${did}`} direction="row" alignItems="center" spacing={1}>
+                          <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                            {meta?.Title || `Doc #${did}`}
+                          </Typography>
+                          {meta?.Author && (
+                            <Typography variant="caption" color="text.secondary">
+                              by {meta.Author}
+                            </Typography>
+                          )}
+                          <Box sx={{ ml: "auto" }} />
+                          {digitalActive && filePath && (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={() => handleViewPdf(filePath)}
+                              sx={{ borderRadius: 0.75, fontWeight: 600 }}
+                            >
+                              View PDF
+                            </Button>
+                          )}
+                        </Stack>
+                      );
+                    })}
+                  </Stack>
+                );
+              })()}
 
               {tx.Purpose && (
                 <Typography
@@ -565,104 +681,128 @@ const BorrowerBorrowPage = () => {
                 <MetaLine k="Borrow ID" v={selectedTx.BorrowID} />
                 <MetaLine k="Borrowed" v={selectedTx.BorrowDate?.slice(0, 10)} />
                 <MetaLine
-                  k="Due"
+                  k={isDigitalOnlyTx(selectedTx) ? "Expires" : "Due"}
                   v={dueDates[selectedTx.BorrowID]?.slice(0, 10)}
                 />
                 <MetaLine k="Purpose" v={selectedTx.Purpose} />
                 <MetaLine k="Status" v={deriveStatus(selectedTx).label} />
               </Paper>
 
-              <Box>
-                <Typography fontWeight={800} fontSize={13} mb={1}>
-                  Items ({selectedTx.items?.length || 0})
-                </Typography>
-                <Stack spacing={1.25}>
-                  {(selectedTx.items || []).map((item) => {
-                    const isBook = item.ItemType === "Book";
-                    const b = isBook ? bookDetails[item.BookCopyID] : docDetails[item.DocumentStorageID];
-                    return (
-                      <Paper
-                        key={item.BorrowedItemID}
-                        variant="outlined"
-                        sx={{
-                          p: 1,
-                          borderRadius: 1,
-                          border: (t) => `1px solid ${t.palette.divider}`,
-                          bgcolor: "background.paper"
-                        }}
-                      >
-                        <Stack direction="row" alignItems="center" spacing={1}>
-                          <Avatar
+              {/*
+                FIX: compute digitalActive for the selectedTx (used below in the items map)
+              */}
+              {(() => {
+                const st = deriveStatus(selectedTx);
+                // Active (Digital) means PDF can be viewed; if Returned/expired, hide button
+                var digitalActive = st.label === "Active (Digital)";
+
+                return (
+                  <Box>
+                    <Typography fontWeight={800} fontSize={13} mb={1}>
+                      Items ({selectedTx.items?.length || 0})
+                    </Typography>
+                    <Stack spacing={1.25}>
+                      {(selectedTx.items || []).map((item) => {
+                        const isBook = item.ItemType === "Book";
+                        const isDigital = !isBook && !item.DocumentStorageID;
+                        const did = isDigital ? getDocumentId(item) : null;
+                        const meta = isBook
+                          ? bookDetails[item.BookCopyID]
+                          : (item.DocumentStorageID
+                              ? docDetails[item.DocumentStorageID]
+                              : (did && docMetaById[did]));
+                        const filePath = meta?.File_Path || meta?.file_path || meta?.FilePath;
+                        return (
+                          <Paper
+                            key={item.BorrowedItemID}
+                            variant="outlined"
                             sx={{
-                              bgcolor: isBook ? "primary.main" : "secondary.main",
-                              width: 34,
-                              height: 34,
-                              borderRadius: 1
+                              p: 1,
+                              borderRadius: 1,
+                              border: (t) => `1px solid ${t.palette.divider}`,
+                              bgcolor: "background.paper"
                             }}
                           >
-                            {isBook ? <Book fontSize="small" /> : <Article fontSize="small" />}
-                          </Avatar>
-                          <Chip
-                            label={
-                              // Use Title instead of IDs
-                              (b && b.Title) ||
-                              (isBook ? `Book Copy #${item.BookCopyID}` : `Doc Storage #${item.DocumentStorageID}`)
-                            }
-                            size="small"
-                            color={isBook ? "primary" : "secondary"}
-                            sx={{
-                              fontWeight: 600,
-                              borderRadius: 0.75,
-                              maxWidth: 320,
-                              '& .MuiChip-label': {
-                                display: 'block',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap'
-                              }
-                            }}
-                          />
-                        </Stack>
-                        {b ? (
-                          <Stack mt={1} spacing={0.25} pl={0.5}>
-                            {isBook && (
-                              <>
-                                <MetaLine k="Title" v={b.Title} />
-                                <MetaLine k="Author" v={b.Author} />
-                                <MetaLine k="Edition" v={b.Edition} />
-                                <MetaLine k="Publisher" v={b.Publisher} />
-                                <MetaLine k="Year" v={b.Year} />
-                                <MetaLine k="ISBN" v={b.ISBN} />
-                                <MetaLine k="Condition (Out)" v={b.Condition || b.condition} />
-                              </>
+                            <Stack direction="row" alignItems="center" spacing={1}>
+                              <Avatar
+                                sx={{
+                                  bgcolor: isBook ? "primary.main" : "secondary.main",
+                                  width: 34,
+                                  height: 34,
+                                  borderRadius: 1
+                                }}
+                              >
+                                {isBook ? <Book fontSize="small" /> : <Article fontSize="small" />}
+                              </Avatar>
+                              <Chip
+                                label={
+                                  (meta && meta.Title) ||
+                                  (isBook ? `Book Copy #${item.BookCopyID}` : (isDigital ? `Doc #${did}` : `Doc Storage #${item.DocumentStorageID}`))
+                                }
+                                size="small"
+                                color={isBook ? "primary" : "secondary"}
+                                sx={{
+                                  fontWeight: 600,
+                                  borderRadius: 0.75,
+                                  maxWidth: 320,
+                                  '& .MuiChip-label': {
+                                    display: 'block',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap'
+                                  }
+                                }}
+                              />
+                              {!isBook && (
+                                <Chip size="small" variant="outlined" label={isDigital ? "Digital" : "Physical"} sx={{ borderRadius: 0.75 }} />
+                              )}
+                              {!isBook && isDigital && digitalActive && filePath && (
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  onClick={() => handleViewPdf(filePath)}
+                                  sx={{ ml: 'auto', borderRadius: 0.75, fontWeight: 600 }}
+                                >
+                                  View PDF
+                                </Button>
+                              )}
+                            </Stack>
+                            {meta ? (
+                              <Stack mt={1} spacing={0.25} pl={0.5}>
+                                {isBook ? (
+                                  <>
+                                    <MetaLine k="Title" v={meta.Title} />
+                                    <MetaLine k="Author" v={meta.Author} />
+                                    <MetaLine k="Edition" v={meta.Edition} />
+                                    <MetaLine k="Publisher" v={meta.Publisher} />
+                                    <MetaLine k="Year" v={meta.Year} />
+                                    <MetaLine k="ISBN" v={meta.ISBN} />
+                                    <MetaLine k="Condition (Out)" v={meta.Condition || meta.condition} />
+                                  </>
+                                ) : (
+                                  <>
+                                    <MetaLine k="Title" v={meta.Title} />
+                                    <MetaLine k="Author" v={meta.Author} />
+                                    <MetaLine k="Category" v={meta.Category} />
+                                    <MetaLine k="Department" v={meta.Department} />
+                                    <MetaLine k="Year" v={meta.Year} />
+                                    <MetaLine k="Classification" v={meta.Classification} />
+                                    <MetaLine k="Condition (Out)" v={meta.Condition || meta.condition} />
+                                  </>
+                                )}
+                              </Stack>
+                            ) : (
+                              <Typography variant="caption" color="text.secondary" mt={1} pl={0.5}>
+                                Details not available.
+                              </Typography>
                             )}
-                            {!isBook && (
-                              <>
-                                <MetaLine k="Title" v={b.Title} />
-                                <MetaLine k="Author" v={b.Author} />
-                                <MetaLine k="Category" v={b.Category} />
-                                <MetaLine k="Department" v={b.Department} />
-                                <MetaLine k="Year" v={b.Year} />
-                                <MetaLine k="Classification" v={b.Classification} />
-                                <MetaLine k="Condition (Out)" v={b.Condition || b.condition} />
-                              </>
-                            )}
-                          </Stack>
-                        ) : (
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            mt={1}
-                            pl={0.5}
-                          >
-                            Details not available.
-                          </Typography>
-                        )}
-                      </Paper>
-                    );
-                  })}
-                </Stack>
-              </Box>
+                          </Paper>
+                        );
+                      })}
+                    </Stack>
+                  </Box>
+                );
+              })()}
             </>
           )}
         </DialogContent>
@@ -677,6 +817,14 @@ const BorrowerBorrowPage = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* PDF Viewer (added) */}
+      <DocumentPDFViewer
+        open={pdfDialogOpen}
+        onClose={() => { setPdfDialogOpen(false); setPdfUrl(''); }}
+        fileUrl={pdfUrl}
+        title="Digital Document"
+      />
     </Box>
   );
 };

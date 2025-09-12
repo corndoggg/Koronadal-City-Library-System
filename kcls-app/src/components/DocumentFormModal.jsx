@@ -9,6 +9,7 @@ import {
   WarningAmber, CloudUpload, Close
 } from "@mui/icons-material";
 import axios from "axios";
+import DocumentPDFViewer from "./DocumentPDFViewer"; // NEW
 
 const initialForm = {
   title: "", author: "", category: "", department: "", classification: "",
@@ -23,6 +24,14 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
   const theme = useTheme();
   const API_BASE = import.meta.env.VITE_API_BASE;
   const fileInputRef = useRef();
+  // NEW: images → PDF
+  const imgInputRef = useRef(null);
+  const [imgConverting, setImgConverting] = useState(false);
+  const [convertForEdit, setConvertForEdit] = useState(false);
+
+  // NEW: preview state for converted PDF
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState("");
 
   // form state
   const [form, setForm] = useState(initialForm);
@@ -251,6 +260,81 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
     return { total, ...counts };
   }, [inventoryList]);
 
+  // NEW: choose images (in-modal)
+  const handleChooseImagesToPdf = (forEdit = false) => {
+    setConvertForEdit(!!forEdit);
+    if (imgInputRef.current) {
+      imgInputRef.current.value = "";
+      imgInputRef.current.click();
+    }
+  };
+
+  // NEW: convert selected images to PDF and apply
+  const handleImagesSelectedToPdf = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setImgConverting(true);
+    try {
+      const form = new FormData();
+      files.forEach(f => form.append("images", f));
+      // Ask backend to return the merged PDF as a blob
+      const res = await fetch(`${API_BASE}/system/image-to-pdf?inline=1`, { method: "POST", body: form });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || "Image-to-PDF failed");
+      }
+      const blob = await res.blob();
+      const filename = `images_${Date.now()}.pdf`;
+      // Create a File for upload compatibility
+      const pdfFile = new File([blob], filename, { type: "application/pdf" });
+
+      // OPEN PREVIEW for converted PDF (local object URL)
+      openPreviewForFile(pdfFile); // NEW
+
+      if (convertForEdit && documentData) {
+        // Edit mode: upload immediately via existing replace endpoint
+        setFileUploading(true);
+        setUploadProgress(0);
+        const fd = new FormData();
+        fd.append("file", pdfFile);
+        await axios.put(`${API_BASE}/upload/edit/${documentData.Document_ID}`, fd, {
+          headers: { "Content-Type": "multipart/form-data" },
+          onUploadProgress: (pe) =>
+            setUploadProgress(Math.round((pe.loaded * 100) / (pe.total || 1)))
+        });
+        setForm(prev => ({ ...prev, filePath: `/uploads/${filename}` }));
+        openToast("PDF replaced from images.");
+        setUnsaved(true);
+        setFileUploading(false);
+        setUploadProgress(0);
+      } else {
+        // Add mode: set as form file; will be sent on Save
+        setForm(prev => ({ ...prev, file: pdfFile, filePath: filename }));
+        openToast("PDF created from images. Ready to save.", "info");
+        setUnsaved(true);
+      }
+    } catch (err) {
+      openToast(err?.message || "Failed converting images to PDF", "error");
+    } finally {
+      setImgConverting(false);
+      if (imgInputRef.current) imgInputRef.current.value = "";
+    }
+  };
+
+  // NEW: helper to open/close preview
+  const openPreviewForFile = (file) => {
+    try {
+      const url = URL.createObjectURL(file);
+      setPdfPreviewUrl(url);
+      setPdfPreviewOpen(true);
+    } catch {}
+  };
+  const handleClosePreview = () => {
+    if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
+    setPdfPreviewUrl("");
+    setPdfPreviewOpen(false);
+  };
+
   return (
     <>
       <Dialog open={open} onClose={guardedClose} maxWidth="md" fullWidth>
@@ -268,13 +352,7 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
           {isEdit ? "Edit Document" : "Add Document"}
           <Box ml="auto" />
           {unsaved && (
-            <Chip
-              size="small"
-              color="warning"
-              icon={<WarningAmber fontSize="small" />}
-              label="Unsaved"
-              sx={{ fontWeight: 600, borderRadius: 0.75 }}
-            />
+            <Chip size="small" color="warning" icon={<WarningAmber fontSize="small" />} label="Unsaved" sx={{ fontWeight: 600, borderRadius: 0.75 }} />
           )}
         </DialogTitle>
 
@@ -351,119 +429,302 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
                   </Grid>
                 ))}
 
-                {/* File Section */}
-                <Grid item xs={12} sm={6}>
-                  {!isEdit && (
-                    <Box
-                      sx={{
-                        border: t => `2px dashed ${t.palette.divider}`,
-                        borderRadius: 1,
-                        p: 1.5,
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 1,
-                        bgcolor: "background.paper",
-                        height: "100%"
-                      }}
-                    >
-                      <Typography variant="caption" fontWeight={600}>
-                        Upload PDF (required)
-                      </Typography>
-                      <Button
-                        variant="outlined"
-                        component="label"
-                        startIcon={<CloudUpload />}
-                        size="small"
-                        sx={{ fontWeight: 600 }}
-                        disabled={aiLoading}
-                      >
-                        {form.filePath ? "Change File" : "Select File"}
-                        <input
-                          type="file"
-                          name="file"
-                          accept="application/pdf"
-                          hidden
-                          required={!isEdit}
-                          onChange={handleChange}
-                        />
-                      </Button>
-                      {form.filePath && (
-                        <Chip
-                          size="small"
-                          label={form.filePath}
-                          icon={<PictureAsPdf fontSize="small" />}
-                          sx={{ maxWidth: "100%" }}
-                        />
-                      )}
-                      {aiLoading && (
-                        <Typography variant="caption" color="info.main" sx={{ mt: 1 }}>
-                          Extracting fields from PDF...
-                        </Typography>
-                      )}
-                    </Box>
-                  )}
-
-                  {isEdit && (
-                    <Box
-                      sx={{
-                        border: t => `2px solid ${t.palette.divider}`,
-                        borderRadius: 1,
-                        p: 1.5,
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 1,
-                        bgcolor: "background.paper",
-                        height: "100%"
-                      }}
-                    >
-                      <Typography variant="caption" fontWeight={600}>
-                        Attached PDF
-                      </Typography>
-                      <TextField
-                        size="small"
-                        label="Current File"
-                        value={form.filePath}
-                        disabled
-                        fullWidth
-                        InputProps={{ sx: { borderRadius: 1 } }}
-                      />
-                      <Button
-                        variant="outlined"
-                        size="small"
-                        onClick={handleChangePdfClick}
-                        disabled={fileUploading}
-                        startIcon={<CloudUpload />}
-                        sx={{ fontWeight: 600 }}
-                      >
-                        {fileUploading ? "Uploading…" : "Replace PDF"}
-                      </Button>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="application/pdf"
-                        hidden
-                        onChange={handleFileChangeEdit}
-                      />
-                      {fileUploading && (
-                        <Box>
-                          <LinearProgress
-                            variant="determinate"
-                            value={uploadProgress}
-                            sx={{ borderRadius: 1, height: 6, mt: 1 }}
-                          />
-                          <Typography
-                            variant="caption"
-                            fontWeight={600}
-                            display="block"
-                            textAlign="right"
-                            mt={0.5}
+                {/* File / PDF section */}
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6}>
+                    {/* ADD MODE */}
+                    {!isEdit && (
+                      <Box sx={{ border: t => `2px dashed ${t.palette.divider}`, borderRadius: 1, p: 1.5, display: "flex", flexDirection: "column", gap: 1, bgcolor: "background.paper", height: "100%" }}>
+                        <Typography variant="caption" fontWeight={600}>Attach PDF</Typography>
+                        <Stack direction="row" spacing={1} flexWrap="wrap">
+                          <Button variant="outlined" component="label" startIcon={<CloudUpload />} size="small" sx={{ fontWeight: 600 }} disabled={aiLoading}>
+                            {form.filePath ? "Change File" : "Select File"}
+                            <input type="file" name="file" accept="application/pdf" hidden required={!isEdit} onChange={handleChange} />
+                          </Button>
+                          {/* NEW: Images → PDF in add mode */}
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            startIcon={<PictureAsPdf />}
+                            onClick={() => handleChooseImagesToPdf(false)}
+                            disabled={imgConverting}
+                            sx={{ fontWeight: 600 }}
                           >
-                            {uploadProgress}%
+                            {imgConverting ? "Converting…" : "Images → PDF"}
+                          </Button>
+                          <input
+                            ref={imgInputRef}
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            hidden
+                            onChange={handleImagesSelectedToPdf}
+                          />
+                        </Stack>
+                        {form.filePath && (
+                          <Chip size="small" label={form.filePath} icon={<PictureAsPdf fontSize="small" />} sx={{ maxWidth: "100%" }} />
+                        )}
+                        {aiLoading && (
+                          <Typography variant="caption" color="info.main" sx={{ mt: 1 }}>
+                            Extracting fields from PDF...
                           </Typography>
-                        </Box>
-                      )}
+                        )}
+                      </Box>
+                    )}
+
+                    {/* EDIT MODE */}
+                    {isEdit && (
+                      <Box sx={{ border: t => `2px solid ${t.palette.divider}`, borderRadius: 1, p: 1.5, display: "flex", flexDirection: "column", gap: 1, bgcolor: "background.paper", height: "100%" }}>
+                        <Typography variant="caption" fontWeight={600}>Attached PDF</Typography>
+                        <TextField size="small" label="Current File" value={form.filePath} disabled fullWidth InputProps={{ sx: { borderRadius: 1 } }} />
+                        <Stack direction="row" spacing={1} flexWrap="wrap">
+                          <Button variant="outlined" size="small" onClick={handleChangePdfClick} disabled={fileUploading} startIcon={<CloudUpload />} sx={{ fontWeight: 600 }}>
+                            {fileUploading ? "Uploading…" : "Replace PDF"}
+                          </Button>
+                          {/* NEW: Replace with Images → PDF in edit mode */}
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            startIcon={<PictureAsPdf />}
+                            onClick={() => handleChooseImagesToPdf(true)}
+                            disabled={imgConverting || fileUploading}
+                            sx={{ fontWeight: 600 }}
+                          >
+                            {imgConverting ? "Converting…" : "Images → PDF"}
+                          </Button>
+                          <input ref={fileInputRef} type="file" accept="application/pdf" hidden onChange={handleFileChangeEdit} />
+                          <input ref={imgInputRef} type="file" accept="image/*" multiple hidden onChange={handleImagesSelectedToPdf} />
+                        </Stack>
+                        {fileUploading && (
+                          <Box>
+                            <LinearProgress variant="determinate" value={uploadProgress} sx={{ borderRadius: 1, height: 6, mt: 1 }} />
+                            <Typography variant="caption" fontWeight={600} display="block" textAlign="right" mt={0.5}>{uploadProgress}%</Typography>
+                          </Box>
+                        )}
+                      </Box>
+                    )}
+                  </Grid>
+                  {/* ...existing right-side grid with details ... */}
+                </Grid>
+
+                {/* Inventory */}
+                <Grid item xs={12}>
+                  <Paper
+                    variant="outlined"
+                    sx={{
+                      p: 2,
+                      borderRadius: 1,
+                      border: t => `2px solid ${t.palette.divider}`,
+                      bgcolor: "background.paper"
+                    }}
+                  >
+                    <Stack direction="row" alignItems="center" gap={1} mb={1}>
+                      <Typography fontWeight={700} fontSize={14}>
+                        Document Inventory (Physical Copies)
+                      </Typography>
+                      <Chip
+                        size="small"
+                        label={`Total: ${invStats.total}`}
+                        color="primary"
+                        sx={{ fontWeight: 600 }}
+                      />
+                      <Chip
+                        size="small"
+                        label={`Avail: ${invStats.Available}`}
+                        color="success"
+                        sx={{ fontWeight: 600 }}
+                      />
+                      <Chip
+                        size="small"
+                        label={`Borrowed: ${invStats.Borrowed}`}
+                        color="warning"
+                        sx={{ fontWeight: 600 }}
+                      />
+                      <Chip
+                        size="small"
+                        label={`Reserved: ${invStats.Reserved}`}
+                        color="info"
+                        sx={{ fontWeight: 600 }}
+                      />
+                    </Stack>
+
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} sm={4}>
+                        <TextField
+                          label="Availability"
+                          name="availability"
+                          value={inventoryForm.availability}
+                          onChange={handleInventoryChange}
+                          select
+                          size="small"
+                          fullWidth
+                          required={!!(inventoryForm.availability || inventoryForm.location)}
+                          InputProps={{ sx: { borderRadius: 1 } }}
+                        >
+                          {availabilityOptions.map(opt => (
+                            <MenuItem key={opt} value={opt}>
+                              {opt}
+                            </MenuItem>
+                          ))}
+                        </TextField>
+                      </Grid>
+                      <Grid item xs={12} sm={4}>
+                        <TextField
+                          label="Condition"
+                          name="condition"
+                          value={inventoryForm.condition}
+                          onChange={handleInventoryChange}
+                          size="small"
+                          fullWidth
+                          InputProps={{ sx: { borderRadius: 1 } }}
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={4}>
+                        <TextField
+                          label="Location"
+                          name="location"
+                          value={inventoryForm.location}
+                          onChange={handleInventoryChange}
+                          select
+                          size="small"
+                          fullWidth
+                          required={!!inventoryForm.availability}
+                          InputProps={{ sx: { borderRadius: 1 } }}
+                        >
+                          {locations.map(loc => (
+                            <MenuItem key={loc.ID} value={loc.ID}>
+                              {loc.Name}
+                            </MenuItem>
+                          ))}
+                        </TextField>
+                      </Grid>
+                      <Grid item xs={12}>
+                        <Stack direction="row" spacing={1}>
+                          <Button
+                            variant="contained"
+                            size="small"
+                            startIcon={editInvIndex !== null ? <Save /> : <Add />}
+                            onClick={handleAddOrUpdateInventory}
+                            sx={{ fontWeight: 700 }}
+                            disabled={!inventoryForm.availability || !inventoryForm.location}
+                          >
+                            {editInvIndex !== null ? "Update Inventory" : "Add Inventory"}
+                          </Button>
+                          {editInvIndex !== null && (
+                            <Button
+                              variant="text"
+                              size="small"
+                              startIcon={<Cancel />}
+                              onClick={handleCancelInventoryEdit}
+                              sx={{ fontWeight: 600 }}
+                            >
+                              Cancel
+                            </Button>
+                          )}
+                        </Stack>
+                      </Grid>
+                    </Grid>
+
+                    <Divider sx={{ my: 2 }} />
+
+                    <Box
+                      sx={{
+                        border: t => `1.5px solid ${t.palette.divider}`,
+                        borderRadius: 1,
+                        overflow: "hidden",
+                        bgcolor: "background.default"
+                      }}
+                    >
+                      <Table size="small" stickyHeader>
+                        <TableHead>
+                          <TableRow
+                            sx={{
+                              "& th": {
+                                fontWeight: 700,
+                                fontSize: 12,
+                                letterSpacing: 0.4,
+                                borderBottom: t => `2px solid ${t.palette.divider}`,
+                                bgcolor: "background.paper"
+                              }
+                            }}
+                          >
+                            <TableCell>Availability</TableCell>
+                            <TableCell>Condition</TableCell>
+                            <TableCell>Location</TableCell>
+                            <TableCell align="center">Actions</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody
+                          sx={{
+                            "& td": { borderBottom: t => `1px solid ${t.palette.divider}` },
+                            "& tr:hover": { background: t => t.palette.action.hover }
+                          }}
+                        >
+                          {inventoryList.map((inv, idx) => (
+                            <TableRow key={idx}>
+                              <TableCell>
+                                <Chip
+                                  size="small"
+                                  label={inv.availability}
+                                  color={
+                                    inv.availability === "Available"
+                                      ? "success"
+                                      : inv.availability === "Borrowed"
+                                      ? "warning"
+                                      : "info"
+                                  }
+                                  sx={{ fontWeight: 600 }}
+                                />
+                              </TableCell>
+                              <TableCell>{inv.condition || "-"}</TableCell>
+                              <TableCell>{getLocationName(inv.location)}</TableCell>
+                              <TableCell align="center">
+                                <Tooltip title="Edit">
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => handleEditInventory(idx)}
+                                    sx={{ borderRadius: 0.75 }}
+                                  >
+                                    <EditIcon fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Delete">
+                                  <IconButton
+                                    size="small"
+                                    color="error"
+                                    onClick={() => handleDeleteInventory(idx)}
+                                    sx={{ borderRadius: 0.75 }}
+                                  >
+                                    <Delete fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                          {inventoryList.length === 0 && (
+                            <TableRow>
+                              <TableCell colSpan={4} align="center">
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  fontWeight={600}
+                                >
+                                  No inventory added.
+                                </Typography>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
                     </Box>
-                  )}
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ mt: 1.25, display: "block" }}
+                    >
+                      Add every physical storage / location combination for this document.
+                    </Typography>
+                  </Paper>
                 </Grid>
               </Grid>
               <Typography
@@ -472,224 +733,6 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
                 sx={{ mt: 1.5, display: "block" }}
               >
                 Ensure metadata matches the front page of the document.
-              </Typography>
-            </Paper>
-
-            {/* Inventory */}
-            <Paper
-              variant="outlined"
-              sx={{
-                p: 2,
-                borderRadius: 1,
-                border: t => `2px solid ${t.palette.divider}`,
-                bgcolor: "background.paper"
-              }}
-            >
-              <Stack direction="row" alignItems="center" gap={1} mb={1}>
-                <Typography fontWeight={700} fontSize={14}>
-                  Document Inventory (Physical Copies)
-                </Typography>
-                <Chip
-                  size="small"
-                  label={`Total: ${invStats.total}`}
-                  color="primary"
-                  sx={{ fontWeight: 600 }}
-                />
-                <Chip
-                  size="small"
-                  label={`Avail: ${invStats.Available}`}
-                  color="success"
-                  sx={{ fontWeight: 600 }}
-                />
-                <Chip
-                  size="small"
-                  label={`Borrowed: ${invStats.Borrowed}`}
-                  color="warning"
-                  sx={{ fontWeight: 600 }}
-                />
-                <Chip
-                  size="small"
-                  label={`Reserved: ${invStats.Reserved}`}
-                  color="info"
-                  sx={{ fontWeight: 600 }}
-                />
-              </Stack>
-
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={4}>
-                  <TextField
-                    label="Availability"
-                    name="availability"
-                    value={inventoryForm.availability}
-                    onChange={handleInventoryChange}
-                    select
-                    size="small"
-                    fullWidth
-                    required={!!(inventoryForm.availability || inventoryForm.location)}
-                    InputProps={{ sx: { borderRadius: 1 } }}
-                  >
-                    {availabilityOptions.map(opt => (
-                      <MenuItem key={opt} value={opt}>
-                        {opt}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                </Grid>
-                <Grid item xs={12} sm={4}>
-                  <TextField
-                    label="Condition"
-                    name="condition"
-                    value={inventoryForm.condition}
-                    onChange={handleInventoryChange}
-                    size="small"
-                    fullWidth
-                    InputProps={{ sx: { borderRadius: 1 } }}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={4}>
-                  <TextField
-                    label="Location"
-                    name="location"
-                    value={inventoryForm.location}
-                    onChange={handleInventoryChange}
-                    select
-                    size="small"
-                    fullWidth
-                    required={!!inventoryForm.availability}
-                    InputProps={{ sx: { borderRadius: 1 } }}
-                  >
-                    {locations.map(loc => (
-                      <MenuItem key={loc.ID} value={loc.ID}>
-                        {loc.Name}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                </Grid>
-                <Grid item xs={12}>
-                  <Stack direction="row" spacing={1}>
-                    <Button
-                      variant="contained"
-                      size="small"
-                      startIcon={editInvIndex !== null ? <Save /> : <Add />}
-                      onClick={handleAddOrUpdateInventory}
-                      sx={{ fontWeight: 700 }}
-                      disabled={!inventoryForm.availability || !inventoryForm.location}
-                    >
-                      {editInvIndex !== null ? "Update Inventory" : "Add Inventory"}
-                    </Button>
-                    {editInvIndex !== null && (
-                      <Button
-                        variant="text"
-                        size="small"
-                        startIcon={<Cancel />}
-                        onClick={handleCancelInventoryEdit}
-                        sx={{ fontWeight: 600 }}
-                      >
-                        Cancel
-                      </Button>
-                    )}
-                  </Stack>
-                </Grid>
-              </Grid>
-
-              <Divider sx={{ my: 2 }} />
-
-              <Box
-                sx={{
-                  border: t => `1.5px solid ${t.palette.divider}`,
-                  borderRadius: 1,
-                  overflow: "hidden",
-                  bgcolor: "background.default"
-                }}
-              >
-                <Table size="small" stickyHeader>
-                  <TableHead>
-                    <TableRow
-                      sx={{
-                        "& th": {
-                          fontWeight: 700,
-                          fontSize: 12,
-                          letterSpacing: 0.4,
-                          borderBottom: t => `2px solid ${t.palette.divider}`,
-                          bgcolor: "background.paper"
-                        }
-                      }}
-                    >
-                      <TableCell>Availability</TableCell>
-                      <TableCell>Condition</TableCell>
-                      <TableCell>Location</TableCell>
-                      <TableCell align="center">Actions</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody
-                    sx={{
-                      "& td": { borderBottom: t => `1px solid ${t.palette.divider}` },
-                      "& tr:hover": { background: t => t.palette.action.hover }
-                    }}
-                  >
-                    {inventoryList.map((inv, idx) => (
-                      <TableRow key={idx}>
-                        <TableCell>
-                          <Chip
-                            size="small"
-                            label={inv.availability}
-                            color={
-                              inv.availability === "Available"
-                                ? "success"
-                                : inv.availability === "Borrowed"
-                                ? "warning"
-                                : "info"
-                            }
-                            sx={{ fontWeight: 600 }}
-                          />
-                        </TableCell>
-                        <TableCell>{inv.condition || "-"}</TableCell>
-                        <TableCell>{getLocationName(inv.location)}</TableCell>
-                        <TableCell align="center">
-                          <Tooltip title="Edit">
-                            <IconButton
-                              size="small"
-                              onClick={() => handleEditInventory(idx)}
-                              sx={{ borderRadius: 0.75 }}
-                            >
-                              <EditIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Delete">
-                            <IconButton
-                              size="small"
-                              color="error"
-                              onClick={() => handleDeleteInventory(idx)}
-                              sx={{ borderRadius: 0.75 }}
-                            >
-                              <Delete fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {inventoryList.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={4} align="center">
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            fontWeight={600}
-                          >
-                            No inventory added.
-                          </Typography>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </Box>
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ mt: 1.25, display: "block" }}
-              >
-                Add every physical storage / location combination for this document.
               </Typography>
             </Paper>
           </DialogContent>
@@ -791,6 +834,15 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
           {snackbar.message}
        </Alert>
       </Snackbar>
+
+      {/* NEW: Converted PDF Preview */}
+      <DocumentPDFViewer
+        open={pdfPreviewOpen}
+        onClose={handleClosePreview}
+        fileUrl={pdfPreviewUrl}
+        title="Preview: Converted PDF"
+        note="Local preview of the converted PDF. Save to attach it to the document."
+      />
     </>
   );
 }

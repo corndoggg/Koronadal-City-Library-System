@@ -18,32 +18,43 @@ def _norm_book_copy_id(it):
 def _norm_doc_storage_id(it):
     return it.get('documentStorageId') or it.get('storageId') or it.get('Storage_ID')
 
+def _norm_document_id(it):
+    return it.get('documentId') or it.get('DocumentID') or it.get('Document_ID') or it.get('document_id')
+
 def _insert_borrow_items(cursor, borrow_id, items):
     if not items:
         return []
     params = []
-    # Validate and normalize IDs per item type
     for it in items:
         item_type = it.get('itemType')
         book_copy_id = _norm_book_copy_id(it) if item_type == 'Book' else None
+        document_id  = _norm_document_id(it)  if item_type == 'Document' else None
         doc_storage_id = _norm_doc_storage_id(it) if item_type == 'Document' else None
 
         if item_type == 'Book' and not book_copy_id:
             raise ValueError('Missing bookCopyId for a Book item.')
-        if item_type == 'Document' and not doc_storage_id:
-            raise ValueError('Missing documentStorageId/storageId for a Document item.')
+
+        if item_type == 'Document':
+            # Always require the logical Document_ID
+            if not document_id:
+                raise ValueError('Missing documentId for a Document item.')
+            # Physical documents must also have a storage (copy) id; digital items may omit it
+            # Digital is implied by doc_storage_id is None
+            # No DocType column is used anymore.
 
         params.append((
             borrow_id,
             item_type,
             book_copy_id,
+            document_id,
             doc_storage_id,
             it.get('initialCondition', '')
         ))
 
+    # Insert without DocType; include DocumentID
     cursor.executemany("""
-        INSERT INTO BorrowedItems (BorrowID, ItemType, BookCopyID, DocumentStorageID, InitialCondition)
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO BorrowedItems (BorrowID, ItemType, BookCopyID, Document_ID, DocumentStorageID, InitialCondition)
+        VALUES (%s, %s, %s, %s, %s, %s)
     """, params)
 
     cursor.execute("SELECT * FROM BorrowedItems WHERE BorrowID=%s", (borrow_id,))
@@ -66,8 +77,6 @@ def add_borrow_transaction():
         book_items = [it for it in items if it.get('itemType') == 'Book']
         doc_items  = [it for it in items if it.get('itemType') == 'Document']
 
-        results = []
-
         def create_tx(item_list, approval_status, update_availability):
             cursor.execute("""
                 INSERT INTO BorrowTransactions (BorrowerID, Purpose, ApprovalStatus, ApprovedByStaffID, RetrievalStatus, ReturnStatus, BorrowDate)
@@ -75,7 +84,7 @@ def add_borrow_transaction():
             """, (
                 data['borrowerId'],
                 data.get('purpose', ''),
-                approval_status,             # Allowed values: Pending/Approved/Rejected
+                approval_status,
                 data.get('approvedByStaffId'),
                 data.get('retrievalStatus', 'Pending'),
                 data.get('returnStatus', 'Not Returned'),
@@ -85,7 +94,7 @@ def add_borrow_transaction():
 
             inserted_items = _insert_borrow_items(cursor, borrow_id, item_list)
 
-            # Books: hold immediately; Documents: wait until admin approval
+            # Books: hold immediately; documents are held at approval only if physical
             if update_availability and item_list:
                 book_copy_ids = [_norm_book_copy_id(it) for it in item_list
                                  if it.get('itemType') == 'Book' and _norm_book_copy_id(it)]
@@ -103,6 +112,7 @@ def add_borrow_transaction():
             tx = cursor.fetchone()
             return {'transaction': tx, 'items': inserted_items}
 
+        results = []
         if book_items and doc_items:
             results.append({**create_tx(book_items, 'Pending', True),  'route': 'librarian'})
             results.append({**create_tx(doc_items,  'Pending', False), 'route': 'admin'})
@@ -117,14 +127,10 @@ def add_borrow_transaction():
             notify_submit(cursor, borrow_id, res['route'])
 
         conn.commit()
-
         if len(results) == 1:
             return jsonify(results[0]), 201
         else:
-            return jsonify({
-                'message': 'Split into librarian (books) and admin (documents) transactions.',
-                'transactions': results
-            }), 201
+            return jsonify({'message': 'Split into librarian (books) and admin (documents) transactions.', 'transactions': results}), 201
 
     except ValueError as e:
         conn.rollback()
@@ -158,7 +164,6 @@ def list_borrow_transactions():
             for item in cursor.fetchall() or []:
                 items_by_borrow.setdefault(item['BorrowID'], []).append(item)
 
-            # Use MAX(ReturnDate) for due-date
             cursor.execute(f"""
                 SELECT BorrowID, MAX(ReturnDate) AS ReturnDate
                 FROM ReturnTransactions
@@ -236,7 +241,6 @@ def approve_borrow_transaction(borrow_id):
         if route != role:
             return jsonify({'error': f'Transaction not allowed via {role} route.', 'route': route}), 403
 
-        # Use Approved for both; update Document_Inventory only for admin/doc flow
         cursor.execute("""
             UPDATE BorrowTransactions
             SET ApprovalStatus='Approved'
@@ -244,24 +248,36 @@ def approve_borrow_transaction(borrow_id):
         """, (borrow_id,))
 
         if role == 'admin':
+            # Fetch document items; physical if they have a storage_id, digital otherwise
             cursor.execute("""
-                SELECT DocumentStorageID
+                SELECT Document_ID, DocumentStorageID
                 FROM BorrowedItems
-                WHERE BorrowID=%s AND ItemType='Document' AND DocumentStorageID IS NOT NULL
+                WHERE BorrowID=%s AND ItemType='Document'
             """, (borrow_id,))
             rows = cursor.fetchall() or []
-            storage_ids = [r['DocumentStorageID'] for r in rows if r.get('DocumentStorageID')]
-            if storage_ids:
-                fmt = ','.join(['%s'] * len(storage_ids))
+            phys_ids = [r['DocumentStorageID'] for r in rows if r.get('DocumentStorageID')]
+            has_digital = any(not r.get('DocumentStorageID') for r in rows)
+
+            # Only physical docs affect inventory
+            if phys_ids:
+                fmt = ','.join(['%s'] * len(phys_ids))
                 cursor.execute(f"""
                     UPDATE Document_Inventory
                     SET Availability='Borrowed'
                     WHERE Storage_ID IN ({fmt})
-                """, tuple(storage_ids))
+                """, tuple(phys_ids))
 
-        # Notify borrower
+            # Digital docs: set expiration (due) date from request body if provided
+            if has_digital:
+                body = request.get_json(silent=True) or {}
+                due_date = body.get('returnDate') or body.get('dueDate')
+                if due_date:
+                    cursor.execute("""
+                        INSERT INTO ReturnTransactions (BorrowID, ReturnDate)
+                        VALUES (%s, %s)
+                    """, (borrow_id, due_date))
+
         notify_approved(cursor, borrow_id)
-
         conn.commit()
         return jsonify({'message': 'Borrow transaction approved.'}), 200
     finally:
@@ -277,19 +293,17 @@ def reject_borrow_transaction(borrow_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
-        # Check route type
         route = _classify_route_by_items(cursor, borrow_id)
         if route != role:
             return jsonify({'error': f'Transaction not allowed via {role} route.', 'route': route}), 403
 
-        # Mark rejected
         cursor.execute("""
             UPDATE BorrowTransactions
             SET ApprovalStatus='Rejected'
             WHERE BorrowID=%s
         """, (borrow_id,))
 
-        # Free books if any (librarian flow)
+        # Free books
         cursor.execute("""
             SELECT BookCopyID
             FROM BorrowedItems
@@ -301,7 +315,7 @@ def reject_borrow_transaction(borrow_id):
             fmt = ','.join(['%s'] * len(book_ids))
             cursor.execute(f"UPDATE Book_Inventory SET Availability='Available' WHERE Copy_ID IN ({fmt})", tuple(book_ids))
 
-        # Free documents if any were already set Borrowed (admin may reject after approval edge-case)
+        # Free only physical documents (those with a storage id)
         cursor.execute("""
             SELECT DocumentStorageID
             FROM BorrowedItems
@@ -313,9 +327,7 @@ def reject_borrow_transaction(borrow_id):
             fmt = ','.join(['%s'] * len(storage_ids))
             cursor.execute(f"UPDATE Document_Inventory SET Availability='Available' WHERE Storage_ID IN ({fmt})", tuple(storage_ids))
 
-        # Notify borrower
         notify_rejected(cursor, borrow_id)
-
         conn.commit()
         return jsonify({'message': 'Borrow transaction rejected.'}), 200
     finally:
@@ -341,9 +353,7 @@ def set_borrow_transaction_retrieved(borrow_id):
             WHERE BorrowID=%s
         """, (borrow_id,))
 
-        # Notify staff
         notify_retrieved(cursor, borrow_id, route)
-
         conn.commit()
         return jsonify({'message': 'Borrow transaction set as retrieved.'}), 200
     finally:
@@ -384,10 +394,10 @@ def add_return_transaction():
                 VALUES (%s, %s, %s, %s, %s)
             """, params)
 
-            # Map borrowed items
+            # Map borrowed items; physical documents have a storage id
             fmt = ','.join(['%s'] * len(borrowed_item_ids))
             cursor.execute(f"""
-                SELECT BorrowedItemID, ItemType, BookCopyID, DocumentStorageID
+                SELECT BorrowedItemID, ItemType, BookCopyID, Document_ID, DocumentStorageID
                 FROM BorrowedItems
                 WHERE BorrowedItemID IN ({fmt})
             """, tuple(borrowed_item_ids))
@@ -395,7 +405,9 @@ def add_return_transaction():
             cond_map = {it['borrowedItemId']: it.get('returnCondition', '') for it in items}
 
             book_updates = [(r['BookCopyID'], cond_map.get(r['BorrowedItemID'], '')) for r in rows if r['ItemType']=='Book' and r.get('BookCopyID')]
-            doc_updates  = [(r['DocumentStorageID'], cond_map.get(r['BorrowedItemID'], '')) for r in rows if r['ItemType']=='Document' and r.get('DocumentStorageID')]
+            doc_updates  = [(r['DocumentStorageID'], cond_map.get(r['BorrowedItemID'], ''))
+                            for r in rows if r['ItemType']=='Document'
+                            and r.get('DocumentStorageID')]
 
             if book_updates:
                 ids = [i for i,_ in book_updates]
@@ -425,9 +437,7 @@ def add_return_transaction():
             UPDATE BorrowTransactions SET ReturnStatus='Returned' WHERE BorrowID=%s
         """, (data['borrowId'],))
 
-        # Notify borrower + staff
         notify_return_recorded(cursor, data['borrowId'])
-
         conn.commit()
 
         cursor.execute("SELECT * FROM ReturnTransactions WHERE ReturnID=%s", (return_id,))

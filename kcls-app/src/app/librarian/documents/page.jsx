@@ -22,8 +22,6 @@ const LibrarianDocumentManagementPage = () => {
   const [editDoc, setEditDoc] = useState(null);
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
   const [pdfUrl, setPdfUrl] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [locations, setLocations] = useState([]);
 
   useEffect(() => { fetchDocuments(); fetchLocations(); }, []);
   useEffect(() => { handleSearch(); }, [search, documents]);
@@ -119,6 +117,15 @@ const LibrarianDocumentManagementPage = () => {
     if (!filePath) return showToast('No file path', 'error');
     setPdfUrl(`${API_BASE}${filePath}`);
     setPdfDialogOpen(true);
+  };
+
+  // New: close viewer and cleanup
+  const handleClosePdf = () => {
+    try {
+      if (pdfUrl && pdfUrl.startsWith('blob:')) URL.revokeObjectURL(pdfUrl);
+    } catch {}
+    setPdfUrl('');
+    setPdfDialogOpen(false);
   };
 
   const indexLast = currentPage * rowsPerPage;
@@ -402,7 +409,7 @@ const LibrarianDocumentManagementPage = () => {
 
       <DocumentPDFViewer
         open={pdfDialogOpen}
-        onClose={() => setPdfDialogOpen(false)}
+        onClose={handleClosePdf}
         fileUrl={pdfUrl}
         title="Viewing PDF Document"
       />

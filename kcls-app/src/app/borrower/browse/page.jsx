@@ -112,18 +112,20 @@ const BrowseLibraryPage = () => {
   const statusOccupiesCopy = (status) =>
     status === 'Pending' || status === 'ApprovedAwaitingPickup' || status === 'Borrowed';
 
-  // Update isItemBorrowedOrPending to use statusOccupiesCopy
+  // Update: only physical document items occupy inventory; detect physical by DocumentStorageID
   const isItemBorrowedOrPending = (item, isBook, type = null) =>
     borrowed.some(tx => {
       const s = txStatus(tx);
-      if (!statusOccupiesCopy(s)) return false; // Rejected/Returned don't block
-      return (tx.items || []).some(bi =>
-        isBook
-          ? bi.BookCopyID && item.inventory?.some(inv => inv.Copy_ID === bi.BookCopyID)
-          : bi.DocumentStorageID &&
-            item.inventory?.some(inv => inv.Storage_ID === bi.DocumentStorageID) &&
-            (!type || (bi.CopyType || bi.copyType) === type)
-      );
+      if (!statusOccupiesCopy(s)) return false;
+      return (tx.items || []).some(bi => {
+        if (isBook) {
+          return bi.BookCopyID && item.inventory?.some(inv => inv.Copy_ID === bi.BookCopyID);
+        }
+        // physical only blocks: must have storage id
+        if (!bi.DocumentStorageID) return false; // digital doesn't block copies
+        if (type && type !== 'Physical') return false; // we only block 'Physical'
+        return item.inventory?.some(inv => inv.Storage_ID === bi.DocumentStorageID);
+      });
     });
 
   const isInCart = (item, isBook, type = null) =>
@@ -191,9 +193,9 @@ const BrowseLibraryPage = () => {
             }
           : {
               itemType: "Document",
-              documentStorageId: ci.inventory.Storage_ID,
-              initialCondition: ci.inventory.condition || ci.inventory.Condition || "",
-              copyType: ci.copyType
+              documentId: ci.item.Document_ID, // NEW: always send Document_ID
+              documentStorageId: ci.inventory?.Storage_ID || null, // null => digital
+              initialCondition: ci.inventory?.condition || ci.inventory?.Condition || ""
             }
       );
       await axios.post(`${API_BASE}/borrow`, {
