@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import axios from "axios";
 import {
   Box, Dialog, DialogTitle, DialogContent, DialogActions, IconButton, Button,
@@ -33,6 +33,7 @@ const NotificationModal = ({ open, onClose, userId, onNavigate }) => {
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [userNameById, setUserNameById] = useState({}); // NEW: cache of userId -> name
 
   const activeIsReadParam = useMemo(() => (tab === "unread" ? "false" : undefined), [tab]);
 
@@ -121,13 +122,78 @@ const NotificationModal = ({ open, onClose, userId, onNavigate }) => {
     } finally { setActionLoading(false); }
   };
 
+  const formatUserName = useCallback((u) => {
+    if (!u) return "";
+    const full =
+      [u.FirstName ?? u.Firstname, u.MiddleName ?? u.Middlename, u.LastName ?? u.Lastname]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+    return (
+      full ||
+      u.FullName ||
+      u.Name ||
+      u.Username ||
+      u.Email ||
+      (u.User_ID ? `User #${u.User_ID}` : u.id ? `User #${u.id}` : "")
+    );
+  }, []);
+
+  const getUserName = useCallback(
+    (id) => (id ? userNameById[id] || `#${id}` : "—"),
+    [userNameById]
+  );
+
+  // Fetch missing sender names from API (tries multiple endpoints)
+  useEffect(() => {
+    if (!open) return;
+    const ids = [...new Set((notifs || []).map(n => n.SenderUserID).filter(Boolean))];
+    const missing = ids.filter((id) => !userNameById[id]);
+    if (!missing.length) return;
+
+    let cancelled = false;
+
+    const fetchUserById = async (id) => {
+      const urls = [
+        `${API_BASE}/users/${id}`,            // common
+        `${API_BASE}/users/borrower/${id}`,   // used elsewhere in app
+        `${API_BASE}/users?id=${encodeURIComponent(id)}`, // fallback
+      ];
+      for (const url of urls) {
+        try {
+          const r = await axios.get(url);
+          const data = Array.isArray(r.data) ? (r.data[0] || null) : r.data;
+          if (data) return data;
+        } catch {
+          // try next
+        }
+      }
+      return null;
+    };
+
+    (async () => {
+      const updates = {};
+      for (const id of missing) {
+        const u = await fetchUserById(id);
+        if (u) updates[id] = formatUserName(u);
+      }
+      if (!cancelled && Object.keys(updates).length) {
+        setUserNameById((prev) => ({ ...prev, ...updates }));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, notifs, userNameById, formatUserName]);
+
   const titleFor = (n) => n.Title || types[n.Type] || n.Type || "Notification";
 
   const metaChips = (n) => {
     const chips = [];
     if (n.Type) chips.push({ label: types[n.Type] ? `${types[n.Type]}` : n.Type, color: "default" });
     if (n.RelatedType && n.RelatedID != null) chips.push({ label: `${n.RelatedType} #${n.RelatedID}`, color: "primary" });
-    if (n.SenderUserID) chips.push({ label: `From #${n.SenderUserID}`, color: "secondary" });
+    if (n.SenderUserID) chips.push({ label: `From: ${getUserName(n.SenderUserID)}`, color: "secondary" }); // UPDATED
     return chips;
   };
 
