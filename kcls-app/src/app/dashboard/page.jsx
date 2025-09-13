@@ -36,16 +36,9 @@ const DashboardPage = () => {
   const [borrows, setBorrows] = useState([]);
 
   // NEW: users for borrower names
-  const [users, setUsers] = useState([]);
-  const borrowerNameById = useMemo(() => {
-    const map = {};
-    (users || []).forEach(u => {
-      const name = [u.FirstName, u.MiddleName, u.LastName].filter(Boolean).join(' ') || u.Name || `User #${u.User_ID || u.id}`;
-      map[u.User_ID || u.id] = name;
-    });
-    return map;
-  }, [users]);
-  const getBorrowerName = (id) => borrowerNameById[id] || `User #${id || '—'}`;
+  const [users, setUsers] = useState([]); 
+  // NEW: override map populated from /users/borrower/:id (same as librarian page)
+  const [borrowerNameOverride, setBorrowerNameOverride] = useState({});
 
   // Pre‑computed
   const [bookInvMap, setBookInvMap] = useState({});
@@ -71,6 +64,33 @@ const DashboardPage = () => {
     return allDocs && !anyPhysicalDoc;
   };
 
+  // Helper: format a user's display name safely (kept)
+  const formatUserName = useCallback((u) => {
+    if (!u) return "";
+    const full =
+      [u.FirstName, u.MiddleName, u.LastName].filter(Boolean).join(" ").trim()
+      || u.FullName || u.Name || u.Username || u.Email;
+    return full || `User #${u.User_ID || u.id || ""}`.trim();
+  }, []);
+
+  // Map of borrowerId -> name from /users (kept)
+  const borrowerNameById = useMemo(() => {
+    const map = {};
+    (users || []).forEach(u => {
+      const key = u.User_ID ?? u.id;
+      if (!key) return;
+      map[key] = formatUserName(u);
+    });
+    return map;
+  }, [users, formatUserName]);
+
+  // UPDATED: prefer names fetched via /users/borrower/:id, then fall back to /users
+  const getBorrowerName = useCallback(
+    (id) => borrowerNameOverride[id] || borrowerNameById[id] || (id ? `Borrower #${id}` : ""),
+    [borrowerNameOverride, borrowerNameById]
+  );
+
+  // Try load all core data (books, docs, borrows, users if available)
   const fetchAll = useCallback(async () => {
     setLoading(true);
     setErr(null);
@@ -78,13 +98,13 @@ const DashboardPage = () => {
       const [bRes, dRes, brRes, uRes] = await Promise.all([
         axios.get(`${API_BASE}/books`),
         axios.get(`${API_BASE}/documents`),
-        axios.get(`${API_BASE}/borrow`),   // returns items[] and ReturnDate per tx
-        axios.get(`${API_BASE}/users`).catch(() => ({ data: [] })) // NEW
+        axios.get(`${API_BASE}/borrow`),
+        axios.get(`${API_BASE}/users`).catch(() => ({ data: [] }))
       ]);
       const bks = bRes.data || [];
       const docs = dRes.data || [];
       const brs = brRes.data || [];
-      const us  = uRes.data || [];
+      const us  = Array.isArray(uRes.data) ? uRes.data : [];
 
       // inventories (per-title)
       const bookInventories = {};
@@ -115,7 +135,7 @@ const DashboardPage = () => {
       setBooks(bks);
       setDocuments(docs);
       setBorrows(brs);
-      setUsers(us); // NEW
+      setUsers(us);
       setBookInvMap(bookInventories);
       setDocInvMap(docInventories);
       setDueMap(dueMapTemp);
@@ -126,6 +146,43 @@ const DashboardPage = () => {
       setLoading(false);
     }
   }, [API_BASE]);
+
+    // NEW: resolve borrower names using /users/borrower/:id (like the Librarian borrow page)
+  useEffect(() => {
+    const ids = [...new Set((borrows || []).map(tx => tx.BorrowerID).filter(Boolean))];
+    const missing = ids.filter(id => !borrowerNameOverride[id] && !borrowerNameById[id]);
+    if (!missing.length) return;
+
+    let cancelled = false;
+    (async () => {
+      const updates = {};
+      for (const id of missing) {
+        try {
+          const res = await axios.get(`${API_BASE}/users/borrower/${id}`);
+          const u = res.data || {};
+          const f = (u.Firstname || u.FirstName || '').trim();
+          const m = (u.Middlename || u.MiddleName || '').trim();
+          const l = (u.Lastname || u.LastName || '').trim();
+          const mi = m ? ` ${m[0]}.` : '';
+          const name = `${f}${mi} ${l}`.trim() || u.Username || '';
+          if (name) { updates[id] = name; continue; }
+        } catch {}
+
+        try {
+          const r2 = await axios.get(`${API_BASE}/users/${id}`);
+          const u2 = Array.isArray(r2.data) ? r2.data[0] : r2.data;
+          if (u2) updates[id] = formatUserName(u2);
+        } catch {
+          updates[id] = `Borrower #${id}`;
+        }
+      }
+      if (!cancelled && Object.keys(updates).length) {
+        setBorrowerNameOverride(prev => ({ ...prev, ...updates }));
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [borrows, borrowerNameOverride, borrowerNameById, API_BASE, formatUserName]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -284,36 +341,104 @@ const DashboardPage = () => {
     };
   }, [borrows]);
 
+  // ADD: helpers to resolve item titles for activity lists
+  const getDocumentId = (obj) => obj?.Document_ID ?? obj?.DocumentID ?? obj?.documentId ?? obj?.DocumentId;
+
+  const bookById = useMemo(() => {
+    const m = {};
+    (books || []).forEach(b => { m[b.Book_ID] = b; });
+    return m;
+  }, [books]);
+
+  const docById = useMemo(() => {
+    const m = {};
+    (documents || []).forEach(d => { m[d.Document_ID] = d; });
+    return m;
+  }, [documents]);
+
+  // Copy_ID -> book meta (includes Title)
+  const bookCopyToMeta = useMemo(() => {
+    const m = {};
+    Object.entries(bookInvMap || {}).forEach(([bookId, rows]) => {
+      const base = bookById[Number(bookId)];
+      (rows || []).forEach(r => {
+        if (!r) return;
+        m[r.Copy_ID] = { ...(base || {}), ...(r || {}) };
+      });
+    });
+    return m;
+  }, [bookInvMap, bookById]);
+
+  // Storage_ID -> document meta (includes Title)
+  const docStorageToMeta = useMemo(() => {
+    const m = {};
+    Object.entries(docInvMap || {}).forEach(([docId, rows]) => {
+      const base = docById[Number(docId)];
+      (rows || []).forEach(r => {
+        if (!r) return;
+        m[r.Storage_ID] = { ...(base || {}), ...(r || {}) };
+      });
+    });
+    return m;
+  }, [docInvMap, docById]);
+
+  const itemTitle = useCallback((it) => {
+    if (!it) return '';
+    if (it.ItemType === 'Book') {
+      const meta = bookCopyToMeta[it.BookCopyID];
+      return meta?.Title || `Book Copy #${it.BookCopyID}`;
+    }
+    if (it.DocumentStorageID) {
+      const meta = docStorageToMeta[it.DocumentStorageID];
+      return meta?.Title || `Doc Storage #${it.DocumentStorageID}`;
+    }
+    const did = getDocumentId(it);
+    const meta = did && docById[did];
+    return meta?.Title || `Doc #${did || '—'}`;
+  }, [bookCopyToMeta, docStorageToMeta, docById]);
+
   // NEW: Top Borrowers (by total transactions and active count)
   const topBorrowers = useMemo(() => {
-    const agg = {};
-    (borrows || []).forEach(tx => {
+    const counts = new Map();
+    for (const tx of borrows || []) {
       const id = tx.BorrowerID;
-      if (!id) return;
-      if (!agg[id]) agg[id] = { id, name: getBorrowerName(id), total: 0, active: 0 };
-      agg[id].total += 1;
+      if (!id) continue;
       const s = deriveStatusLabel(tx);
-      if (s === 'Active' || s === 'Awaiting Pickup') agg[id].active += 1;
-    });
-    return Object.values(agg).sort((a,b) => b.total - a.total).slice(0, 8);
-  }, [borrows, borrowerNameById, deriveStatusLabel]);
+      const row = counts.get(id) || { id, total: 0, active: 0 };
+      row.total += 1;
+      if (s === "Active" || s === "Awaiting Pickup") row.active += 1;
+      counts.set(id, row);
+    }
+    // Attach names using the latest resolver (uses override -> users map)
+    return Array.from(counts.values())
+      .map(r => ({ ...r, name: getBorrowerName(r.id) }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 8);
+  }, [borrows, deriveStatusLabel, getBorrowerName]);
 
-  // NEW: Recent Borrow Activity (latest 10)
+  // NEW: Recent Borrow Activity (latest 10) with borrower name and item titles
   const recentActivity = useMemo(() => {
     return [...(borrows || [])]
       .sort((a,b) => {
-        const da = parseBorrowDate(a)?.getTime() || 0;
-        const db = parseBorrowDate(b)?.getTime() || 0;
+        const da = (a.BorrowDate ? new Date(a.BorrowDate) : 0)?.getTime?.() || 0;
+        const db = (b.BorrowDate ? new Date(b.BorrowDate) : 0)?.getTime?.() || 0;
         return db - da;
       })
       .slice(0, 10)
-      .map(tx => ({
-        id: tx.BorrowID,
-        date: tx.BorrowDate?.slice(0, 10) || '',
-        who: getBorrowerName(tx.BorrowerID),
-        status: deriveStatusLabel(tx)
-      }));
-  }, [borrows, borrowerNameById, deriveStatusLabel]);
+      .map(tx => {
+        const items = tx.items || [];
+        const titles = items.map(itemTitle).filter(Boolean);
+        const shown = titles.slice(0, 2);
+        const more = titles.length > 2 ? ` +${titles.length - 2} more` : '';
+        return {
+          id: tx.BorrowID,
+          date: tx.BorrowDate?.slice(0, 10) || '',
+          who: getBorrowerName(tx.BorrowerID),
+          status: deriveStatusLabel(tx),
+          itemsSummary: shown.join(' • ') + more
+        };
+      });
+  }, [borrows, getBorrowerName, deriveStatusLabel, itemTitle]);
 
   // Chart Data
   // 1. Availability Distribution (Books + Documents)
@@ -629,8 +754,8 @@ const DashboardPage = () => {
                     <ListItemText
                       primaryTypographyProps={{ fontWeight: 700, fontSize: 13 }}
                       secondaryTypographyProps={{ fontSize: 12 }}
-                      primary={`Borrow #${it.id} • ${it.who}`}
-                      secondary={it.date}
+                      primary={it.who}
+                      secondary={`${it.itemsSummary}${it.date ? ` • ${it.date}` : ''}`}
                     />
                   </ListItem>
                 )) : (

@@ -16,7 +16,7 @@ const initialForm = {
   year: "", sensitivity: "", file: null, filePath: ""
 };
 const initialInventory = { availability: "", condition: "", location: "" };
-const categories = ["Thesis", "Research", "Case Study", "Feasibility Study", "Capstone", "Other"];
+const categories = ["Thesis", "Research", "Case Study", "Feasibility Study", "Capstone", "N/A"];
 const sensitivities = ["Public", "Restricted", "Confidential"];
 const availabilityOptions = ["Available", "Borrowed", "Reserved"];
 
@@ -32,6 +32,7 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
   // NEW: preview state for converted PDF
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState("");
+  const [pendingAnalyzeFile, setPendingAnalyzeFile] = useState(null); // NEW: analyze after preview close
 
   // form state
   const [form, setForm] = useState(initialForm);
@@ -324,15 +325,26 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
   // NEW: helper to open/close preview
   const openPreviewForFile = (file) => {
     try {
+      // Revoke previous URL if any
+      if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
       const url = URL.createObjectURL(file);
       setPdfPreviewUrl(url);
       setPdfPreviewOpen(true);
+      setPendingAnalyzeFile(file); // analyze this file after preview closes
     } catch {}
   };
+
   const handleClosePreview = () => {
     if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
     setPdfPreviewUrl("");
     setPdfPreviewOpen(false);
+    // Analyze after preview closes (if we have a pending file)
+    const file = pendingAnalyzeFile;
+    setPendingAnalyzeFile(null);
+    if (file) {
+      // For add mode we already put file in form; for edit mode we still analyze from the file blob
+      handleAnalyzePdf(file);
+    }
   };
 
   return (
