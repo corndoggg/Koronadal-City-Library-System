@@ -11,6 +11,7 @@ import { useSystemSettings } from '../../../contexts/SystemSettingsContext.jsx';
 import {
   Search, Refresh, Visibility, CheckCircle, Cancel, TaskAlt, Undo, DoneAll, Article
 } from "@mui/icons-material";
+import { logAudit } from '../../../utils/auditLogger.js'; // NEW
 
 const API_BASE = import.meta.env.VITE_API_BASE;
 const returnConditions = ["Good", "Slightly Damaged", "Heavily Damaged", "Lost"];
@@ -230,8 +231,9 @@ const DocumentApprovalPage = () => {
     setActionLoading(true);
     try {
       await axios.put(`${API_BASE}/borrow/${approveTarget.BorrowID}/approve?role=admin`, approveDue ? {
-        returnDate: approveDue // backend treats as expiration for digital
+        returnDate: approveDue
       } : {});
+      logAudit('BORROW_APPROVE', 'Borrow', approveTarget.BorrowID, { role: 'admin', mode: 'digital', due: approveDue }); // NEW
       setApproveDlgOpen(false);
       setApproveTarget(null);
       setApproveDue("");
@@ -242,8 +244,8 @@ const DocumentApprovalPage = () => {
   const approveTx = async (tx) => {
     setActionLoading(true);
     try {
-      // For physical/mixed, approving without body; for digital-only, we route via openApprove
       await axios.put(`${API_BASE}/borrow/${tx.BorrowID}/approve?role=admin`);
+      logAudit('BORROW_APPROVE', 'Borrow', tx.BorrowID, { role: 'admin', mode: 'physical/mixed' }); // NEW
       await fetchTransactions();
     } finally { setActionLoading(false); }
   };
@@ -251,6 +253,7 @@ const DocumentApprovalPage = () => {
     setActionLoading(true);
     try {
       await axios.put(`${API_BASE}/borrow/${tx.BorrowID}/reject?role=admin`);
+      logAudit('BORROW_REJECT', 'Borrow', tx.BorrowID, { role: 'admin' }); // NEW
       await fetchTransactions();
     } finally { setActionLoading(false); }
   };
@@ -258,6 +261,7 @@ const DocumentApprovalPage = () => {
     setActionLoading(true);
     try {
       await axios.put(`${API_BASE}/borrow/${tx.BorrowID}/retrieved?role=admin`);
+      logAudit('BORROW_RETRIEVE', 'Borrow', tx.BorrowID, { role: 'admin' }); // NEW
       await fetchTransactions();
     } finally { setActionLoading(false); }
   };
@@ -470,6 +474,7 @@ const DocumentApprovalPage = () => {
         // include remarks
         remarks: returnRemarks || undefined
       });
+      logAudit('BORROW_RETURN', 'Borrow', returnTx.BorrowID, { items: items.length }); // NEW
       setReturnModalOpen(false);
       await fetchTransactions();
     } finally { setActionLoading(false); }

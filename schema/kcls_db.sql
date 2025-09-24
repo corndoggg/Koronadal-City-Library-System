@@ -16,373 +16,332 @@
 
 
 -- Dumping database structure for kcls_db
-CREATE DATABASE IF NOT EXISTS `kcls_db` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_uca1400_ai_ci */;
+CREATE DATABASE IF NOT EXISTS `kcls_db`
+  DEFAULT CHARACTER SET utf8mb4
+  COLLATE utf8mb4_uca1400_ai_ci;
 USE `kcls_db`;
 
--- Dumping structure for table kcls_db.books
-CREATE TABLE IF NOT EXISTS `books` (
-  `Book_ID` int(11) NOT NULL AUTO_INCREMENT,
-  `Title` varchar(255) NOT NULL,
-  `Author` varchar(255) DEFAULT NULL,
-  `Edition` varchar(50) DEFAULT NULL,
-  `Publisher` varchar(255) DEFAULT NULL,
-  `Year` year(4) DEFAULT NULL,
-  `Subject` varchar(100) DEFAULT NULL,
-  `Language` varchar(50) DEFAULT NULL,
-  `ISBN` varchar(20) DEFAULT NULL,
-  PRIMARY KEY (`Book_ID`),
-  UNIQUE KEY `ISBN` (`ISBN`)
-) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+-- 1. Core user tables
+CREATE TABLE IF NOT EXISTS `Users` (
+  `UserID` INT(11) NOT NULL AUTO_INCREMENT,
+  `Username` VARCHAR(50) NOT NULL,
+  `Password` VARCHAR(100) NOT NULL,
+  `Role` ENUM('Staff','Borrower') NOT NULL,
+  PRIMARY KEY (`UserID`),
+  UNIQUE KEY `ux_users_username` (`Username`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 
--- Dumping data for table kcls_db.books: ~3 rows (approximately)
-REPLACE INTO `books` (`Book_ID`, `Title`, `Author`, `Edition`, `Publisher`, `Year`, `Subject`, `Language`, `ISBN`) VALUES
-	(5, 'Farming Basics', 'N/A', '1st', 'N/A', '2003', 'General', 'English', '312321312128'),
-	(6, 'Introduction to CSS', 'Renz Mariscal', '1st', 'N/A', '2017', 'Information Technology', 'English', '122331155'),
-	(7, 'Test', 'N/a', '1st', 'N/A', '2015', 'IT', 'English', '103547896');
+CREATE TABLE IF NOT EXISTS `UserDetails` (
+  `UserID` INT(11) NOT NULL,
+  `Firstname` VARCHAR(100) NOT NULL,
+  `Middlename` VARCHAR(100) DEFAULT NULL,
+  `Lastname` VARCHAR(100) NOT NULL,
+  `Email` VARCHAR(100) NOT NULL,
+  `ContactNumber` VARCHAR(100) DEFAULT NULL,
+  `Street` VARCHAR(100) DEFAULT NULL,
+  `Barangay` VARCHAR(100) DEFAULT NULL,
+  `City` VARCHAR(100) DEFAULT NULL,
+  `Province` VARCHAR(100) DEFAULT NULL,
+  `DateOfBirth` DATE DEFAULT NULL,
+  PRIMARY KEY (`UserID`),
+  CONSTRAINT `fk_userdetails_user`
+    FOREIGN KEY (`UserID`) REFERENCES `Users` (`UserID`)
+      ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 
--- Dumping structure for table kcls_db.book_inventory
-CREATE TABLE IF NOT EXISTS `book_inventory` (
-  `Copy_ID` int(11) NOT NULL AUTO_INCREMENT,
-  `Book_ID` int(11) NOT NULL,
-  `Accession_Number` varchar(50) DEFAULT NULL,
-  `Availability` varchar(50) DEFAULT NULL,
-  `Physical_Status` varchar(100) DEFAULT NULL,
-  `BookCondition` varchar(100) DEFAULT NULL,
-  `StorageLocation` int(11) NOT NULL,
-  PRIMARY KEY (`Copy_ID`),
-  UNIQUE KEY `Accession_Number` (`Accession_Number`),
-  KEY `Book_ID` (`Book_ID`),
-  KEY `FK_book_inventory_storages` (`StorageLocation`),
-  CONSTRAINT `FK_book_inventory_storages` FOREIGN KEY (`StorageLocation`) REFERENCES `storages` (`ID`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-  CONSTRAINT `book_inventory_ibfk_1` FOREIGN KEY (`Book_ID`) REFERENCES `books` (`Book_ID`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+CREATE TABLE IF NOT EXISTS `Staff` (
+  `StaffID` INT(11) NOT NULL AUTO_INCREMENT,
+  `UserID` INT(11) NOT NULL,
+  `Position` ENUM('Librarian','Admin') NOT NULL,
+  PRIMARY KEY (`StaffID`),
+  UNIQUE KEY `ux_staff_user` (`UserID`),
+  CONSTRAINT `fk_staff_user`
+    FOREIGN KEY (`UserID`) REFERENCES `Users` (`UserID`)
+      ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 
--- Dumping data for table kcls_db.book_inventory: ~4 rows (approximately)
-REPLACE INTO `book_inventory` (`Copy_ID`, `Book_ID`, `Accession_Number`, `Availability`, `Physical_Status`, `BookCondition`, `StorageLocation`) VALUES
-	(1, 5, 'B2313323567', 'Borrowed', 'Shelf-worn', 'Good', 2),
-	(2, 6, 'C-10001', 'Borrowed', 'Good', 'Good', 2),
-	(3, 5, 'B12121', 'Available', 'Good', 'Good', 2),
-	(4, 7, 'B12324', 'Borrowed', 'Shelf-worn', 'Good', 3);
-
--- Dumping structure for table kcls_db.borroweditems
-CREATE TABLE IF NOT EXISTS `borroweditems` (
-  `BorrowedItemID` int(11) NOT NULL AUTO_INCREMENT,
-  `BorrowID` int(11) NOT NULL,
-  `ItemType` enum('Book','Document') NOT NULL,
-  `BookCopyID` int(11) DEFAULT NULL,
-  `DocumentStorageID` int(11) DEFAULT NULL,
-  `InitialCondition` varchar(100) DEFAULT NULL,
-  PRIMARY KEY (`BorrowedItemID`),
-  KEY `BorrowID` (`BorrowID`),
-  KEY `BookCopyID` (`BookCopyID`),
-  KEY `DocumentStorageID` (`DocumentStorageID`),
-  CONSTRAINT `borroweditems_ibfk_1` FOREIGN KEY (`BorrowID`) REFERENCES `borrowtransactions` (`BorrowID`),
-  CONSTRAINT `borroweditems_ibfk_2` FOREIGN KEY (`BookCopyID`) REFERENCES `book_inventory` (`Copy_ID`),
-  CONSTRAINT `borroweditems_ibfk_3` FOREIGN KEY (`DocumentStorageID`) REFERENCES `document_inventory` (`Storage_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=28 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-
--- Dumping data for table kcls_db.borroweditems: ~16 rows (approximately)
-REPLACE INTO `borroweditems` (`BorrowedItemID`, `BorrowID`, `ItemType`, `BookCopyID`, `DocumentStorageID`, `InitialCondition`) VALUES
-	(12, 10, 'Book', 1, NULL, 'Good'),
-	(13, 11, 'Book', 3, NULL, 'Good'),
-	(14, 11, 'Book', 4, NULL, 'Good'),
-	(15, 12, 'Book', 3, NULL, 'Good'),
-	(16, 13, 'Book', 1, NULL, 'Good'),
-	(17, 14, 'Book', 1, NULL, 'Good'),
-	(18, 14, 'Book', 2, NULL, 'Good'),
-	(19, 19, 'Book', 3, NULL, 'Good'),
-	(20, 20, 'Book', 1, NULL, 'Good'),
-	(21, 21, 'Book', 2, NULL, 'Good'),
-	(22, 21, 'Book', 4, NULL, 'Good'),
-	(23, 22, 'Document', NULL, 3, 'Bad'),
-	(24, 23, 'Book', 1, NULL, 'Good'),
-	(25, 24, 'Document', NULL, 4, 'Good'),
-	(26, 25, 'Document', NULL, 4, 'Good'),
-	(27, 26, 'Document', NULL, 4, 'Good');
-
--- Dumping structure for table kcls_db.borrowers
-CREATE TABLE IF NOT EXISTS `borrowers` (
-  `BorrowerID` int(11) NOT NULL AUTO_INCREMENT,
-  `UserID` int(11) NOT NULL,
-  `Type` enum('Researcher','Government Agency') NOT NULL,
-  `Department` varchar(100) DEFAULT NULL,
-  `AccountStatus` enum('Pending','Registered','Suspended','Rejected') NOT NULL,
+CREATE TABLE IF NOT EXISTS `Borrowers` (
+  `BorrowerID` INT(11) NOT NULL AUTO_INCREMENT,
+  `UserID` INT(11) NOT NULL,
+  `Type` ENUM('Researcher','Government Agency') NOT NULL,
+  `Department` VARCHAR(100) DEFAULT NULL,
+  `AccountStatus` ENUM('Pending','Registered','Suspended','Rejected') NOT NULL,
   PRIMARY KEY (`BorrowerID`),
-  UNIQUE KEY `UserID` (`UserID`),
-  CONSTRAINT `borrowers_ibfk_1` FOREIGN KEY (`UserID`) REFERENCES `users` (`UserID`)
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+  UNIQUE KEY `ux_borrowers_user` (`UserID`),
+  CONSTRAINT `fk_borrowers_user`
+    FOREIGN KEY (`UserID`) REFERENCES `Users` (`UserID`)
+      ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 
--- Dumping data for table kcls_db.borrowers: ~2 rows (approximately)
-REPLACE INTO `borrowers` (`BorrowerID`, `UserID`, `Type`, `Department`, `AccountStatus`) VALUES
-	(1, 1, 'Researcher', 'N/A', 'Registered'),
-	(2, 4, 'Researcher', 'N/A', 'Registered');
+-- 2. Static / catalog resources
+CREATE TABLE IF NOT EXISTS `Books` (
+  `Book_ID` INT(11) NOT NULL AUTO_INCREMENT,
+  `Title` VARCHAR(255) NOT NULL,
+  `Author` VARCHAR(255) DEFAULT NULL,
+  `Edition` VARCHAR(50) DEFAULT NULL,
+  `Publisher` VARCHAR(255) DEFAULT NULL,
+  `Year` YEAR(4) DEFAULT NULL,
+  `Subject` VARCHAR(100) DEFAULT NULL,
+  `Language` VARCHAR(50) DEFAULT NULL,
+  `ISBN` VARCHAR(20) DEFAULT NULL,
+  PRIMARY KEY (`Book_ID`),
+  UNIQUE KEY `ux_books_isbn` (`ISBN`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 
--- Dumping structure for table kcls_db.borrowtransactions
-CREATE TABLE IF NOT EXISTS `borrowtransactions` (
-  `BorrowID` int(11) NOT NULL AUTO_INCREMENT,
-  `BorrowerID` int(11) NOT NULL,
-  `Purpose` text DEFAULT NULL,
-  `ApprovalStatus` enum('Pending','Approved','Rejected') NOT NULL DEFAULT 'Pending',
-  `ApprovedByStaffID` int(11) DEFAULT NULL,
-  `RetrievalStatus` enum('Pending','Retrieved','Returned') NOT NULL DEFAULT 'Pending',
-  `ReturnStatus` enum('Returned','Not Returned') NOT NULL DEFAULT 'Not Returned',
-  `BorrowDate` date DEFAULT NULL,
-  PRIMARY KEY (`BorrowID`),
-  KEY `BorrowerID` (`BorrowerID`),
-  KEY `ApprovedByStaffID` (`ApprovedByStaffID`),
-  CONSTRAINT `borrowtransactions_ibfk_1` FOREIGN KEY (`BorrowerID`) REFERENCES `borrowers` (`BorrowerID`),
-  CONSTRAINT `borrowtransactions_ibfk_2` FOREIGN KEY (`ApprovedByStaffID`) REFERENCES `staff` (`StaffID`)
-) ENGINE=InnoDB AUTO_INCREMENT=27 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-
--- Dumping data for table kcls_db.borrowtransactions: ~13 rows (approximately)
-REPLACE INTO `borrowtransactions` (`BorrowID`, `BorrowerID`, `Purpose`, `ApprovalStatus`, `ApprovedByStaffID`, `RetrievalStatus`, `ReturnStatus`, `BorrowDate`) VALUES
-	(10, 1, 'Test', 'Rejected', NULL, 'Returned', 'Returned', '2025-07-17'),
-	(11, 1, 'Personal Reading', 'Approved', NULL, 'Retrieved', 'Returned', '2025-07-17'),
-	(12, 1, 'test', 'Approved', NULL, 'Retrieved', 'Returned', '2025-07-23'),
-	(13, 1, 'test', 'Approved', NULL, 'Retrieved', 'Returned', '2025-07-24'),
-	(14, 1, 'Personal', 'Approved', NULL, 'Retrieved', 'Returned', '2025-08-08'),
-	(19, 2, 'dwadwd', 'Approved', NULL, 'Retrieved', 'Returned', '2025-08-09'),
-	(20, 2, 'Test', 'Approved', NULL, 'Retrieved', 'Returned', '2025-08-15'),
-	(21, 2, '12233', 'Rejected', NULL, 'Pending', 'Not Returned', '2025-08-15'),
-	(22, 2, 'test', 'Pending', NULL, 'Pending', 'Not Returned', '2025-08-22'),
-	(23, 2, 'weqweqe', 'Pending', NULL, 'Pending', 'Not Returned', '2025-08-22'),
-	(24, 2, 'wadwdad', 'Pending', NULL, 'Pending', 'Not Returned', '2025-08-22'),
-	(25, 2, 'wadwdad', 'Pending', NULL, 'Pending', 'Not Returned', '2025-08-22'),
-	(26, 2, 'wadwdad', 'Pending', NULL, 'Pending', 'Not Returned', '2025-08-22');
-
--- Dumping structure for table kcls_db.documents
-CREATE TABLE IF NOT EXISTS `documents` (
-  `Document_ID` int(11) NOT NULL AUTO_INCREMENT,
-  `Title` varchar(255) NOT NULL,
-  `Author` varchar(255) DEFAULT NULL,
-  `Category` varchar(100) DEFAULT NULL,
-  `Department` varchar(100) DEFAULT NULL,
-  `Classification` varchar(100) DEFAULT NULL,
-  `Year` int(11) DEFAULT NULL,
-  `Sensitivity` varchar(50) DEFAULT NULL,
-  `File_Path` varchar(500) DEFAULT NULL,
+CREATE TABLE IF NOT EXISTS `Documents` (
+  `Document_ID` INT(11) NOT NULL AUTO_INCREMENT,
+  `Title` VARCHAR(255) NOT NULL,
+  `Author` VARCHAR(255) DEFAULT NULL,
+  `Category` VARCHAR(100) DEFAULT NULL,
+  `Department` VARCHAR(100) DEFAULT NULL,
+  `Classification` VARCHAR(100) DEFAULT NULL,
+  `Year` INT(11) DEFAULT NULL,
+  `Sensitivity` VARCHAR(50) DEFAULT NULL,
+  `File_Path` VARCHAR(500) DEFAULT NULL,
   PRIMARY KEY (`Document_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=13 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 
--- Dumping data for table kcls_db.documents: ~4 rows (approximately)
-REPLACE INTO `documents` (`Document_ID`, `Title`, `Author`, `Category`, `Department`, `Classification`, `Year`, `Sensitivity`, `File_Path`) VALUES
-	(9, 'CA-1212', 'N/A', 'Other', 'N/A', 'Goverment Document', 2003, 'Public', '/uploads/75b1f6ab-5c90-4842-8a92-8b8534dbe171_Almelda_08Quiz1.pdf'),
-	(10, 'Capstone Project', 'N/A', 'Capstone', 'N/A', 'Public Resource', 2010, 'Public', '/uploads/2d829061-f6bb-40d6-8a18-98ce74c4318d_final_group_8_print.pdf'),
-	(11, 'Test', 'N/A', 'Case Study', 'dawdwad', 'Public Resource', 2003, 'Restricted', '/uploads/17d916f0-230b-4014-8102-8f6a1f400c82_08_Handout_115_1.pdf'),
-	(12, 'czscz', 'cszc', 'Thesis', 'czsc', 'Goverment Document', 203, 'Restricted', '/uploads/254988cd-6cc2-4924-bea3-7c03411ef52d_01_Laboratory_Activity_1_1.pdf');
+CREATE TABLE IF NOT EXISTS `Storages` (
+  `ID` INT(11) NOT NULL AUTO_INCREMENT,
+  `Name` VARCHAR(50) NOT NULL,
+  `Capacity` INT(11) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`ID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 
--- Dumping structure for table kcls_db.document_inventory
-CREATE TABLE IF NOT EXISTS `document_inventory` (
-  `Storage_ID` int(11) NOT NULL AUTO_INCREMENT,
-  `Document_ID` int(11) NOT NULL,
-  `Availability` varchar(50) NOT NULL,
-  `Condition` varchar(50) NOT NULL,
-  `StorageLocation` int(11) NOT NULL,
+-- 3. Inventories
+CREATE TABLE IF NOT EXISTS `Book_Inventory` (
+  `Copy_ID` INT(11) NOT NULL AUTO_INCREMENT,
+  `Book_ID` INT(11) NOT NULL,
+  `Accession_Number` VARCHAR(50) DEFAULT NULL,
+  `Availability` VARCHAR(50) DEFAULT NULL,
+  `Physical_Status` VARCHAR(100) DEFAULT NULL,
+  `BookCondition` VARCHAR(100) DEFAULT NULL,
+  `StorageLocation` INT(11) NOT NULL,
+  PRIMARY KEY (`Copy_ID`),
+  UNIQUE KEY `ux_book_inventory_accession` (`Accession_Number`),
+  KEY `idx_book_inventory_book` (`Book_ID`),
+  KEY `idx_book_inventory_storage` (`StorageLocation`),
+  CONSTRAINT `fk_bookinv_book`
+    FOREIGN KEY (`Book_ID`) REFERENCES `Books` (`Book_ID`)
+      ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_bookinv_storage`
+    FOREIGN KEY (`StorageLocation`) REFERENCES `Storages` (`ID`)
+      ON DELETE NO ACTION ON UPDATE NO ACTION
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `Document_Inventory` (
+  `Storage_ID` INT(11) NOT NULL AUTO_INCREMENT,
+  `Document_ID` INT(11) NOT NULL,
+  `Availability` VARCHAR(50) NOT NULL,
+  `Condition` VARCHAR(50) NOT NULL,
+  `StorageLocation` INT(11) NOT NULL,
   PRIMARY KEY (`Storage_ID`),
-  KEY `Document_ID` (`Document_ID`),
-  KEY `StorageID` (`StorageLocation`),
-  CONSTRAINT `FK_document_inventory_storages` FOREIGN KEY (`StorageLocation`) REFERENCES `storages` (`ID`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-  CONSTRAINT `document_inventory_ibfk_1` FOREIGN KEY (`Document_ID`) REFERENCES `documents` (`Document_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=9 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-
--- Dumping data for table kcls_db.document_inventory: ~4 rows (approximately)
-REPLACE INTO `document_inventory` (`Storage_ID`, `Document_ID`, `Availability`, `Condition`, `StorageLocation`) VALUES
-	(3, 9, 'Borrowed', 'Bad', 1),
-	(4, 10, 'Available', 'Good', 1),
-	(7, 11, 'Available', 'Bad', 1),
-	(8, 12, 'Available', 'good', 1);
-
--- Dumping structure for table kcls_db.notifications
-CREATE TABLE IF NOT EXISTS `notifications` (
-  `NotificationID` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-  `Type` varchar(64) NOT NULL,
-  `Title` varchar(160) DEFAULT NULL,
-  `Message` text NOT NULL,
-  `SenderUserID` bigint(20) unsigned DEFAULT NULL,
-  `RelatedType` varchar(32) DEFAULT NULL,
-  `RelatedID` bigint(20) unsigned DEFAULT NULL,
-  `CreatedAt` datetime NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`NotificationID`),
-  KEY `idx_notifications_type` (`Type`),
-  KEY `idx_notifications_created` (`CreatedAt`),
-  CONSTRAINT `fk_notifications_type` FOREIGN KEY (`Type`) REFERENCES `notification_types` (`Code`) ON UPDATE CASCADE
+  KEY `idx_docinv_document` (`Document_ID`),
+  KEY `idx_docinv_storage` (`StorageLocation`),
+  CONSTRAINT `fk_docinv_document`
+    FOREIGN KEY (`Document_ID`) REFERENCES `Documents` (`Document_ID`)
+      ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_docinv_storage`
+    FOREIGN KEY (`StorageLocation`) REFERENCES `Storages` (`ID`)
+      ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 
--- Dumping data for table kcls_db.notifications: ~0 rows (approximately)
-
--- Dumping structure for table kcls_db.notification_recipients
-CREATE TABLE IF NOT EXISTS `notification_recipients` (
-  `RecipientID` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-  `NotificationID` bigint(20) unsigned NOT NULL,
-  `RecipientUserID` bigint(20) unsigned NOT NULL,
-  `IsRead` tinyint(1) NOT NULL DEFAULT 0,
-  `ReadAt` datetime DEFAULT NULL,
-  `CreatedAt` datetime NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`RecipientID`),
-  UNIQUE KEY `uq_notif_recipient` (`NotificationID`,`RecipientUserID`),
-  KEY `idx_recipients_unread` (`RecipientUserID`,`IsRead`,`CreatedAt`),
-  CONSTRAINT `fk_recipient_notification` FOREIGN KEY (`NotificationID`) REFERENCES `notifications` (`NotificationID`) ON DELETE CASCADE
+-- 4. Borrow / return transactions
+CREATE TABLE IF NOT EXISTS `BorrowTransactions` (
+  `BorrowID` INT(11) NOT NULL AUTO_INCREMENT,
+  `BorrowerID` INT(11) NOT NULL,
+  `Purpose` TEXT DEFAULT NULL,
+  `ApprovalStatus` ENUM('Pending','Approved','Rejected') NOT NULL DEFAULT 'Pending',
+  `ApprovedByStaffID` INT(11) DEFAULT NULL,
+  `RetrievalStatus` ENUM('Pending','Retrieved','Returned') NOT NULL DEFAULT 'Pending',
+  `ReturnStatus` ENUM('Returned','Not Returned') NOT NULL DEFAULT 'Not Returned',
+  `BorrowDate` DATE DEFAULT NULL,
+  PRIMARY KEY (`BorrowID`),
+  KEY `idx_borrow_borrower` (`BorrowerID`),
+  KEY `idx_borrow_staff` (`ApprovedByStaffID`),
+  CONSTRAINT `fk_borrow_tx_borrower`
+    FOREIGN KEY (`BorrowerID`) REFERENCES `Borrowers` (`BorrowerID`)
+      ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_borrow_tx_staff`
+    FOREIGN KEY (`ApprovedByStaffID`) REFERENCES `Staff` (`StaffID`)
+      ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 
--- Dumping data for table kcls_db.notification_recipients: ~0 rows (approximately)
+CREATE TABLE IF NOT EXISTS `BorrowedItems` (
+  `BorrowedItemID` INT(11) NOT NULL AUTO_INCREMENT,
+  `BorrowID` INT(11) NOT NULL,
+  `ItemType` ENUM('Book','Document') NOT NULL,
+  `BookCopyID` INT(11) DEFAULT NULL,
+  `DocumentStorageID` INT(11) DEFAULT NULL,
+  `Document_ID` INT(11) DEFAULT NULL,
+  `InitialCondition` VARCHAR(100) DEFAULT NULL,
+  PRIMARY KEY (`BorrowedItemID`),
+  KEY `idx_borroweditems_borrow` (`BorrowID`),
+  KEY `idx_borroweditems_bookcopy` (`BookCopyID`),
+  KEY `idx_borroweditems_docstorage` (`DocumentStorageID`),
+  KEY `idx_borroweditems_document` (`Document_ID`),
+  CONSTRAINT `fk_borroweditems_borrow`
+    FOREIGN KEY (`BorrowID`) REFERENCES `BorrowTransactions` (`BorrowID`)
+      ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_borroweditems_bookcopy`
+    FOREIGN KEY (`BookCopyID`) REFERENCES `Book_Inventory` (`Copy_ID`)
+      ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_borroweditems_docstorage`
+    FOREIGN KEY (`DocumentStorageID`) REFERENCES `Document_Inventory` (`Storage_ID`)
+      ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_borroweditems_document`
+    FOREIGN KEY (`Document_ID`) REFERENCES `Documents` (`Document_ID`)
+      ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 
--- Dumping structure for table kcls_db.notification_types
-CREATE TABLE IF NOT EXISTS `notification_types` (
-  `Code` varchar(64) NOT NULL,
-  `Description` varchar(255) NOT NULL,
+CREATE TABLE IF NOT EXISTS `ReturnTransactions` (
+  `ReturnID` INT(11) NOT NULL AUTO_INCREMENT,
+  `BorrowID` INT(11) NOT NULL,
+  `ReturnDate` DATE NOT NULL,
+  `ReceivedByStaffID` INT(11) DEFAULT NULL,
+  `Remarks` TEXT DEFAULT NULL,
+  PRIMARY KEY (`ReturnID`),
+  KEY `idx_return_borrow` (`BorrowID`),
+  KEY `idx_return_staff` (`ReceivedByStaffID`),
+  CONSTRAINT `fk_return_tx_borrow`
+    FOREIGN KEY (`BorrowID`) REFERENCES `BorrowTransactions` (`BorrowID`)
+      ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_return_tx_staff`
+    FOREIGN KEY (`ReceivedByStaffID`) REFERENCES `Staff` (`StaffID`)
+      ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `ReturnedItems` (
+  `ReturnedItemID` INT(11) NOT NULL AUTO_INCREMENT,
+  `ReturnID` INT(11) NOT NULL,
+  `BorrowedItemID` INT(11) NOT NULL,
+  `ReturnCondition` VARCHAR(100) DEFAULT NULL,
+  `Fine` DECIMAL(10,2) DEFAULT 0.00,
+  `FinePaid` ENUM('Yes','No') DEFAULT 'No',
+  PRIMARY KEY (`ReturnedItemID`),
+  KEY `idx_returneditems_return` (`ReturnID`),
+  KEY `idx_returneditems_borrowed` (`BorrowedItemID`),
+  CONSTRAINT `fk_returneditems_return`
+    FOREIGN KEY (`ReturnID`) REFERENCES `ReturnTransactions` (`ReturnID`)
+      ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_returneditems_borrowed`
+    FOREIGN KEY (`BorrowedItemID`) REFERENCES `BorrowedItems` (`BorrowedItemID`)
+      ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+
+-- 5. Notifications
+CREATE TABLE IF NOT EXISTS `Notification_Types` (
+  `Code` VARCHAR(64) NOT NULL,
+  `Description` VARCHAR(255) NOT NULL,
   PRIMARY KEY (`Code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 
--- Dumping data for table kcls_db.notification_types: ~14 rows (approximately)
-REPLACE INTO `notification_types` (`Code`, `Description`) VALUES
-	('ACCOUNT_APPROVED', 'Account approved'),
-	('ACCOUNT_REGISTRATION_SUBMITTED', 'New borrower registration'),
-	('ACCOUNT_REJECTED', 'Account rejected'),
-	('BORROW_APPROVED', 'Borrow request approved'),
-	('BORROW_BOOK_REQUEST_SUBMITTED', 'New book borrow request submitted'),
-	('BORROW_DOC_REQUEST_SUBMITTED', 'New document borrow request submitted'),
-	('BORROW_OVERDUE_REMINDER', 'Overdue reminder'),
-	('BORROW_REJECTED', 'Borrow request rejected'),
-	('BORROW_RETRIEVED', 'Items retrieved by borrower'),
-	('BORROW_RETURN_RECORDED', 'Return recorded'),
-	('DOCUMENT_VERIFICATION_REQUIRED', 'Document borrow requires admin verification'),
-	('FINE_ASSESSED', 'Fine assessed on returned item'),
-	('FINE_PAID', 'Fine paid'),
-	('READY_FOR_PICKUP', 'Items ready for pickup');
-
--- Dumping structure for table kcls_db.returneditems
-CREATE TABLE IF NOT EXISTS `returneditems` (
-  `ReturnedItemID` int(11) NOT NULL AUTO_INCREMENT,
-  `ReturnID` int(11) NOT NULL,
-  `BorrowedItemID` int(11) NOT NULL,
-  `ReturnCondition` varchar(100) DEFAULT NULL,
-  `Fine` decimal(10,2) DEFAULT 0.00,
-  `FinePaid` enum('Yes','No') DEFAULT 'No',
-  PRIMARY KEY (`ReturnedItemID`),
-  KEY `ReturnID` (`ReturnID`),
-  KEY `BorrowedItemID` (`BorrowedItemID`),
-  CONSTRAINT `returneditems_ibfk_1` FOREIGN KEY (`ReturnID`) REFERENCES `returntransactions` (`ReturnID`),
-  CONSTRAINT `returneditems_ibfk_2` FOREIGN KEY (`BorrowedItemID`) REFERENCES `borroweditems` (`BorrowedItemID`)
-) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-
--- Dumping data for table kcls_db.returneditems: ~9 rows (approximately)
-REPLACE INTO `returneditems` (`ReturnedItemID`, `ReturnID`, `BorrowedItemID`, `ReturnCondition`, `Fine`, `FinePaid`) VALUES
-	(1, 3, 13, 'Good', 1.00, 'Yes'),
-	(2, 3, 14, 'Good', 1.00, 'Yes'),
-	(3, 5, 12, 'Good', 10.00, 'Yes'),
-	(4, 6, 15, 'Good', 11.00, 'No'),
-	(5, 8, 16, 'Good', 10.00, 'Yes'),
-	(6, 11, 17, 'Good', 0.00, 'Yes'),
-	(7, 11, 18, 'Good', 0.00, 'Yes'),
-	(8, 12, 19, 'Good', 0.00, 'Yes'),
-	(9, 16, 20, 'Good', 0.00, 'Yes');
-
--- Dumping structure for table kcls_db.returntransactions
-CREATE TABLE IF NOT EXISTS `returntransactions` (
-  `ReturnID` int(11) NOT NULL AUTO_INCREMENT,
-  `BorrowID` int(11) NOT NULL,
-  `ReturnDate` date NOT NULL,
-  `ReceivedByStaffID` int(11) DEFAULT NULL,
-  `Remarks` text DEFAULT NULL,
-  PRIMARY KEY (`ReturnID`),
-  KEY `BorrowID` (`BorrowID`),
-  KEY `ReceivedByStaffID` (`ReceivedByStaffID`),
-  CONSTRAINT `returntransactions_ibfk_1` FOREIGN KEY (`BorrowID`) REFERENCES `borrowtransactions` (`BorrowID`),
-  CONSTRAINT `returntransactions_ibfk_2` FOREIGN KEY (`ReceivedByStaffID`) REFERENCES `staff` (`StaffID`)
-) ENGINE=InnoDB AUTO_INCREMENT=21 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-
--- Dumping data for table kcls_db.returntransactions: ~20 rows (approximately)
-REPLACE INTO `returntransactions` (`ReturnID`, `BorrowID`, `ReturnDate`, `ReceivedByStaffID`, `Remarks`) VALUES
-	(1, 10, '2025-07-25', NULL, NULL),
-	(2, 11, '2025-07-19', NULL, NULL),
-	(3, 11, '2025-07-23', NULL, ''),
-	(4, 12, '2025-07-24', NULL, NULL),
-	(5, 10, '2025-07-23', NULL, ''),
-	(6, 12, '2025-07-23', NULL, ''),
-	(7, 13, '2025-07-25', NULL, NULL),
-	(8, 13, '2025-07-24', NULL, ''),
-	(9, 14, '2025-08-15', NULL, NULL),
-	(10, 19, '2025-08-09', NULL, NULL),
-	(11, 14, '2025-08-15', NULL, ''),
-	(12, 19, '2025-08-15', NULL, ''),
-	(13, 20, '2025-08-23', NULL, NULL),
-	(14, 21, '2025-08-17', NULL, NULL),
-	(15, 22, '2025-08-30', NULL, NULL),
-	(16, 20, '2025-08-22', NULL, ''),
-	(17, 23, '2025-08-24', NULL, NULL),
-	(18, 24, '2025-08-24', NULL, NULL),
-	(19, 25, '2025-08-24', NULL, NULL),
-	(20, 26, '2025-08-24', NULL, NULL);
-
--- Dumping structure for table kcls_db.staff
-CREATE TABLE IF NOT EXISTS `staff` (
-  `StaffID` int(11) NOT NULL AUTO_INCREMENT,
-  `UserID` int(11) NOT NULL,
-  `Position` enum('Librarian','Admin') NOT NULL,
-  PRIMARY KEY (`StaffID`),
-  UNIQUE KEY `UserID` (`UserID`),
-  CONSTRAINT `staff_ibfk_1` FOREIGN KEY (`UserID`) REFERENCES `users` (`UserID`)
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-
--- Dumping data for table kcls_db.staff: ~2 rows (approximately)
-REPLACE INTO `staff` (`StaffID`, `UserID`, `Position`) VALUES
-	(1, 2, 'Admin'),
-	(2, 3, 'Librarian');
-
--- Dumping structure for table kcls_db.storages
-CREATE TABLE IF NOT EXISTS `storages` (
-  `ID` int(11) NOT NULL AUTO_INCREMENT,
-  `Name` varchar(50) NOT NULL DEFAULT '0',
-  `Capacity` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
-
--- Dumping data for table kcls_db.storages: ~3 rows (approximately)
-REPLACE INTO `storages` (`ID`, `Name`, `Capacity`) VALUES
-	(1, 'Shelf D1', 0),
-	(2, 'Shelf B2', 0),
-	(3, 'Shelf D3', 0);
-
--- Dumping structure for table kcls_db.userdetails
-CREATE TABLE IF NOT EXISTS `userdetails` (
-  `UserID` int(11) NOT NULL,
-  `Firstname` varchar(100) NOT NULL,
-  `Middlename` varchar(100) DEFAULT NULL,
-  `Lastname` varchar(100) NOT NULL,
-  `Email` varchar(100) NOT NULL,
-  `ContactNumber` varchar(100) DEFAULT NULL,
-  `Street` varchar(100) DEFAULT NULL,
-  `Barangay` varchar(100) DEFAULT NULL,
-  `City` varchar(100) DEFAULT NULL,
-  `Province` varchar(100) DEFAULT NULL,
-  `DateOfBirth` date DEFAULT NULL,
-  PRIMARY KEY (`UserID`),
-  CONSTRAINT `userdetails_ibfk_1` FOREIGN KEY (`UserID`) REFERENCES `users` (`UserID`)
+CREATE TABLE IF NOT EXISTS `Notifications` (
+  `NotificationID` BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `Type` VARCHAR(64) NOT NULL,
+  `Title` VARCHAR(160) DEFAULT NULL,
+  `Message` TEXT NOT NULL,
+  `SenderUserID` BIGINT(20) UNSIGNED DEFAULT NULL,
+  `RelatedType` VARCHAR(32) DEFAULT NULL,
+  `RelatedID` BIGINT(20) UNSIGNED DEFAULT NULL,
+  `CreatedAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP(),
+  PRIMARY KEY (`NotificationID`),
+  KEY `idx_notifications_type` (`Type`),
+  KEY `idx_notifications_created` (`CreatedAt`),
+  CONSTRAINT `fk_notifications_type`
+    FOREIGN KEY (`Type`) REFERENCES `Notification_Types` (`Code`)
+      ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 
--- Dumping data for table kcls_db.userdetails: ~4 rows (approximately)
-REPLACE INTO `userdetails` (`UserID`, `Firstname`, `Middlename`, `Lastname`, `Email`, `ContactNumber`, `Street`, `Barangay`, `City`, `Province`, `DateOfBirth`) VALUES
-	(1, 'test', 'test', 'test', 'sumalpong@gamil.com', '09641425520', 'dwawd', 'dwada', 'dwadad', 'dawdawd', '2025-08-15'),
-	(2, 'admin', 'admin', 'admin', 'sumalpong@gamil.com', '09641425520', 'dwawd', 'dwada', 'dwadad', 'dawdawd', '2025-08-15'),
-	(3, 'John', 'Smith', 'Doe', 'sumalpong@gamil.com', '09641425520', 'dwawd', 'dwada', 'dwadad', 'dawdawd', '2025-08-15'),
-	(4, 'Andrei', 'Lagos', 'Sumalpong', 'sumalpong@gamil.com', '09641425520', 'Purok 2', 'Dumadalig', 'Tantangan', 'South Cotabato', '2003-11-18');
+CREATE TABLE IF NOT EXISTS `Notification_Recipients` (
+  `RecipientID` BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `NotificationID` BIGINT(20) UNSIGNED NOT NULL,
+  `RecipientUserID` BIGINT(20) UNSIGNED NOT NULL,
+  `IsRead` TINYINT(1) NOT NULL DEFAULT 0,
+  `ReadAt` DATETIME DEFAULT NULL,
+  `CreatedAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP(),
+  PRIMARY KEY (`RecipientID`),
+  UNIQUE KEY `uq_notif_recipient` (`NotificationID`,`RecipientUserID`),
+  KEY `idx_recipients_unread` (`RecipientUserID`,`IsRead`,`CreatedAt`),
+  CONSTRAINT `fk_recipient_notification`
+    FOREIGN KEY (`NotificationID`) REFERENCES `Notifications` (`NotificationID`)
+      ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 
--- Dumping structure for table kcls_db.users
-CREATE TABLE IF NOT EXISTS `users` (
-  `UserID` int(11) NOT NULL AUTO_INCREMENT,
-  `Username` varchar(50) NOT NULL,
-  `Password` varchar(100) NOT NULL,
-  `Role` enum('Staff','Borrower') NOT NULL,
-  PRIMARY KEY (`UserID`),
-  UNIQUE KEY `Username` (`Username`)
-) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+-- Action types master (what happened)
+CREATE TABLE IF NOT EXISTS `ActionTypes` (
+  `ActionCode` VARCHAR(50) NOT NULL,
+  `Description` VARCHAR(255) NOT NULL,
+  PRIMARY KEY (`ActionCode`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 
--- Dumping data for table kcls_db.users: ~4 rows (approximately)
-REPLACE INTO `users` (`UserID`, `Username`, `Password`, `Role`) VALUES
-	(1, 'andrei', '1234', 'Borrower'),
-	(2, 'admin', '1234', 'Staff'),
-	(3, 'librarian', '1234', 'Staff'),
-	(4, 'researcher', '123456', 'Borrower');
+-- Target types master (what kind of entity was acted on)
+CREATE TABLE IF NOT EXISTS `TargetTypes` (
+  `TargetTypeCode` VARCHAR(50) NOT NULL,
+  `Description` VARCHAR(255) NOT NULL,
+  PRIMARY KEY (`TargetTypeCode`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+
+-- General audit log
+CREATE TABLE IF NOT EXISTS `AuditLog` (
+  `AuditID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `UserID` INT(11) DEFAULT NULL,            -- actor (nullable for system events)
+  `ActionCode` VARCHAR(50) NOT NULL,        -- FK to ActionTypes
+  `TargetTypeCode` VARCHAR(50) DEFAULT NULL,-- FK to TargetTypes
+  `TargetID` BIGINT DEFAULT NULL,           -- ID of the specific target (BorrowID, Document_ID, etc.)
+  `Details` TEXT DEFAULT NULL,              -- JSON/text details
+  `IPAddress` VARCHAR(64) DEFAULT NULL,
+  `UserAgent` VARCHAR(255) DEFAULT NULL,
+  `CreatedAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`AuditID`),
+  KEY `idx_audit_user` (`UserID`),
+  KEY `idx_audit_action` (`ActionCode`),
+  KEY `idx_audit_target` (`TargetTypeCode`,`TargetID`),
+  KEY `idx_audit_created` (`CreatedAt`),
+  CONSTRAINT `fk_audit_user`
+    FOREIGN KEY (`UserID`) REFERENCES `Users` (`UserID`)
+      ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_audit_action`
+    FOREIGN KEY (`ActionCode`) REFERENCES `ActionTypes` (`ActionCode`)
+      ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `fk_audit_targettype`
+    FOREIGN KEY (`TargetTypeCode`) REFERENCES `TargetTypes` (`TargetTypeCode`)
+      ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+
+-- Seed common action types
+INSERT IGNORE INTO `ActionTypes` (ActionCode, Description) VALUES
+ ('LOGIN_ATTEMPT','User login attempt'),
+ ('LOGIN_SUCCESS','Successful login'),
+ ('LOGIN_FAILURE','Failed login'),
+ ('LOGOUT','User logout'),
+ ('PASSWORD_CHANGE','Password changed'),
+ ('PROFILE_UPDATE','User profile updated'),
+ ('BORROW_REQUEST','Borrow request submitted'),
+ ('BORROW_APPROVE','Borrow request approved'),
+ ('BORROW_REJECT','Borrow request rejected'),
+ ('BORROW_RETRIEVE','Borrow items retrieved'),
+ ('BORROW_RETURN','Borrow fully returned'),
+ ('BORROW_ITEM_RETURN','Single item returned'),
+ ('BORROW_OVERDUE','Borrow marked overdue'),
+ ('BORROW_OVERDUE_REMINDER','Overdue reminder sent'),
+ ('DOC_VIEW','Document viewed'),
+ ('DOC_DOWNLOAD','Document downloaded'),
+ ('NOTIFICATION_READ','Notification marked read');
+
+-- Seed common target types
+INSERT IGNORE INTO `TargetTypes` (TargetTypeCode, Description) VALUES
+ ('User','User account'),
+ ('Borrow','Borrow transaction'),
+ ('BorrowItem','Borrowed item'),
+ ('Document','Document record'),
+ ('Notification','Notification entry'),
+ ('System','System / background task');
+
+-- Example insert usage:
+-- INSERT INTO AuditLog (UserID, ActionCode, TargetTypeCode, TargetID, Details, IPAddress, UserAgent)
+-- VALUES (123,'BORROW_REQUEST','Borrow',456,'{\"purpose\":\"research\"}','127.0.0.1','Mozilla/5.0');
+-- Data exporting was unselected.
 
 /*!40103 SET TIME_ZONE=IFNULL(@OLD_TIME_ZONE, 'system') */;
 /*!40101 SET SQL_MODE=IFNULL(@OLD_SQL_MODE, '') */;

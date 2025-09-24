@@ -1,5 +1,5 @@
 //// filepath: c:\Users\CLienT\Desktop\Koronadal City Library System\kcls-app\src\components\DocumentPDFViewer.jsx
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect, useRef as rRef } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, IconButton, Box, Typography,
   useTheme, Button, Tooltip, Divider, TextField
@@ -12,6 +12,7 @@ import { Worker, Viewer } from '@react-pdf-viewer/core';
 import { pageNavigationPlugin } from '@react-pdf-viewer/page-navigation';
 import '@react-pdf-viewer/core/lib/styles/index.css';
 import '@react-pdf-viewer/page-navigation/lib/styles/index.css';
+import { logAudit } from '../utils/auditLogger.js'; // NEW
 
 // If not installed yet:
 // npm i @react-pdf-viewer/page-navigation
@@ -22,6 +23,7 @@ const DocumentPDFViewer = ({
   open,
   onClose,
   fileUrl,
+  documentId,            // NEW: pass the Document_ID
   title = 'Viewing PDF Document',
   note = 'Downloading and printing are disabled for this preview.'
 }) => {
@@ -73,6 +75,18 @@ const DocumentPDFViewer = ({
       jumpToPage(n - 1);
     }
   };
+
+  const loggedRef = useRef(false); // prevent duplicate logs per open cycle
+
+  useEffect(() => {
+    if (open && fileUrl && documentId && !loggedRef.current) {
+      logAudit('DOC_VIEW', 'Document', documentId, { title });
+      loggedRef.current = true;
+    }
+    if (!open) {
+      loggedRef.current = false;
+    }
+  }, [open, fileUrl, documentId, title]);
 
   return (
     <Dialog

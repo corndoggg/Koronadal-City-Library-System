@@ -5,6 +5,7 @@ import {
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { alpha } from '@mui/material/styles';
+import { logAudit } from '../../utils/auditLogger.js'; // NEW
 
 const API_BASE = import.meta.env.VITE_API_BASE;
 
@@ -40,6 +41,10 @@ const LoginPage = () => {
     setLoading(true);
     setError('');
     setBorrowerStatus(null);
+
+    // Log attempt (no userId yet; backend will still record)
+    logAudit('LOGIN_ATTEMPT', 'User', null, { username });
+
     try {
       const res = await fetch(`${API_BASE}/users/login`, {
         method: 'POST',
@@ -49,16 +54,18 @@ const LoginPage = () => {
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || 'Invalid credentials');
+        logAudit('LOGIN_FAILURE', 'User', null, { username, reason: data.error || 'Invalid credentials' });
       } else {
         storeUserSession(data);
+        logAudit('LOGIN_SUCCESS', 'User', data.UserID || data.userId || data.id, { username });
+
         if (data.Role === 'Borrower') {
-          console.log(data);
           const status = data.borrower?.AccountStatus;
-            if (status === "Pending" || status === "Rejected") {
-              setBorrowerStatus(status);
-              setLoading(false);
-              return;
-            }
+          if (status === "Pending" || status === "Rejected") {
+            setBorrowerStatus(status);
+            setLoading(false);
+            return;
+          }
           navigate('/borrower');
         } else if (data.Role === 'Staff' && data.staff?.Position === 'Librarian') {
           navigate('/librarian');
@@ -70,6 +77,7 @@ const LoginPage = () => {
       }
     } catch {
       setError('Unable to connect to server');
+      logAudit('LOGIN_FAILURE', 'User', null, { username, reason: 'NETWORK' });
     }
     setLoading(false);
   };

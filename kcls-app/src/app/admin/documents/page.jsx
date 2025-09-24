@@ -9,6 +9,7 @@ import { Article, Visibility, Edit, Close, Add } from '@mui/icons-material';
 import { alpha } from '@mui/material/styles';
 import DocumentFormModal from '../../../components/DocumentFormModal';
 import DocumentPDFViewer from '../../../components/DocumentPDFViewer';
+import { logAudit } from '../../../utils/auditLogger.js'; // NEW
 
 const AdminDocumentManagementPage = () => {
   const theme = useTheme(), API_BASE = import.meta.env.VITE_API_BASE;
@@ -70,14 +71,23 @@ const AdminDocumentManagementPage = () => {
   const handleSaveDocument = async (formData, inventoryList = [], deletedInventory = []) => {
     try {
       let docId = null;
+      const titleField = formData.get ? (formData.get('Title') || formData.get('title')) : null;
       if (isEdit) {
-        const payload = {}; formData.forEach((v, k) => { payload[k] = v; });
+        const payload = {};
+        formData.forEach((v, k) => { payload[k] = v; });
         await axios.put(`${API_BASE}/documents/${editDoc.Document_ID}`, payload);
-        docId = editDoc.Document_ID; showToast('Document updated');
+        docId = editDoc.Document_ID;
+        showToast('Document updated');
+        logAudit('DOC_UPDATE', 'Document', docId, { title: payload.Title || editDoc.Title }); // AUDIT
       } else {
-        const res = await axios.post(`${API_BASE}/documents/upload`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
-        docId = res.data.documentId || res.data.id || res.data.Document_ID; showToast('Document uploaded');
+        const res = await axios.post(`${API_BASE}/documents/upload`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        docId = res.data.documentId || res.data.id || res.data.Document_ID;
+        showToast('Document uploaded');
+        logAudit('DOC_UPLOAD', 'Document', docId, { title: titleField || 'Untitled' }); // AUDIT
       }
+
       if (docId && Array.isArray(inventoryList)) {
         for (const inv of inventoryList) {
           const locId = parseInt(inv.location, 10);

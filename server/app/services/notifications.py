@@ -1,4 +1,5 @@
 from typing import Iterable, Optional, List, Any, Dict
+from app.services.audit import log_event  # NEW
 
 # NOTE: Adjust table/column names if your schema differs (Staff vs Users, etc.).
 
@@ -234,3 +235,66 @@ def notify_account_rejected(cursor, user_id: int, sender_user_id: Optional[int] 
         [user_id],
         title='Account Rejected'
     )
+
+def _ensure_type(cursor, code: str, desc: str):
+    try:
+        cursor.execute("INSERT IGNORE INTO notification_types (Code, Description) VALUES (%s,%s)", (code, desc))
+    except Exception:
+        pass
+
+def notify_overdue(cursor, borrow_id: int, due_date, sender_user_id: Optional[int] = None):
+    """
+    Sends an overdue reminder if not already sent today for this borrow.
+    due_date: date/datetime object.
+    """
+    _ensure_type(cursor, 'BORROW_OVERDUE_REMINDER', 'Borrow overdue reminder')
+
+    # Avoid duplicate reminders on same day
+    try:
+        cursor.execute("""
+            SELECT 1
+            FROM notifications n
+            JOIN notification_recipients r ON r.NotificationID = n.NotificationID
+            WHERE n.Type='BORROW_OVERDUE_REMINDER'
+              AND n.RelatedType='Borrow'
+              AND n.RelatedID=%s
+              AND DATE(n.CreatedAt)=CURRENT_DATE()
+            LIMIT 1
+        """, (borrow_id,))
+        if cursor.fetchone():
+            return
+    except Exception:
+        pass
+
+    borrower_uid = get_borrower_user_id(cursor, borrow_id)
+    if not borrower_uid:
+        return
+
+    # Determine route (document vs book) to notify appropriate staff group too
+    route = 'admin'
+    try:
+        cursor.execute("SELECT ItemType FROM BorrowedItems WHERE BorrowID=%s LIMIT 1", (borrow_id,))
+        r = cursor.fetchone() or {}
+        if r.get('ItemType') == 'Book':
+            route = 'librarian'
+    except Exception:
+        pass
+
+    recips = {int(borrower_uid)}
+    for sid in get_staff_user_ids(cursor, route):
+        recips.add(int(sid))
+
+    due_str = getattr(due_date, 'strftime', lambda fmt: str(due_date))('%Y-%m-%d')
+    create_notification(
+        cursor,
+        'BORROW_OVERDUE_REMINDER',
+        f'Borrow #{borrow_id} is overdue (due {due_str}). Please return items.',
+        sender_user_id,
+        'Borrow',
+        borrow_id,
+        recips,
+        title='Overdue Reminder'
+    )
+    log_event("BORROW_OVERDUE_REMINDER", user_id=sender_user_id,
+              target_type="Borrow", target_id=borrow_id,
+              details={"due": str(due_date)})  # NEW

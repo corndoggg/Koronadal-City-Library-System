@@ -6,6 +6,12 @@ from ..services.notifications import (
     notify_account_approved,
     notify_account_rejected,
 )
+from werkzeug.security import generate_password_hash
+from app.services.passwords import (
+    hash_password,
+    verify_password,
+    needs_rehash,
+)
 
 users_bp = Blueprint('users', __name__)
 
@@ -29,11 +35,13 @@ def add_user():
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Insert into Users
+    raw_password = data['password']
+    hashed = hash_password(raw_password)
+
     cursor.execute("""
         INSERT INTO Users (Username, Password, Role)
         VALUES (%s, %s, %s)
-    """, (data['username'], data['password'], data['role']))
+    """, (data['username'], hashed, data['role']))
     user_id = cursor.lastrowid
 
     # Insert into UserDetails
@@ -113,7 +121,6 @@ def update_user(user_id):
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Update Users
     fields = []
     values = []
 
@@ -123,10 +130,10 @@ def update_user(user_id):
     if 'role' in data:
         fields.append("Role=%s")
         values.append(data['role'])
-    # Only update password if provided and not empty
     if 'password' in data and data['password']:
+        # re-hash new password
         fields.append("Password=%s")
-        values.append(data['password'])
+        values.append(hash_password(data['password']))
 
     if fields:
         sql = f"UPDATE Users SET {', '.join(fields)} WHERE UserID=%s"
@@ -184,10 +191,25 @@ def login_user():
         WHERE u.Username = %s
     """, (username,))
     user = cursor.fetchone()
-    cursor.close()
-    conn.close()
-    if not user or user['Password'] != password:
+
+    if not user or not verify_password(user['Password'], password):
+        cursor.close()
+        conn.close()
         return jsonify({'error': 'Invalid username or password'}), 401
+
+    # If legacy password (plaintext) rehash & store
+    if needs_rehash(user['Password']):
+        try:
+            new_hash = hash_password(password)
+            up_cur = conn.cursor()
+            up_cur.execute("UPDATE Users SET Password=%s WHERE UserID=%s", (new_hash, user['UserID']))
+            conn.commit()
+            up_cur.close()
+        except Exception:
+            conn.rollback()
+
+    # Strip hashed password from response
+    user.pop('Password', None)
 
     if user['Role'] == 'Staff':
         user['staff'] = {'Position': user['Position']}
@@ -204,9 +226,11 @@ def login_user():
         user['staff'] = None
         user['borrower'] = None
 
-    # remove sensitive/unneeded fields
-    for k in ['Password','Position','Type','Department','AccountStatus','BorrowerID']:
+    for k in ['Position','Type','Department','AccountStatus','BorrowerID']:
         user.pop(k, None)
+
+    cursor.close()
+    conn.close()
     return jsonify(user)
 
 # --- Approve a user account ---
@@ -284,4 +308,49 @@ def get_user_by_borrower_id(borrower_id):
     }
     for k in ['BorrowerID', 'Type', 'Department', 'AccountStatus']:
         user.pop(k, None)
+    return jsonify(user)
+
+# --- Get User Details by UserID ---
+@users_bp.route('/users/<int:user_id>', methods=['GET'])
+def get_user(user_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT u.UserID, u.Username, u.Role,
+               ud.Firstname, ud.Middlename, ud.Lastname, ud.Email, ud.ContactNumber,
+               ud.Street, ud.Barangay, ud.City, ud.Province, ud.DateOfBirth,
+               s.Position,
+               b.BorrowerID, b.Type, b.Department, b.AccountStatus
+        FROM Users u
+        LEFT JOIN UserDetails ud ON u.UserID = ud.UserID
+        LEFT JOIN Staff s ON u.UserID = s.UserID
+        LEFT JOIN Borrowers b ON u.UserID = b.UserID
+        WHERE u.UserID = %s
+        LIMIT 1
+    """, (user_id,))
+    user = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    if user['Role'] == 'Staff':
+        user['staff'] = {'Position': user['Position']}
+        user['borrower'] = None
+    elif user['Role'] == 'Borrower':
+        user['borrower'] = {
+            'BorrowerID': user['BorrowerID'],
+            'Type': user['Type'],
+            'Department': user['Department'],
+            'AccountStatus': user['AccountStatus']
+        }
+        user['staff'] = None
+    else:
+        user['staff'] = None
+        user['borrower'] = None
+
+    for k in ['Position','Type','Department','AccountStatus','BorrowerID']:
+        user.pop(k, None)
+
     return jsonify(user)

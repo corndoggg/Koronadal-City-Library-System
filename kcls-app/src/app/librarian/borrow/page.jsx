@@ -13,6 +13,7 @@ import {
 } from "@mui/icons-material";
 import { alpha } from "@mui/material/styles";
 import { useSystemSettings } from '../../../contexts/SystemSettingsContext.jsx'; // added
+import { logAudit } from '../../../utils/auditLogger.js'; // NEW
 
 const API_BASE = import.meta.env.VITE_API_BASE;
 const returnConditions = ["Good", "Slightly Damaged", "Heavily Damaged", "Lost"];
@@ -155,6 +156,7 @@ const LibrarianBorrowPage = () => {
     setActionLoading(true);
     try {
       await axios.put(`${API_BASE}/borrow/${tx.BorrowID}/approve?role=librarian`);
+      logAudit('BORROW_APPROVE', 'Borrow', tx.BorrowID, { role: 'librarian' }); // NEW
       await fetchTransactions();
     } finally {
       setActionLoading(false);
@@ -166,6 +168,7 @@ const LibrarianBorrowPage = () => {
     setActionLoading(true);
     try {
       await axios.put(`${API_BASE}/borrow/${tx.BorrowID}/reject?role=librarian`);
+      logAudit('BORROW_REJECT', 'Borrow', tx.BorrowID, { role: 'librarian' }); // NEW
       await fetchTransactions();
     } finally {
       setActionLoading(false);
@@ -177,6 +180,7 @@ const LibrarianBorrowPage = () => {
     setActionLoading(true);
     try {
       await axios.put(`${API_BASE}/borrow/${tx.BorrowID}/retrieved?role=librarian`);
+      logAudit('BORROW_RETRIEVE', 'Borrow', tx.BorrowID, { role: 'librarian' }); // NEW
       await fetchTransactions();
     } finally {
       setActionLoading(false);
@@ -223,9 +227,9 @@ const LibrarianBorrowPage = () => {
         borrowId: returnTx.BorrowID,
         returnDate: new Date().toISOString().slice(0, 10),
         items,
-        // include remarks
         remarks: returnRemarks || undefined
       });
+      logAudit('BORROW_RETURN', 'Borrow', returnTx.BorrowID, { items: items.length }); // NEW
       setReturnModalOpen(false);
       fetchTransactions();
     } finally { setActionLoading(false); }

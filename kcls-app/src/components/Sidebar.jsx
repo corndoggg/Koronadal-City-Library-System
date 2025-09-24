@@ -27,6 +27,7 @@ const navLinksByRole = {
     { href: '/admin/users', icon: UserCircle, label: 'Users' },
     { href: '/admin/reports', icon: BarChart3, label: 'Reports' },
     { href: '/admin/system', icon: Activity, label: 'System' }, // added
+    { href: '/admin/audit-logs', icon: Activity, label: 'Audit Logs' }, // added
   ],
 };
 
