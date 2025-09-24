@@ -37,7 +37,7 @@ def get_borrower_user_id(cursor, borrow_id: int) -> Optional[int]:
     return row.get('UserID') if row else None
 
 def ensure_type_exists(cursor, type_code: str) -> bool:
-    cursor.execute("SELECT 1 FROM notification_types WHERE Code=%s", (type_code,))
+    cursor.execute("SELECT 1 FROM Notification_Types WHERE Code=%s", (type_code,))
     return cursor.fetchone() is not None
 
 def create_notification(
@@ -57,13 +57,13 @@ def create_notification(
         return None
 
     cursor.execute("""
-        INSERT INTO notifications (Type, Title, Message, SenderUserID, RelatedType, RelatedID)
+        INSERT INTO Notifications (Type, Title, Message, SenderUserID, RelatedType, RelatedID)
         VALUES (%s, %s, %s, %s, %s, %s)
     """, (type_code, title, message, sender_user_id, related_type, related_id))
     notif_id = cursor.lastrowid
 
     cursor.executemany("""
-        INSERT IGNORE INTO notification_recipients (NotificationID, RecipientUserID)
+        INSERT IGNORE INTO Notification_Recipients (NotificationID, RecipientUserID)
         VALUES (%s, %s)
     """, [(notif_id, uid) for uid in recips])
     return notif_id
@@ -238,7 +238,7 @@ def notify_account_rejected(cursor, user_id: int, sender_user_id: Optional[int] 
 
 def _ensure_type(cursor, code: str, desc: str):
     try:
-        cursor.execute("INSERT IGNORE INTO notification_types (Code, Description) VALUES (%s,%s)", (code, desc))
+        cursor.execute("INSERT IGNORE INTO Notification_Types (Code, Description) VALUES (%s,%s)", (code, desc))
     except Exception:
         pass
 
@@ -253,8 +253,8 @@ def notify_overdue(cursor, borrow_id: int, due_date, sender_user_id: Optional[in
     try:
         cursor.execute("""
             SELECT 1
-            FROM notifications n
-            JOIN notification_recipients r ON r.NotificationID = n.NotificationID
+            FROM Notifications n
+            JOIN Notification_Recipients r ON r.NotificationID = n.NotificationID
             WHERE n.Type='BORROW_OVERDUE_REMINDER'
               AND n.RelatedType='Borrow'
               AND n.RelatedID=%s

@@ -107,7 +107,7 @@ def create_notification():
             return jsonify({'error': f'Notification type "{type_code}" does not exist.'}), 400
 
         cur.execute("""
-            INSERT INTO notifications (Type, Title, Message, SenderUserID, RelatedType, RelatedID)
+            INSERT INTO Notifications (Type, Title, Message, SenderUserID, RelatedType, RelatedID)
             VALUES (%s, %s, %s, %s, %s, %s)
         """, (type_code, title, message, sender, related_type, related_id))
         notif_id = cur.lastrowid
@@ -117,18 +117,18 @@ def create_notification():
         if clean_recips:
             values = [(notif_id, rid) for rid in clean_recips]
             cur.executemany("""
-                INSERT IGNORE INTO notification_recipients (NotificationID, RecipientUserID)
+                INSERT IGNORE INTO Notification_Recipients (NotificationID, RecipientUserID)
                 VALUES (%s, %s)
             """, values)
 
         conn.commit()
 
         # Return composed result
-        cur.execute("SELECT * FROM notifications WHERE NotificationID=%s", (notif_id,))
+        cur.execute("SELECT * FROM Notifications WHERE NotificationID=%s", (notif_id,))
         notif = cur.fetchone()
         cur.execute("""
             SELECT RecipientID, NotificationID, RecipientUserID, IsRead, ReadAt, CreatedAt
-            FROM notification_recipients WHERE NotificationID=%s
+            FROM Notification_Recipients WHERE NotificationID=%s
         """, (notif_id,))
         recips = cur.fetchall() or []
         return jsonify({'notification': notif, 'recipients': recips}), 201
@@ -143,13 +143,13 @@ def get_notification(notification_id):
     conn = get_db_connection()
     cur = conn.cursor(dictionary=True)
     try:
-        cur.execute("SELECT * FROM notifications WHERE NotificationID=%s", (notification_id,))
+        cur.execute("SELECT * FROM Notifications WHERE NotificationID=%s", (notification_id,))
         notif = cur.fetchone()
         if not notif:
             return jsonify({'error': 'Not found'}), 404
         cur.execute("""
             SELECT RecipientID, NotificationID, RecipientUserID, IsRead, ReadAt, CreatedAt
-            FROM notification_recipients WHERE NotificationID=%s
+            FROM Notification_Recipients WHERE NotificationID=%s
         """, (notification_id,))
         recips = cur.fetchall() or []
         return jsonify({'notification': notif, 'recipients': recips}), 200
@@ -192,7 +192,7 @@ def admin_list_notifications():
     if to_dt:
         where.append("n.CreatedAt <= %s"); params.append(to_dt)
 
-    sql = "SELECT n.* FROM notifications n"
+    sql = "SELECT n.* FROM Notifications n"
     if where:
         sql += " WHERE " + " AND ".join(where)
     sql += " ORDER BY n.CreatedAt DESC LIMIT %s OFFSET %s"
@@ -212,7 +212,7 @@ def delete_notification(notification_id):
     conn = get_db_connection()
     cur = conn.cursor(dictionary=True)
     try:
-        cur.execute("DELETE FROM notifications WHERE NotificationID=%s", (notification_id,))
+        cur.execute("DELETE FROM Notifications WHERE NotificationID=%s", (notification_id,))
         conn.commit()
         return jsonify({'deleted': cur.rowcount}), 200
     finally:
@@ -251,8 +251,8 @@ def list_user_notifications(user_id):
             n.NotificationID, n.Type, n.Title, n.Message, n.SenderUserID,
             n.RelatedType, n.RelatedID, n.CreatedAt AS NotificationCreatedAt,
             r.RecipientID, r.IsRead, r.ReadAt, r.CreatedAt AS RecipientCreatedAt
-        FROM notification_recipients r
-        JOIN notifications n ON n.NotificationID = r.NotificationID
+        FROM Notification_Recipients r
+        JOIN Notifications n ON n.NotificationID = r.NotificationID
         WHERE {" AND ".join(where)}
         ORDER BY n.CreatedAt DESC
         LIMIT %s OFFSET %s
@@ -274,7 +274,7 @@ def user_unread_count(user_id):
     try:
         cur.execute("""
             SELECT COUNT(*) AS cnt
-            FROM notification_recipients
+            FROM Notification_Recipients
             WHERE RecipientUserID=%s AND IsRead=0
         """, (user_id,))
         row = cur.fetchone() or {'cnt': 0}
@@ -288,7 +288,7 @@ def mark_user_notification_read(user_id, notification_id):
     cur = conn.cursor(dictionary=True)
     try:
         cur.execute("""
-            UPDATE notification_recipients
+            UPDATE Notification_Recipients
             SET IsRead=1, ReadAt=NOW()
             WHERE RecipientUserID=%s AND NotificationID=%s
         """, (user_id, notification_id))
@@ -310,7 +310,7 @@ def bulk_mark_user_notifications_read(user_id):
         fmt = ','.join(['%s'] * len(ids))
         params = [user_id] + ids
         cur.execute(f"""
-            UPDATE notification_recipients
+            UPDATE Notification_Recipients
             SET IsRead=1, ReadAt=NOW()
             WHERE RecipientUserID=%s AND NotificationID IN ({fmt})
         """, tuple(params))
@@ -328,7 +328,7 @@ def delete_user_notification_link(user_id, notification_id):
     cur = conn.cursor(dictionary=True)
     try:
         cur.execute("""
-            DELETE FROM notification_recipients
+            DELETE FROM Notification_Recipients
             WHERE RecipientUserID=%s AND NotificationID=%s
         """, (user_id, notification_id))
         conn.commit()
