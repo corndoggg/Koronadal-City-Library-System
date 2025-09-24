@@ -23,16 +23,16 @@ def _limit_offset():
     return limit, offset
 
 def _ensure_type_exists(cursor, type_code):
-    cursor.execute("SELECT 1 FROM notification_types WHERE Code=%s", (type_code,))
+    cursor.execute("SELECT 1 FROM Notification_Types WHERE Code=%s", (type_code,))
     return cursor.fetchone() is not None
 
 # -------- Notification Types --------
 @notification_bp.route('/notification-types', methods=['GET'])
-def list_notification_types():
+def list_Notification_Types():
     conn = get_db_connection()
     cur = conn.cursor(dictionary=True)
     try:
-        cur.execute("SELECT Code, Description FROM notification_types ORDER BY Code ASC")
+        cur.execute("SELECT Code, Description FROM Notification_Types ORDER BY Code ASC")
         return jsonify(cur.fetchall() or []), 200
     finally:
         cur.close(); conn.close()
@@ -48,7 +48,7 @@ def create_notification_type():
     conn = get_db_connection()
     cur = conn.cursor(dictionary=True)
     try:
-        cur.execute("INSERT INTO notification_types (Code, Description) VALUES (%s, %s)", (code, desc))
+        cur.execute("INSERT INTO Notification_Types (Code, Description) VALUES (%s, %s)", (code, desc))
         conn.commit()
         return jsonify({'Code': code, 'Description': desc}), 201
     except Exception as e:
@@ -67,7 +67,7 @@ def update_notification_type(code):
     conn = get_db_connection()
     cur = conn.cursor(dictionary=True)
     try:
-        cur.execute("UPDATE notification_types SET Description=%s WHERE Code=%s", (desc, code))
+        cur.execute("UPDATE Notification_Types SET Description=%s WHERE Code=%s", (desc, code))
         conn.commit()
         return jsonify({'updated': cur.rowcount}), 200
     finally:
@@ -78,7 +78,7 @@ def update_notification_type(code):
 def create_notification():
     """
     Body:
-      Type: str (must exist in notification_types)
+      Type: str (must exist in Notification_Types)
       Title: str|null
       Message: str
       SenderUserID: int|null

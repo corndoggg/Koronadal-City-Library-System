@@ -3,8 +3,11 @@ from app.db import get_db_connection
 from app.services.notifications import (
     notify_submit, notify_approved, notify_rejected, notify_retrieved, notify_return_recorded
 )
+import logging  # NEW
 
 borrowreturn_bp = Blueprint('borrowreturn', __name__)
+
+logger = logging.getLogger(__name__)  # NEW
 
 # Helpers
 def _classify_route_by_items(cursor, borrow_id):
@@ -67,6 +70,7 @@ def add_borrow_transaction():
     data = request.json or {}
     items = data.get('items') or []
     if not items:
+        logger.warning("Borrow creation attempted with no items. payload=%s", data)  # NEW
         return jsonify({'error': 'No items provided.'}), 400
 
     conn = get_db_connection()
@@ -134,9 +138,13 @@ def add_borrow_transaction():
 
     except ValueError as e:
         conn.rollback()
+        # NEW: log validation errors with payload
+        logger.warning("Borrow creation failed (ValueError): %s | payload=%s", e, data, exc_info=True)
         return jsonify({'error': str(e)}), 400
     except Exception as e:
         conn.rollback()
+        # NEW: log unexpected errors with stack trace and payload
+        logger.exception("Borrow creation failed (Unexpected). payload=%s", data)
         return jsonify({'error': str(e)}), 500
     finally:
         cursor.close()
