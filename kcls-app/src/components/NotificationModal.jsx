@@ -22,6 +22,34 @@ const formatDateTime = (iso) => {
   try { return new Date(iso).toLocaleString(); } catch { return iso; }
 };
 
+// Helpers to make text formal and informative
+const toTitleCase = (str) => {
+  if (!str) return '';
+  return String(str)
+    .replace(/[_-]+/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
+const formatSentence = (text) => {
+  if (!text) return '';
+  let s = String(text).trim().replace(/\s+/g, ' ');
+  if (!s) return '';
+  s = s[0].toUpperCase() + s.slice(1);
+  if (!/[.!?]$/.test(s)) s += '.';
+  return s;
+};
+
+const formatTitle = (n, types) => {
+  const raw = n?.Title || types[n?.Type] || n?.Type || 'Notification';
+  return toTitleCase(raw);
+};
+
+const formatMessage = (n) => {
+  const base = formatSentence(n?.Message || '');
+  return base || 'You have a new notification.';
+};
+
 const NotificationModal = ({ open, onClose, userId, onNavigate }) => {
   const [tab, setTab] = useState("unread"); // 'unread' | 'all'
   const [loading, setLoading] = useState(false);
@@ -187,13 +215,13 @@ const NotificationModal = ({ open, onClose, userId, onNavigate }) => {
     };
   }, [open, notifs, userNameById, formatUserName]);
 
-  const titleFor = (n) => n.Title || types[n.Type] || n.Type || "Notification";
+  const titleFor = (n) => formatTitle(n, types);
 
   const metaChips = (n) => {
     const chips = [];
-    if (n.Type) chips.push({ label: types[n.Type] ? `${types[n.Type]}` : n.Type, color: "default" });
-    if (n.RelatedType && n.RelatedID != null) chips.push({ label: `${n.RelatedType} #${n.RelatedID}`, color: "primary" });
-    if (n.SenderUserID) chips.push({ label: `From: ${getUserName(n.SenderUserID)}`, color: "secondary" }); // UPDATED
+    if (n.Type) chips.push({ label: `Category: ${types[n.Type] ? types[n.Type] : toTitleCase(n.Type)}` , color: 'default' });
+    if (n.RelatedType && n.RelatedID != null) chips.push({ label: `Reference: ${toTitleCase(n.RelatedType)} #${n.RelatedID}`, color: 'primary' });
+    if (n.SenderUserID) chips.push({ label: `Sender: ${getUserName(n.SenderUserID)}`, color: 'secondary' });
     return chips;
   };
 
@@ -273,7 +301,7 @@ const NotificationModal = ({ open, onClose, userId, onNavigate }) => {
                   }
                   secondary={
                     <Box>
-                      <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>{n.Message || "—"}</Typography>
+                      <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>{formatMessage(n)}</Typography>
                       <Stack direction="row" spacing={0.75} mt={0.75} flexWrap="wrap">
                         {metaChips(n).map((c, i) => (
                           <Chip key={i} size="small" label={c.label} color={c.color} sx={{ borderRadius: 0.75 }} />
