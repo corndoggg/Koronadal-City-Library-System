@@ -15,6 +15,8 @@ const BookFormModal = ({
   editCopyIndex, copies, setCopyForm, setEditCopyIndex, setCopies, locations = [],
 }) => {
   const theme = useTheme();
+  // Standardized condition options (Good → Bad)
+  const conditionOptions = ['Good', 'Fair', 'Average', 'Poor', 'Bad'];
   const [tabIndex, setTabIndex] = useState(0);
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' });
   const [unsaved, setUnsaved] = useState(false);
@@ -145,8 +147,8 @@ const BookFormModal = ({
   const copyFields = [
     { key: 'accessionNumber', label: 'Accession Number', required: true },
     { key: 'location', label: 'Location', required: true, select: true, options: locations },
-    { key: 'availability', label: 'Availability', select: true, options: ['Available', 'Borrowed', 'Reserved'] },
-    { key: 'condition', label: 'Condition' },
+    { key: 'availability', label: 'Availability', select: true, options: ['Available', 'Borrowed', 'Reserved', 'Lost'] },
+    { key: 'condition', label: 'Condition', select: true, options: conditionOptions },
     { key: 'physicalStatus', label: 'Physical Status' }
   ];
 
@@ -155,7 +157,8 @@ const BookFormModal = ({
     const available = copies.filter(c => c.availability === 'Available').length;
     const borrowed = copies.filter(c => c.availability === 'Borrowed').length;
     const reserved = copies.filter(c => c.availability === 'Reserved').length;
-    return { total, available, borrowed, reserved };
+    const lost = copies.filter(c => c.availability === 'Lost').length;
+    return { total, available, borrowed, reserved, lost };
   }, [copies]);
 
   const copyInvalid =
@@ -473,6 +476,12 @@ const BookFormModal = ({
                       color="info"
                       sx={{ fontWeight: 600, borderRadius: 0.75 }}
                     />
+                    <Chip
+                      size="small"
+                      label={`Lost: ${availabilityStats.lost}`}
+                      color="error"
+                      sx={{ fontWeight: 600, borderRadius: 0.75 }}
+                    />
                   </Stack>
 
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
@@ -542,6 +551,8 @@ const BookFormModal = ({
                                   ? 'warning'
                                   : copy.availability === 'Reserved'
                                   ? 'info'
+                                  : copy.availability === 'Lost'
+                                  ? 'error'
                                   : 'success'
                               }
                               sx={{ fontWeight: 600 }}

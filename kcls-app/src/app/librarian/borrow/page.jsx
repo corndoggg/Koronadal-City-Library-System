@@ -16,7 +16,7 @@ import { useSystemSettings } from '../../../contexts/SystemSettingsContext.jsx';
 import { logAudit } from '../../../utils/auditLogger.js'; // NEW
 
 const API_BASE = import.meta.env.VITE_API_BASE;
-const returnConditions = ["Good", "Slightly Damaged", "Heavily Damaged", "Lost"];
+const returnConditions = ['Good', 'Fair', 'Average', 'Poor', 'Bad', 'Lost'];
 // const FINE_PER_DAY = parseFloat(import.meta.env.VITE_FINE) || 0; // remove this line
 
 const LibrarianBorrowPage = () => {
@@ -41,6 +41,9 @@ const LibrarianBorrowPage = () => {
   const [returnTx, setReturnTx] = useState(null);
   // NEW: remarks for return
   const [returnRemarks, setReturnRemarks] = useState("");
+  // NEW: lost handling
+  const [lostSubmitting, setLostSubmitting] = useState(false);
+  // const [lostRemarks, setLostRemarks] = useState(""); // Removed lost remarks state
 
   const [search, setSearch] = useState("");
 
@@ -204,7 +207,7 @@ const LibrarianBorrowPage = () => {
     const baseFine = calcFineForBorrow(tx.BorrowID, dueDates);
     const data = {};
     (tx.items || []).forEach(item => {
-      data[item.BorrowedItemID] = { condition: "Good", fine: baseFine, finePaid: false };
+      data[item.BorrowedItemID] = { condition: "Good", fine: baseFine, finePaid: false, lost: false };
     });
     setReturnData(data);
     // reset remarks when opening
@@ -212,27 +215,79 @@ const LibrarianBorrowPage = () => {
     setReturnModalOpen(true);
   };
   const handleReturnChange = (itemId, field, value) =>
-    setReturnData(prev => ({ ...prev, [itemId]: { ...prev[itemId], [field]: value } }));
+    setReturnData(prev => {
+      const nextItem = { ...prev[itemId], [field]: value };
+      if (field === 'lost') {
+        if (value) {
+          nextItem.condition = 'Lost';
+        } else if (nextItem.condition === 'Lost') {
+          nextItem.condition = 'Good';
+        }
+      }
+      return { ...prev, [itemId]: nextItem };
+    });
   const handleReturnSubmit = async () => {
     if (!returnTx) return;
     setActionLoading(true);
     try {
-      const items = (returnTx.items || []).map(item => ({
-        borrowedItemId: item.BorrowedItemID,
-        returnCondition: returnData[item.BorrowedItemID].condition,
-        fine: parseFloat(returnData[item.BorrowedItemID].fine) || 0,
-        finePaid: returnData[item.BorrowedItemID].finePaid ? "Yes" : "No",
-      }));
-      await axios.post(`${API_BASE}/return`, {
-        borrowId: returnTx.BorrowID,
-        returnDate: new Date().toISOString().slice(0, 10),
-        items,
-        remarks: returnRemarks || undefined
-      });
-      logAudit('BORROW_RETURN', 'Borrow', returnTx.BorrowID, { items: items.length }); // NEW
+      const allItems = (returnTx.items || []);
+      const lostItems = allItems.filter(i => returnData[i.BorrowedItemID]?.lost);
+      const keptItems = allItems.filter(i => !returnData[i.BorrowedItemID]?.lost);
+
+      if (lostItems.length) {
+        await axios.post(`${API_BASE}/lost`, {
+          borrowId: returnTx.BorrowID,
+          items: lostItems.map(i => ({
+            borrowedItemId: i.BorrowedItemID,
+            fine: parseFloat(returnData[i.BorrowedItemID]?.fine) || 0,
+            finePaid: returnData[i.BorrowedItemID]?.finePaid ? 'Yes' : 'No'
+          })),
+          remarks: returnRemarks || undefined
+        });
+      }
+
+      if (keptItems.length) {
+        const items = keptItems.map(item => ({
+          borrowedItemId: item.BorrowedItemID,
+          returnCondition: returnData[item.BorrowedItemID].condition,
+          fine: parseFloat(returnData[item.BorrowedItemID].fine) || 0,
+          finePaid: returnData[item.BorrowedItemID].finePaid ? "Yes" : "No",
+        }));
+        await axios.post(`${API_BASE}/return`, {
+          borrowId: returnTx.BorrowID,
+          returnDate: new Date().toISOString().slice(0, 10),
+          items,
+          remarks: returnRemarks || undefined
+        });
+      }
+      logAudit('BORROW_RETURN', 'Borrow', returnTx.BorrowID, { lostItems: lostItems.length, returnedItems: keptItems.length });
       setReturnModalOpen(false);
       fetchTransactions();
     } finally { setActionLoading(false); }
+  };
+
+  // NEW: Mark Lost (books only)
+  const markLost = async (tx) => {
+    if (!tx) return;
+    // Only allow marking lost on Approved transactions
+    if (tx.ApprovalStatus !== 'Approved') return;
+    setLostSubmitting(true);
+    try {
+      const items = (tx.items || [])
+        .filter(i => i.ItemType === 'Book' && i.BookCopyID)
+        .map(i => ({ borrowedItemId: i.BorrowedItemID }));
+      if (!items.length) return;
+      await axios.post(`${API_BASE}/lost`, {
+        borrowId: tx.BorrowID,
+        items,
+        remarks: lostRemarks || undefined
+      });
+      logAudit('BORROW_MARK_LOST', 'Borrow', tx.BorrowID, { items: items.length });
+      setLostRemarks("");
+      await fetchTransactions();
+    } finally {
+      setLostSubmitting(false);
+    }
   };
 
   // Derived Status + Chip
@@ -297,6 +352,55 @@ const LibrarianBorrowPage = () => {
         dividers
         sx={{ display: 'flex', flexDirection: 'column', gap: 2, bgcolor: theme.palette.background.default }}
       >
+        {/* Quick fill tools */}
+        <Paper variant="outlined" sx={{ p: 1.25, borderRadius: 1, bgcolor: 'background.paper' }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'stretch', sm: 'center' }}>
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+              <InputLabel>Set all to</InputLabel>
+              <Select label="Set all to" onChange={(e) => {
+                const v = e.target.value;
+                setReturnData(prev => {
+                  const next = { ...prev };
+                  Object.keys(next).forEach(k => { next[k] = { ...next[k], condition: v }; });
+                  return next;
+                });
+              }} value="">
+                <MenuItem value=""><em>Choose…</em></MenuItem>
+                {returnConditions.map(o => <MenuItem key={o} value={o}>{o}</MenuItem>)}
+              </Select>
+            </FormControl>
+            <TextField size="small" type="number" label="Set fine for all" inputProps={{ min: 0, step: '0.01' }}
+              onChange={(e) => {
+                const v = e.target.value;
+                setReturnData(prev => {
+                  const next = { ...prev };
+                  Object.keys(next).forEach(k => { next[k] = { ...next[k], fine: v }; });
+                  return next;
+                });
+              }} sx={{ maxWidth: 180 }} />
+            <FormControlLabel sx={{ m: 0 }} control={<Checkbox onChange={(e) => {
+              const checked = e.target.checked;
+              setReturnData(prev => {
+                const next = { ...prev };
+                Object.keys(next).forEach(k => { next[k] = { ...next[k], finePaid: checked }; });
+                return next;
+              });
+            }} />} label="Mark all fine paid" />
+            <Button size="small" variant="outlined" onClick={() => {
+              // auto-calc fines for all
+              const dueRaw = dueDates[returnTx.BorrowID];
+              const today = startOfDay(new Date());
+              const due = dueRaw ? startOfDay(new Date(dueRaw)) : null;
+              const days = due ? Math.max(0, Math.floor((today - due) / 86400000)) : 0;
+              const autoFine = (days * finePerDay).toFixed(2);
+              setReturnData(prev => {
+                const next = { ...prev };
+                Object.keys(next).forEach(k => { next[k] = { ...next[k], fine: autoFine }; });
+                return next;
+              });
+            }}>Auto-calc fines</Button>
+          </Stack>
+        </Paper>
         {(returnTx.items || []).map(item => {
           const dueRaw = dueDates[returnTx.BorrowID];
           const today = startOfDay(new Date());
@@ -328,11 +432,36 @@ const LibrarianBorrowPage = () => {
                 >
                   {item.ItemType === "Book" ? <Book fontSize="small" /> : <Article fontSize="small" />}
                 </Avatar>
+                {/* Summary */}
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                  <Chip label={`Items: ${(returnTx.items || []).length}`} size="small" />
+                  {(() => {
+                    const dueRaw = dueDates[returnTx.BorrowID];
+                    const today = startOfDay(new Date());
+                    const due = dueRaw ? startOfDay(new Date(dueRaw)) : null;
+                    const days = due ? Math.max(0, Math.floor((today - due) / 86400000)) : 0;
+                    return <Chip label={`Overdue: ${days} day(s)`} color={days > 0 ? 'error' : 'default'} size="small" />
+                  })()}
+                  {(() => {
+                    const total = Object.values(returnData).reduce((sum, v) => sum + (parseFloat(v?.fine) || 0), 0);
+                    return <Chip label={`Total fine: ₱${total.toFixed(2)}`} color={total > 0 ? 'warning' : 'default'} size="small" />
+                  })()}
+                </Stack>
                 <Typography fontWeight={700} fontSize={13}>
                   {item.ItemType === "Book"
                     ? `Book Copy #${item.BookCopyID}`
                     : `Doc Storage #${item.DocumentStorageID}`}
                 </Typography>
+                {item.ItemType === "Book" && bookDetails[item.BookCopyID]?.Title && (
+                  <Typography variant="caption" color="text.secondary">
+                    {bookDetails[item.BookCopyID].Title}
+                  </Typography>
+                )}
+                {item.ItemType === "Document" && docDetails[item.DocumentStorageID]?.Title && (
+                  <Typography variant="caption" color="text.secondary">
+                    {docDetails[item.DocumentStorageID].Title}
+                  </Typography>
+                )}
               </Stack>
               <FormControl fullWidth size="small">
                 <InputLabel>Return Condition</InputLabel>
@@ -340,9 +469,34 @@ const LibrarianBorrowPage = () => {
                   label="Return Condition"
                   value={returnData[item.BorrowedItemID]?.condition || "Good"}
                   onChange={e => handleReturnChange(item.BorrowedItemID, "condition", e.target.value)}
+                  disabled={!!returnData[item.BorrowedItemID]?.lost}
                 >
                   {returnConditions.map(opt => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
                 </Select>
+                <FormControlLabel
+                  sx={{ m: 0, mt: 0.5 }}
+                  control={<Checkbox checked={!!returnData[item.BorrowedItemID]?.lost}
+                    onChange={e => handleReturnChange(item.BorrowedItemID, 'lost', e.target.checked)} />}
+                  label="Mark this item Lost"
+                />
+                <Button
+                  onClick={() => {
+                    const dueRaw = dueDates[returnTx.BorrowID];
+                    const today = startOfDay(new Date());
+                    const due = dueRaw ? startOfDay(new Date(dueRaw)) : null;
+                    const days = due ? Math.max(0, Math.floor((today - due) / 86400000)) : 0;
+                    const autoFine = (days * finePerDay).toFixed(2);
+                    const filled = {};
+                    (returnTx.items || []).forEach(i => { filled[i.BorrowedItemID] = { condition: 'Good', fine: autoFine, finePaid: false }; });
+                    setReturnData(filled);
+                    setTimeout(() => handleReturnSubmit(), 0);
+                  }}
+                  variant="outlined"
+                  size="small"
+                  sx={{ borderRadius: 1 }}
+                >
+                  Quick return
+                </Button>
               </FormControl>
               <TextField
                 label="Fine"
@@ -830,6 +984,7 @@ const LibrarianBorrowPage = () => {
                   <TableCell width={105}>Borrow Date</TableCell>
                   <TableCell width={105}>Due Date</TableCell>
                   <TableCell>Borrower</TableCell>
+                  <TableCell width={90} align="center">Items</TableCell>
                   <TableCell>Purpose</TableCell>
                   <TableCell width={260} align="center">Actions</TableCell>
                 </TableRow>
@@ -868,6 +1023,9 @@ const LibrarianBorrowPage = () => {
                           {getBorrowerInfo(tx.BorrowerID) || tx.BorrowerID}
                         </Typography>
                       </TableCell>
+                      <TableCell align="center">
+                        <Chip size="small" label={(tx.items||[]).length} sx={{ borderRadius: 0.75 }} />
+                      </TableCell>
                       <TableCell>
                         <Typography fontSize={12} noWrap maxWidth={180}>
                           {tx.Purpose || '—'}
@@ -889,19 +1047,10 @@ const LibrarianBorrowPage = () => {
 
                           {tx.ApprovalStatus === "Pending" && (
                             <>
-                              <Tooltip title="Approve">
-                                <IconButton
-                                  size="small"
-                                  color="success"
-                                  onClick={() => handleApprove(tx)}
-                                  sx={{
-                                    border: `1px solid ${alpha(theme.palette.success.main, .5)}`,
-                                    borderRadius: 0.75
-                                  }}
-                                >
-                                  <CheckCircle fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
+                              <Button size="small" variant="outlined" color="success" startIcon={<CheckCircle />}
+                                onClick={() => handleApprove(tx)} sx={{ borderRadius: 0.75, fontWeight: 600 }}>
+                                Approve
+                              </Button>
                               <Tooltip title="Reject">
                                 <IconButton
                                   size="small"
@@ -944,6 +1093,8 @@ const LibrarianBorrowPage = () => {
                               </Button>
                             </Tooltip>
                           )}
+
+                          {/* Row-level Mark Lost removed: Lost is handled only inside the Return modal per item. */}
 
                           {tx.ReturnStatus === "Returned" && (
                             <Chip

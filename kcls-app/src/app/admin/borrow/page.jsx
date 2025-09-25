@@ -4,7 +4,7 @@ import {
   Box, Paper, Typography, TextField, InputAdornment, IconButton, Tooltip, Chip,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Stack, Button,
   Dialog, DialogTitle, DialogContent, DialogActions, Avatar, Select, MenuItem, FormControl, InputLabel,
-  Checkbox, FormControlLabel, CircularProgress
+  Checkbox, FormControlLabel, CircularProgress, ButtonGroup, Menu
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import { useSystemSettings } from '../../../contexts/SystemSettingsContext.jsx'; // added
@@ -14,7 +14,7 @@ import {
 import { logAudit } from '../../../utils/auditLogger.js'; // NEW
 
 const API_BASE = import.meta.env.VITE_API_BASE;
-const returnConditions = ["Good", "Slightly Damaged", "Heavily Damaged", "Lost"];
+const returnConditions = ['Good', 'Fair', 'Average', 'Poor', 'Bad', 'Lost'];
 // const FINE_PER_DAY = parseFloat(import.meta.env.VITE_FINE) || 0; // remove this line
 
 const DocumentApprovalPage = () => {
@@ -29,6 +29,7 @@ const DocumentApprovalPage = () => {
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All"); // NEW: status filter
 
   const [selectedTx, setSelectedTx] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -38,6 +39,8 @@ const DocumentApprovalPage = () => {
   const [returnData, setReturnData] = useState({});
   // NEW: remarks for return
   const [returnRemarks, setReturnRemarks] = useState("");
+  // NEW: lost handling state
+  // Row-level lost removed; use per-item lost inside the return modal only
 
   // Only fetch transactions on mount
   useEffect(() => { fetchTransactions(); }, []);
@@ -215,6 +218,9 @@ const DocumentApprovalPage = () => {
   const [approveDlgOpen, setApproveDlgOpen] = useState(false);
   const [approveDue, setApproveDue] = useState("");
   const [approveTarget, setApproveTarget] = useState(null);
+  // NEW: quick approve menu
+  const [approveMenuAnchor, setApproveMenuAnchor] = useState(null);
+  const [approveMenuTx, setApproveMenuTx] = useState(null);
 
   const openApprove = (tx) => {
     if (isDigitalOnlyTx(tx)) {
@@ -239,6 +245,28 @@ const DocumentApprovalPage = () => {
       setApproveDue("");
       await fetchTransactions();
     } finally { setActionLoading(false); }
+  };
+
+  // NEW: Quick approve helpers (7/14/30 days)
+  const addDays = (n) => {
+    const d = new Date();
+    d.setDate(d.getDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
+  const openApproveMenu = (e, tx) => { setApproveMenuAnchor(e.currentTarget); setApproveMenuTx(tx); };
+  const closeApproveMenu = () => { setApproveMenuAnchor(null); setApproveMenuTx(null); };
+  const quickApprove = async (tx, days) => {
+    setActionLoading(true);
+    try {
+      if (isDigitalOnlyTx(tx)) {
+        await axios.put(`${API_BASE}/borrow/${tx.BorrowID}/approve?role=admin`, { returnDate: addDays(days) });
+        logAudit('BORROW_APPROVE', 'Borrow', tx.BorrowID, { role: 'admin', mode: 'digital', days });
+      } else {
+        await axios.put(`${API_BASE}/borrow/${tx.BorrowID}/approve?role=admin`);
+        logAudit('BORROW_APPROVE', 'Borrow', tx.BorrowID, { role: 'admin', mode: 'physical/mixed' });
+      }
+      await fetchTransactions();
+    } finally { setActionLoading(false); closeApproveMenu(); }
   };
 
   const approveTx = async (tx) => {
@@ -269,14 +297,14 @@ const DocumentApprovalPage = () => {
   // Add: search-based filter
   const filtered = useMemo(() => {
     const q = (search || "").trim().toLowerCase();
-    if (!q) return transactions;
-    return transactions.filter((tx) => {
+    const bySearch = (tx) => {
       const borrower = (getBorrowerInfo(tx.BorrowerID) || "").toLowerCase();
       const purpose = (tx.Purpose || "").toLowerCase();
       const idStr = String(tx.BorrowID || "");
       const borrowDate = (tx.BorrowDate || "").toLowerCase();
       const due = (dueDates[tx.BorrowID] || "").toLowerCase();
       const statusLabel = (statusMap[tx.BorrowID]?.label || "").toLowerCase();
+      if (!q) return true;
       return (
         borrower.includes(q) ||
         purpose.includes(q) ||
@@ -285,8 +313,15 @@ const DocumentApprovalPage = () => {
         due.includes(q) ||
         statusLabel.includes(q)
       );
-    });
-  }, [transactions, search, borrowerNameById, dueDates, statusMap]);
+    };
+    const byStatus = (tx) => {
+      const label = statusMap[tx.BorrowID]?.label || 'Unknown';
+      if (statusFilter === 'All') return true;
+      if (statusFilter === 'Overdue') return label.startsWith('Overdue') || label === 'Expired';
+      return label === statusFilter || (statusFilter === 'Approved' && label === 'Active (Digital)');
+    };
+    return transactions.filter(tx => bySearch(tx) && byStatus(tx));
+  }, [transactions, search, borrowerNameById, dueDates, statusMap, statusFilter]);
 
   // Add: fine helpers used by return modal
   const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -449,35 +484,86 @@ const DocumentApprovalPage = () => {
     const baseFine = calcFineForBorrow(tx.BorrowID); // uses context-backed fine
     const data = {};
     (tx.items || []).forEach(i => {
-      data[i.BorrowedItemID] = { condition: "Good", fine: baseFine, finePaid: false };
+      data[i.BorrowedItemID] = { condition: "Good", fine: baseFine, finePaid: false, lost: false };
     });
     setReturnData(data);
     setReturnRemarks("");
     setReturnModalOpen(true);
   };
   const handleReturnChange = (id, field, value) =>
-    setReturnData(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
+    setReturnData(prev => {
+      const nextItem = { ...prev[id], [field]: value };
+      if (field === 'lost') {
+        if (value) {
+          nextItem.condition = 'Lost';
+        } else if (nextItem.condition === 'Lost') {
+          nextItem.condition = 'Good';
+        }
+      }
+      return { ...prev, [id]: nextItem };
+    });
   const submitReturn = async () => {
     if (!returnTx) return;
     setActionLoading(true);
     try {
-      const items = (returnTx.items || []).map(i => ({
-        borrowedItemId: i.BorrowedItemID,
-        returnCondition: returnData[i.BorrowedItemID]?.condition || "Good",
-        fine: parseFloat(returnData[i.BorrowedItemID]?.fine) || 0,
-        finePaid: returnData[i.BorrowedItemID]?.finePaid ? "Yes" : "No"
-      }));
-      await axios.post(`${API_BASE}/return`, {
-        borrowId: returnTx.BorrowID,
-        returnDate: new Date().toISOString().slice(0, 10),
-        items,
-        // include remarks
-        remarks: returnRemarks || undefined
-      });
+      const allItems = (returnTx.items || []);
+      const lostItems = allItems.filter(i => returnData[i.BorrowedItemID]?.lost);
+      const keptItems = allItems.filter(i => !returnData[i.BorrowedItemID]?.lost);
+
+      // First, post lost items to /lost (with fines)
+      if (lostItems.length) {
+        await axios.post(`${API_BASE}/lost`, {
+          borrowId: returnTx.BorrowID,
+          items: lostItems.map(i => ({
+            borrowedItemId: i.BorrowedItemID,
+            fine: parseFloat(returnData[i.BorrowedItemID]?.fine) || 0,
+            finePaid: returnData[i.BorrowedItemID]?.finePaid ? 'Yes' : 'No'
+          })),
+          remarks: returnRemarks || undefined
+        });
+      }
+
+      // Then, submit remaining returns to /return
+      if (keptItems.length) {
+        const items = keptItems.map(i => ({
+          borrowedItemId: i.BorrowedItemID,
+          returnCondition: returnData[i.BorrowedItemID]?.condition || 'Good',
+          fine: parseFloat(returnData[i.BorrowedItemID]?.fine) || 0,
+          finePaid: returnData[i.BorrowedItemID]?.finePaid ? 'Yes' : 'No'
+        }));
+        await axios.post(`${API_BASE}/return`, {
+          borrowId: returnTx.BorrowID,
+          returnDate: new Date().toISOString().slice(0, 10),
+          items,
+          remarks: returnRemarks || undefined
+        });
+      }
       logAudit('BORROW_RETURN', 'Borrow', returnTx.BorrowID, { items: items.length }); // NEW
       setReturnModalOpen(false);
       await fetchTransactions();
     } finally { setActionLoading(false); }
+  };
+
+  // NEW: mark selected transaction's physical items as Lost
+  const markLost = async (tx) => {
+    if (!tx) return;
+    // Guard: only allow marking lost for Approved transactions
+    if (tx.ApprovalStatus !== 'Approved') return;
+    setLostSubmitting(true);
+    try {
+      const items = (tx.items || [])
+        .filter(i => i.ItemType === 'Document' && i.DocumentStorageID) // physical only
+        .map(i => ({ borrowedItemId: i.BorrowedItemID }));
+      if (!items.length) return; // nothing to mark
+      await axios.post(`${API_BASE}/lost`, {
+        borrowId: tx.BorrowID,
+        items,
+        remarks: lostRemarks || undefined
+      });
+      logAudit('BORROW_MARK_LOST', 'Borrow', tx.BorrowID, { items: items.length });
+      setLostRemarks("");
+      await fetchTransactions();
+    } finally { setLostSubmitting(false); }
   };
 
   const renderReturnModal = () => !returnTx ? null : (
@@ -487,6 +573,55 @@ const DocumentApprovalPage = () => {
         Return Items • Borrow #{returnTx.BorrowID}
       </DialogTitle>
       <DialogContent dividers sx={{ display: 'flex', flexDirection: 'column', gap: 2, bgcolor: 'background.default' }}>
+        {/* Quick fill tools */}
+        <Paper variant="outlined" sx={{ p: 1.25, borderRadius: 1, bgcolor: 'background.paper' }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'stretch', sm: 'center' }}>
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+              <InputLabel>Set all to</InputLabel>
+              <Select label="Set all to" onChange={(e) => {
+                const v = e.target.value;
+                setReturnData(prev => {
+                  const next = { ...prev };
+                  Object.keys(next).forEach(k => { next[k] = { ...next[k], condition: v }; });
+                  return next;
+                });
+              }} value="">
+                <MenuItem value=""><em>Choose…</em></MenuItem>
+                {returnConditions.map(o => <MenuItem key={o} value={o}>{o}</MenuItem>)}
+              </Select>
+            </FormControl>
+            <TextField size="small" type="number" label="Set fine for all" inputProps={{ min: 0, step: '0.01' }}
+              onChange={(e) => {
+                const v = e.target.value;
+                setReturnData(prev => {
+                  const next = { ...prev };
+                  Object.keys(next).forEach(k => { next[k] = { ...next[k], fine: v }; });
+                  return next;
+                });
+              }} sx={{ maxWidth: 180 }} />
+            <FormControlLabel sx={{ m: 0 }} control={<Checkbox onChange={(e) => {
+              const checked = e.target.checked;
+              setReturnData(prev => {
+                const next = { ...prev };
+                Object.keys(next).forEach(k => { next[k] = { ...next[k], finePaid: checked }; });
+                return next;
+              });
+            }} />} label="Mark all fine paid" />
+            <Button size="small" variant="outlined" onClick={() => {
+              // auto-calc fines for all
+              const dueRaw = dueDates[returnTx.BorrowID];
+              const today = startOfDay(new Date());
+              const due = dueRaw ? startOfDay(new Date(dueRaw)) : null;
+              const days = due ? Math.max(0, Math.floor((today - due) / 86400000)) : 0;
+              const autoFine = (days * finePerDay).toFixed(2);
+              setReturnData(prev => {
+                const next = { ...prev };
+                Object.keys(next).forEach(k => { next[k] = { ...next[k], fine: autoFine }; });
+                return next;
+              });
+            }}>Auto-calc fines</Button>
+          </Stack>
+        </Paper>
         {(returnTx.items || []).map(item => {
           const dueRaw = dueDates[returnTx.BorrowID];
           const today = startOfDay(new Date());
@@ -499,7 +634,14 @@ const DocumentApprovalPage = () => {
                 <Avatar sx={{ bgcolor: theme.palette.secondary.main, width: 36, height: 36, borderRadius: 1 }}>
                   <Article fontSize="small" />
                 </Avatar>
-                <Typography fontWeight={700} fontSize={13}>Doc Storage #{item.DocumentStorageID}</Typography>
+                <Box>
+                  <Typography fontWeight={700} fontSize={13}>Doc Storage #{item.DocumentStorageID}</Typography>
+                  {docDetails[item.DocumentStorageID]?.Title && (
+                    <Typography variant="caption" color="text.secondary">
+                      {docDetails[item.DocumentStorageID].Title}
+                    </Typography>
+                  )}
+                </Box>
               </Stack>
               <FormControl fullWidth size="small" sx={{ mt: 1 }}>
                 <InputLabel>Return Condition</InputLabel>
@@ -507,10 +649,17 @@ const DocumentApprovalPage = () => {
                   label="Return Condition"
                   value={returnData[item.BorrowedItemID]?.condition || "Good"}
                   onChange={e => handleReturnChange(item.BorrowedItemID, "condition", e.target.value)}
+                  disabled={!!returnData[item.BorrowedItemID]?.lost}
                 >
                   {returnConditions.map(o => <MenuItem key={o} value={o}>{o}</MenuItem>)}
                 </Select>
               </FormControl>
+              <FormControlLabel
+                sx={{ m: 0, mt: 0.5 }}
+                control={<Checkbox checked={!!returnData[item.BorrowedItemID]?.lost}
+                  onChange={e => handleReturnChange(item.BorrowedItemID, 'lost', e.target.checked)} />}
+                label="Mark this item Lost"
+              />
               <TextField
                 label="Fine"
                 type="number"
@@ -532,6 +681,21 @@ const DocumentApprovalPage = () => {
             </Box>
           );
         })}
+        {/* Summary */}
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+          <Chip label={`Items: ${(returnTx.items || []).length}`} size="small" />
+          {(() => {
+            const dueRaw = dueDates[returnTx.BorrowID];
+            const today = startOfDay(new Date());
+            const due = dueRaw ? startOfDay(new Date(dueRaw)) : null;
+            const days = due ? Math.max(0, Math.floor((today - due) / 86400000)) : 0;
+            return <Chip label={`Overdue: ${days} day(s)`} color={days > 0 ? 'error' : 'default'} size="small" />
+          })()}
+          {(() => {
+            const total = Object.values(returnData).reduce((sum, v) => sum + (parseFloat(v?.fine) || 0), 0);
+            return <Chip label={`Total fine: ₱${total.toFixed(2)}`} color={total > 0 ? 'warning' : 'default'} size="small" />
+          })()}
+        </Stack>
         {/* Remarks at bottom */}
         <TextField
           label="Remarks"
@@ -544,7 +708,7 @@ const DocumentApprovalPage = () => {
         />
       </DialogContent>
       <DialogActions sx={{ borderTop: `2px solid ${theme.palette.divider}`, py: 1 }}>
-        <Button onClick={() => setReturnModalOpen(false)} variant="outlined" size="small" sx={{ borderRadius: 1 }}>Cancel</Button>
+        <Button onClick={() => setReturnModalOpen(false)} variant="outlined" size="small" sx={{ borderRadius: 1, mr: 'auto' }}>Cancel</Button>
         <Button onClick={submitReturn} variant="contained" size="small" disabled={actionLoading} sx={{ borderRadius: 1, fontWeight: 700 }}>
           {actionLoading ? "Processing..." : "Submit Return"}
         </Button>
@@ -554,11 +718,18 @@ const DocumentApprovalPage = () => {
 
   return (
     <Box p={3} sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
-      <Paper elevation={0} sx={{ mb: 3, p: 2, display: 'flex', gap: 2, alignItems: 'center', border: `2px solid ${theme.palette.divider}`, borderRadius: 1 }}>
+      <Paper elevation={0} sx={{ mb: 3, p: 2, display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center', border: `2px solid ${theme.palette.divider}`, borderRadius: 1 }}>
         <Box>
           <Typography variant="h6" fontWeight={800} letterSpacing={.5}>Document Approval</Typography>
           <Typography variant="caption" color="text.secondary" fontWeight={600}>Approve, reject, and manage document borrowings</Typography>
         </Box>
+        <Stack direction="row" spacing={0.5} sx={{ ml: { xs: 0, lg: 2 } }}>
+          {["All","Pending Approval","Approved","Borrowed","Overdue","Returned","Rejected"].map(lbl => (
+            <Chip key={lbl} label={lbl} onClick={() => setStatusFilter(lbl)} size="small"
+              color={statusFilter===lbl?"primary":undefined} variant={statusFilter===lbl?"filled":"outlined"}
+              sx={{ borderRadius: 1 }} />
+          ))}
+        </Stack>
         <TextField
           size="small"
           placeholder="Search borrower / purpose / dates / ID"
@@ -598,6 +769,7 @@ const DocumentApprovalPage = () => {
                   <TableCell width={105}>Borrow Date</TableCell>
                   <TableCell width={105}>Due Date</TableCell>
                   <TableCell>Borrower</TableCell>
+                  <TableCell width={90} align="center">Items</TableCell>
                   <TableCell>Purpose</TableCell>
                   <TableCell width={260} align="center">Actions</TableCell>
                 </TableRow>
@@ -617,6 +789,10 @@ const DocumentApprovalPage = () => {
                         </Typography>
                       </TableCell>
                       <TableCell><Typography fontSize={13} fontWeight={600} noWrap>{getBorrowerInfo(tx.BorrowerID)}</Typography></TableCell>
+                      <TableCell align="center">
+                        <Chip size="small" label={(tx.items||[]).length} sx={{ borderRadius: 0.75 }} />
+                        {digitalOnly && <Chip size="small" label="Digital" color="info" variant="outlined" sx={{ ml: 0.5, borderRadius: 0.75 }} />}
+                      </TableCell>
                       <TableCell><Typography fontSize={12} noWrap maxWidth={180}>{tx.Purpose || '—'}</Typography></TableCell>
                       <TableCell align="center">
                         <Stack direction="row" spacing={0.75} justifyContent="center" flexWrap="wrap">
@@ -630,12 +806,16 @@ const DocumentApprovalPage = () => {
                           {/* Pending: allow Approve/Reject (digital or physical) */}
                           {tx.ApprovalStatus === "Pending" && (
                             <>
-                              <Tooltip title="Approve">
-                                <IconButton size="small" color="success" onClick={() => openApprove(tx)}
-                                  sx={{ border: `1px solid ${alpha(theme.palette.success.main, .5)}`, borderRadius: 0.75 }}>
-                                  <CheckCircle fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
+                              <ButtonGroup variant="outlined" size="small" sx={{ borderRadius: 1 }}>
+                                <Button color="success" onClick={() => openApprove(tx)} startIcon={<CheckCircle />}
+                                  sx={{ borderRadius: 0.75, fontWeight: 600 }}>Approve</Button>
+                                <Button onClick={(e) => openApproveMenu(e, tx)} sx={{ minWidth: 32 }}>▼</Button>
+                              </ButtonGroup>
+                              <Menu anchorEl={approveMenuAnchor} open={!!approveMenuAnchor && approveMenuTx?.BorrowID===tx.BorrowID} onClose={closeApproveMenu}>
+                                <MenuItem onClick={() => quickApprove(tx, 7)}>Approve +7 days</MenuItem>
+                                <MenuItem onClick={() => quickApprove(tx, 14)}>Approve +14 days</MenuItem>
+                                <MenuItem onClick={() => quickApprove(tx, 30)}>Approve +30 days</MenuItem>
+                              </Menu>
                               <Tooltip title="Reject">
                                 <IconButton size="small" color="error" onClick={() => rejectTx(tx)}
                                   sx={{ border: `1px solid ${alpha(theme.palette.error.main, .5)}`, borderRadius: 0.75 }}>
@@ -663,6 +843,7 @@ const DocumentApprovalPage = () => {
                               </Button>
                             </Tooltip>
                           )}
+                          {/* Row-level Mark Lost removed; use per-item Lost inside the Return modal */}
 
                           {tx.ReturnStatus === "Returned" && !digitalOnly && (
                             <Chip size="small" label="Completed" color="success" icon={<DoneAll fontSize="small" />}

@@ -4,15 +4,17 @@ import {
   Box, Typography, Button, TextField, Dialog, DialogTitle, DialogContent, DialogActions,
   Snackbar, Alert, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper,
   IconButton, Tooltip, useTheme, Chip, Stack, CircularProgress, InputAdornment, Divider,
-  Skeleton
+  Skeleton, MenuItem, LinearProgress
 } from "@mui/material";
-import { Add, Edit, Storage, Book, Article, Search, Visibility, Refresh } from "@mui/icons-material";
+import { Add, Edit, Storage, Book, Article, Search, Visibility, Refresh, Delete as DeleteIcon, WarningAmber } from "@mui/icons-material";
 import { alpha } from "@mui/material/styles";
 
-const initialForm = { name: "" };
+const initialForm = { name: "", capacity: "" };
 
 const StorageManagementPage = () => {
   const theme = useTheme(), API_BASE = import.meta.env.VITE_API_BASE;
+  const conditionOptions = ["Good", "Fair", "Average", "Poor", "Bad", "Lost"]; // standardized
+  const availabilityOptions = ["Available", "Borrowed", "Reserved", "Lost"]; // unified
   const [storages, setStorages] = useState([]);
   const [open, setOpen] = useState(false);
   const [isEdit, setIsEdit] = useState(false);
@@ -27,6 +29,8 @@ const StorageManagementPage = () => {
   const [openEditInv, setOpenEditInv] = useState(false);
   const [viewAllOpen, setViewAllOpen] = useState(false);
   const [viewAllItems, setViewAllItems] = useState([]);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   useEffect(() => { fetchStorages(); fetchDocsBooks(); }, []);
 
@@ -71,19 +75,28 @@ const StorageManagementPage = () => {
   };
 
   const handleOpen = () => { setForm(initialForm); setIsEdit(false); setOpen(true); };
-  const handleEdit = (storage) => { setForm({ name: storage.Name }); setEditId(storage.ID); setIsEdit(true); setOpen(true); };
+  const handleEdit = (storage) => { setForm({ name: storage.Name || "", capacity: String(storage.Capacity ?? "") }); setEditId(storage.ID); setIsEdit(true); setOpen(true); };
   const handleClose = () => { setOpen(false); setForm(initialForm); setIsEdit(false); setEditId(null); };
   const handleChange = e => setForm({ ...form, [e.target.name]: e.target.value });
 
   const handleSave = async () => {
     const name = form.name?.trim();
+    const capacityNum = form.capacity === "" ? 0 : Number(form.capacity);
     if (!name) return setToast({ open: true, message: "Name is required.", severity: "error" });
+    if (Number.isNaN(capacityNum) || capacityNum < 0) {
+      return setToast({ open: true, message: "Capacity must be a non-negative number.", severity: "error" });
+    }
+    // duplicate name guard (case-insensitive, excluding current editing id)
+    const dup = storages.some(s => s.Name?.toLowerCase().trim() === name.toLowerCase() && (!isEdit || s.ID !== editId));
+    if (dup) {
+      return setToast({ open: true, message: "A storage with this name already exists.", severity: "error" });
+    }
     try {
       if (isEdit) {
-        await axios.put(`${API_BASE}/storages/${editId}`, { name });
+        await axios.put(`${API_BASE}/storages/${editId}`, { name, capacity: capacityNum });
         setToast({ open: true, message: "Storage updated.", severity: "success" });
       } else {
-        await axios.post(`${API_BASE}/storages`, { name });
+        await axios.post(`${API_BASE}/storages`, { name, capacity: capacityNum });
         setToast({ open: true, message: "Storage added.", severity: "success" });
       }
       fetchStorages(); handleClose();
@@ -92,28 +105,44 @@ const StorageManagementPage = () => {
     }
   };
 
-  const handleEditInventory = (item, inv) => { setEditItem(item); setEditInv({ ...inv }); setOpenEditInv(true); };
+  const handleEditInventory = (item, inv) => {
+    // ensure defaults for a straightforward edit
+    const normalized = {
+      ...inv,
+      location: inv.StorageLocation != null ? String(inv.StorageLocation) : (inv.location != null ? String(inv.location) : ""),
+      availability: inv.availability || inv.Availability || "Available",
+      condition: inv.condition || inv.Condition || "Good"
+    };
+    setEditItem(item);
+    setEditInv(normalized);
+    setOpenEditInv(true);
+  };
   const handleSaveInventory = async () => {
     if (!editInv) return;
+    if (!editInv.location) {
+      return setToast({ open: true, message: "Location is required.", severity: "error" });
+    }
     try {
+      const locId = parseInt(editInv.location, 10);
       if (editItem.type === "Book") {
         await axios.put(
           `${API_BASE}/books/inventory/${editItem.id}/${editInv.Copy_ID || editInv.id || editInv.ID}`,
           {
             accessionNumber: editInv.accessionNumber,
-            availability: editInv.availability,
+            availability: editInv.availability || "Available",
             physicalStatus: editInv.physicalStatus ?? "",
-            condition: editInv.condition,
-            location: editInv.location
+            condition: editInv.condition || "Good",
+            location: Number.isNaN(locId) ? editInv.location : locId
           }
         );
       } else {
+        const docInvKey = editInv.Storage_ID || editInv.storageId || (Number.isNaN(locId) ? editInv.location : locId);
         await axios.put(
-          `${API_BASE}/documents/inventory/${editItem.id}/${editInv.Storage_ID || editInv.storageId || editInv.location}`,
+          `${API_BASE}/documents/inventory/${editItem.id}/${docInvKey}`,
           {
-            availability: editInv.availability,
-            condition: editInv.condition,
-            location: editInv.location
+            availability: editInv.availability || "Available",
+            condition: editInv.condition || "Good",
+            location: Number.isNaN(locId) ? editInv.location : locId
           }
         );
       }
@@ -138,6 +167,28 @@ const StorageManagementPage = () => {
         inv
       }))
     ), [docsBooks]);
+
+  // Simple dashboard stats
+  const { totalItems, booksCount, docsCount, conditionCounts } = useMemo(() => {
+    const total = allItems.length;
+    const books = allItems.filter(i => i.type === 'Book').length;
+    const docs = allItems.filter(i => i.type === 'Document').length;
+    const conds = { Good: 0, Fair: 0, Average: 0, Poor: 0, Bad: 0, Unknown: 0 };
+    for (const i of allItems) {
+      const c = (i.condition || '').trim();
+      if (conds.hasOwnProperty(c)) conds[c] += 1; else conds.Unknown += 1;
+    }
+    return { totalItems: total, booksCount: books, docsCount: docs, conditionCounts: conds };
+  }, [allItems]);
+
+  const capacityUsage = useMemo(() => {
+    return (storages || []).map(s => {
+      const used = allItems.filter(i => String(i.storageId) === String(s.ID)).length;
+      const cap = Number(s.Capacity ?? 0);
+      const percent = cap > 0 ? Math.min(100, Math.round((used / cap) * 100)) : 0;
+      return { id: s.ID, name: s.Name, used, capacity: cap, percent, over: cap > 0 && used > cap };
+    }).sort((a, b) => b.used - a.used);
+  }, [storages, allItems]);
 
   const filteredStorages = useMemo(() => {
     const q = search.toLowerCase();
@@ -231,6 +282,74 @@ const StorageManagementPage = () => {
         </Stack>
       </Paper>
 
+      {/* Dashboard */}
+      <Paper
+        elevation={0}
+        sx={{
+          mb: 3,
+          p: 2,
+          border: `2px solid ${theme.palette.divider}`,
+          borderRadius: 1,
+          bgcolor: 'background.paper'
+        }}
+      >
+        <Stack direction={{ xs: 'column', md: 'row' }} gap={2} alignItems={{ md: 'center' }}>
+          <Stack direction="row" gap={1} flexWrap="wrap">
+            <Chip size="small" label={`Items: ${totalItems}`} color="primary" sx={{ fontWeight: 700, borderRadius: 0.75 }} />
+            <Chip size="small" label={`Books: ${booksCount}`} sx={{ fontWeight: 700, borderRadius: 0.75 }} />
+            <Chip size="small" label={`Documents: ${docsCount}`} sx={{ fontWeight: 700, borderRadius: 0.75 }} />
+          </Stack>
+          <Divider flexItem orientation="vertical" sx={{ display: { xs: 'none', md: 'block' } }} />
+          <Stack direction="row" gap={1} flexWrap="wrap">
+            <Chip size="small" label={`Good: ${conditionCounts.Good}`} color="success" sx={{ fontWeight: 700, borderRadius: 0.75 }} />
+            <Chip size="small" label={`Fair: ${conditionCounts.Fair}`} color="info" sx={{ fontWeight: 700, borderRadius: 0.75 }} />
+            <Chip size="small" label={`Average: ${conditionCounts.Average}`} sx={{ fontWeight: 700, borderRadius: 0.75 }} />
+            <Chip size="small" label={`Poor: ${conditionCounts.Poor}`} color="warning" sx={{ fontWeight: 700, borderRadius: 0.75 }} />
+            <Chip size="small" label={`Bad: ${conditionCounts.Bad}`} color="error" sx={{ fontWeight: 700, borderRadius: 0.75 }} />
+            <Chip size="small" label={`Unknown: ${conditionCounts.Unknown}`} sx={{ fontWeight: 700, borderRadius: 0.75 }} />
+          </Stack>
+        </Stack>
+
+        <Divider sx={{ my: 1.5 }} />
+
+        <Typography fontWeight={800} fontSize={12} color="text.secondary" sx={{ mb: 1 }}>
+          Capacity Usage (Top Locations)
+        </Typography>
+        {loading ? (
+          <Stack gap={1}>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} variant="rounded" height={32} />
+            ))}
+          </Stack>
+        ) : (
+          <Stack gap={1}>
+            {(capacityUsage.slice(0, 6)).map(s => (
+              <Box key={s.id}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography fontWeight={700} fontSize={12}>{s.name}</Typography>
+                  <Typography fontSize={12} color={s.over ? 'error.main' : 'text.secondary'}>
+                    {s.capacity ? `${s.used}/${s.capacity}` : `${s.used}/∞`}
+                  </Typography>
+                </Stack>
+                {s.capacity ? (
+                  <LinearProgress
+                    variant="determinate"
+                    value={s.percent}
+                    color={s.over ? 'error' : 'primary'}
+                    sx={{ height: 8, borderRadius: 0.75, mt: 0.5 }}
+                  />
+                ) : (
+                  <Box sx={{ height: 8, borderRadius: 0.75, mt: 0.5, bgcolor: 'action.hover' }} />
+                )}
+              </Box>
+            ))}
+            {capacityUsage.length === 0 && (
+              <Typography variant="caption" color="text.secondary">No storages to display.</Typography>
+            )}
+          </Stack>
+        )}
+      </Paper>
+
       {/* Table */}
       {loading ? (
         <Paper
@@ -301,6 +420,9 @@ const StorageManagementPage = () => {
                   const itemsInStorage = allItems.filter(i => String(i.storageId) === String(storage.ID));
                   const showItems = itemsInStorage.slice(0, 5);
                   const availableCount = itemsInStorage.filter(i => i.availability === 'Available').length;
+                  const usedCount = itemsInStorage.length;
+                  const capacity = Number(storage.Capacity ?? 0);
+                  const overCapacity = capacity > 0 && usedCount > capacity;
                   return (
                     <TableRow key={storage.ID}>
                       <TableCell>
@@ -311,13 +433,19 @@ const StorageManagementPage = () => {
                           <Stack direction="row" spacing={0.5} flexWrap="wrap">
                             <Chip
                               size="small"
-                              label={`Items: ${itemsInStorage.length}`}
+                              label={`Items: ${usedCount}`}
                               sx={{ fontSize: 10, fontWeight: 700, borderRadius: 0.75 }}
                             />
                             <Chip
                               size="small"
                               color="success"
                               label={`Available: ${availableCount}`}
+                              sx={{ fontSize: 10, fontWeight: 700, borderRadius: 0.75 }}
+                            />
+                            <Chip
+                              size="small"
+                              color={overCapacity ? 'error' : 'default'}
+                              label={`Capacity: ${capacity || '∞'}${capacity ? ` • Used: ${usedCount}/${capacity}` : ''}`}
                               sx={{ fontSize: 10, fontWeight: 700, borderRadius: 0.75 }}
                             />
                           </Stack>
@@ -382,6 +510,24 @@ const StorageManagementPage = () => {
                           >
                             <Edit fontSize="small" />
                           </IconButton>
+                        </Tooltip>
+                        <Tooltip title={itemsInStorage.length ? "Remove all items from this location first" : "Delete Storage"}>
+                          <span>
+                            <IconButton
+                              size="small"
+                              color="error"
+                              disabled={itemsInStorage.length > 0}
+                              onClick={() => { setDeleteTarget(storage); setDeleteOpen(true); }}
+                              sx={{
+                                ml: 1,
+                                border: `1px solid ${theme.palette.divider}`,
+                                borderRadius: 0.75,
+                                '&:hover': { bgcolor: theme.palette.action.hover }
+                              }}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </span>
                         </Tooltip>
                       </TableCell>
                     </TableRow>
@@ -489,39 +635,61 @@ const StorageManagementPage = () => {
         </DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
           <TextField
+            select
             label="Location"
             value={editInv?.location || ""}
             onChange={e => setEditInv({ ...editInv, location: e.target.value })}
             fullWidth
+            required
             size="small"
             margin="dense"
-            select
-            SelectProps={{ native: true }}
-            sx={{ borderRadius: 1 }}
+            helperText={!storages.length ? 'Add a storage first.' : ' '}
+            disabled={!storages.length}
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1 } }}
           >
-            <option value="">Select Location</option>
             {storages.map(s => (
-              <option key={s.ID} value={s.ID}>{s.Name}</option>
+              <MenuItem key={s.ID} value={String(s.ID)}>{s.Name}</MenuItem>
             ))}
           </TextField>
           <TextField
+            select
             label="Condition"
-            value={editInv?.condition || ""}
+            value={editInv?.condition || "Good"}
             onChange={e => setEditInv({ ...editInv, condition: e.target.value })}
             fullWidth
             size="small"
             margin="dense"
-            sx={{ borderRadius: 1 }}
-          />
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1 } }}
+          >
+            {/* show current legacy value if not in standard list */}
+            {editInv?.condition && !conditionOptions.includes(editInv.condition) && (
+              <MenuItem value={editInv.condition} disabled>
+                {`Legacy: ${editInv.condition}`}
+              </MenuItem>
+            )}
+            {conditionOptions.map(opt => (
+              <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+            ))}
+          </TextField>
           <TextField
+            select
             label="Availability"
-            value={editInv?.availability || ""}
+            value={editInv?.availability || "Available"}
             onChange={e => setEditInv({ ...editInv, availability: e.target.value })}
             fullWidth
             size="small"
             margin="dense"
-            sx={{ borderRadius: 1 }}
-          />
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1 } }}
+          >
+            {editInv?.availability && !availabilityOptions.includes(editInv.availability) && (
+              <MenuItem value={editInv.availability} disabled>
+                {`Legacy: ${editInv.availability}`}
+              </MenuItem>
+            )}
+            {availabilityOptions.map(opt => (
+              <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+            ))}
+          </TextField>
         </DialogContent>
         <DialogActions
           sx={{
@@ -541,6 +709,7 @@ const StorageManagementPage = () => {
             onClick={handleSaveInventory}
             variant="contained"
             size="small"
+            disabled={!editInv?.location}
             sx={{ borderRadius: 1, fontWeight: 700 }}
           >
             Save
@@ -571,17 +740,31 @@ const StorageManagementPage = () => {
           {isEdit ? "Edit Storage Location" : "Add Storage Location"}
         </DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
-          <TextField
-            label="Name"
-            name="name"
-            value={form.name}
-            onChange={handleChange}
-            fullWidth
-            required
-            size="small"
-            autoFocus
-            sx={{ borderRadius: 1 }}
-          />
+          <Stack spacing={1.25}>
+            <TextField
+              label="Name"
+              name="name"
+              value={form.name}
+              onChange={handleChange}
+              fullWidth
+              required
+              size="small"
+              autoFocus
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1 } }}
+            />
+            <TextField
+              label="Capacity (optional)"
+              name="capacity"
+              type="number"
+              inputProps={{ min: 0, step: 1 }}
+              value={form.capacity}
+              onChange={handleChange}
+              fullWidth
+              size="small"
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1 } }}
+              helperText="Leave empty for unlimited capacity"
+            />
+          </Stack>
         </DialogContent>
         <DialogActions
           sx={{
@@ -604,6 +787,49 @@ const StorageManagementPage = () => {
             sx={{ borderRadius: 1, fontWeight: 700 }}
           >
             {isEdit ? "Update" : "Add"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation */}
+      <Dialog
+        open={deleteOpen}
+        onClose={() => { setDeleteOpen(false); setDeleteTarget(null); }}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 1, border: `2px solid ${theme.palette.divider}` } }}
+      >
+        <DialogTitle sx={{ fontWeight: 800, py: 1, borderBottom: `1px solid ${theme.palette.divider}` }}>
+          Delete Storage?
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <WarningAmber color="warning" />
+            <Typography variant="body2">
+              This will permanently remove "{deleteTarget?.Name}". This action cannot be undone.
+            </Typography>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ borderTop: `1px solid ${theme.palette.divider}`, py: 1 }}>
+          <Button size="small" onClick={() => { setDeleteOpen(false); setDeleteTarget(null); }} variant="outlined">Cancel</Button>
+          <Button
+            size="small"
+            color="error"
+            variant="contained"
+            onClick={async () => {
+              if (!deleteTarget) return;
+              try {
+                await axios.delete(`${API_BASE}/storages/${deleteTarget.ID}`);
+                setToast({ open: true, message: 'Storage deleted.', severity: 'success' });
+                setDeleteOpen(false);
+                setDeleteTarget(null);
+                fetchStorages();
+              } catch {
+                setToast({ open: true, message: 'Failed to delete storage.', severity: 'error' });
+              }
+            }}
+          >
+            Delete
           </Button>
         </DialogActions>
       </Dialog>

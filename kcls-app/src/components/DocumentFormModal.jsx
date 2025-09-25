@@ -18,7 +18,9 @@ const initialForm = {
 const initialInventory = { availability: "", condition: "", location: "" };
 const categories = ["Thesis", "Research", "Case Study", "Feasibility Study", "Capstone", "N/A"];
 const sensitivities = ["Public", "Restricted", "Confidential"];
-const availabilityOptions = ["Available", "Borrowed", "Reserved"];
+const availabilityOptions = ["Available", "Borrowed", "Reserved", "Lost"];
+// NEW: 6-level condition scale from Good to Lost
+const conditionOptions = ["Good", "Fair", "Average", "Poor", "Bad"];
 
 function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locations = [] }) {
   const theme = useTheme();
@@ -256,7 +258,8 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
     const counts = {
       Available: inventoryList.filter(i => i.availability === "Available").length,
       Borrowed: inventoryList.filter(i => i.availability === "Borrowed").length,
-      Reserved: inventoryList.filter(i => i.availability === "Reserved").length
+      Reserved: inventoryList.filter(i => i.availability === "Reserved").length,
+      Lost: inventoryList.filter(i => i.availability === "Lost").length
     };
     return { total, ...counts };
   }, [inventoryList]);
@@ -558,6 +561,12 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
                         color="info"
                         sx={{ fontWeight: 600 }}
                       />
+                      <Chip
+                        size="small"
+                        label={`Lost: ${invStats.Lost}`}
+                        color="error"
+                        sx={{ fontWeight: 600 }}
+                      />
                     </Stack>
 
                     <Grid container spacing={2}>
@@ -586,10 +595,21 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
                           name="condition"
                           value={inventoryForm.condition}
                           onChange={handleInventoryChange}
+                          select
                           size="small"
                           fullWidth
                           InputProps={{ sx: { borderRadius: 1 } }}
-                        />
+                        >
+                          {/* If current value is not in options (legacy), show it once to avoid blank */}
+                          {inventoryForm.condition && !conditionOptions.includes(inventoryForm.condition) && (
+                            <MenuItem value={inventoryForm.condition}>{inventoryForm.condition}</MenuItem>
+                          )}
+                          {conditionOptions.map(opt => (
+                            <MenuItem key={opt} value={opt}>
+                              {opt}
+                            </MenuItem>
+                          ))}
+                        </TextField>
                       </Grid>
                       <Grid item xs={12} sm={4}>
                         <TextField
@@ -683,6 +703,8 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
                                       ? "success"
                                       : inv.availability === "Borrowed"
                                       ? "warning"
+                                      : inv.availability === "Lost"
+                                      ? "error"
                                       : "info"
                                   }
                                   sx={{ fontWeight: 600 }}

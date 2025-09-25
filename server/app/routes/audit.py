@@ -12,6 +12,7 @@ def list_audit():
     target_id = request.args.get("targetId", type=int)
     date_from = request.args.get("from")
     date_to = request.args.get("to")
+    q = request.args.get("q")  # free-text search
     limit = request.args.get("limit", default=100, type=int)
     limit = max(1, min(limit, 1000))
 
@@ -28,6 +29,10 @@ def list_audit():
         where.append("a.CreatedAt >= %s"); params.append(f"{date_from} 00:00:00")
     if date_to:
         where.append("a.CreatedAt <= %s"); params.append(f"{date_to} 23:59:59")
+    if q:
+        like = f"%{q}%"
+        where.append("(a.Details LIKE %s OR a.ActionCode LIKE %s OR a.TargetTypeCode LIKE %s OR CAST(a.TargetID AS CHAR) LIKE %s OR CAST(a.UserID AS CHAR) LIKE %s OR a.IPAddress LIKE %s OR a.UserAgent LIKE %s)")
+        params.extend([like, like, like, like, like, like, like])
 
     where_sql = f"WHERE {' AND '.join(where)}" if where else ""
     sql = f"""

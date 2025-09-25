@@ -7,7 +7,7 @@ import {
   Tooltip, Paper, Skeleton, MenuItem, Select, FormControl, InputLabel, Divider
 } from "@mui/material";
 import {
-  Book, Article, Search, ShoppingCart, Close, Visibility, FilterAlt,
+  Book, Article, Search, ListAlt, Close, Visibility, FilterAlt,
   RestartAlt, Sort, Info, Delete, Add, PictureAsPdf
 } from "@mui/icons-material";
 import { alpha } from "@mui/material/styles";
@@ -142,7 +142,7 @@ const BrowseLibraryPage = () => {
       const available = (item.inventory || []).find(inv => (inv.availability || inv.Availability) === "Available");
       if (!available) return notify("No available copy.", "info");
       setCart(prev => [...prev, { type: "Book", item, inventory: available }]);
-      return notify("Added to cart.", "success");
+      return notify("Added to queue.", "success");
     }
     setSelectedDoc(item);
     setSelectedDocType(getAvailableDocTypes(item)[0] || "Physical");
@@ -152,7 +152,7 @@ const BrowseLibraryPage = () => {
   const handleConfirmAddDoc = () => {
     if (!selectedDoc) return;
     const types = getAvailableDocTypes(selectedDoc);
-    if (!types.length) return notify("No copies available.", "info");
+  if (!types.length) return notify("No copies available.", "info");
 
     let available = null;
     if (selectedDocType === "Physical") {
@@ -163,7 +163,7 @@ const BrowseLibraryPage = () => {
       available = { isDigital: true, Storage_ID: null };
     }
 
-    if (isInCart(selectedDoc, false, selectedDocType)) return notify("Already in cart.", "info");
+    if (isInCart(selectedDoc, false, selectedDocType)) return notify("Already in queue.", "info");
 
     setCart(prev => [...prev, {
       type: "Document",
@@ -171,7 +171,7 @@ const BrowseLibraryPage = () => {
       inventory: available,
       copyType: selectedDocType
     }]);
-    notify("Added to cart.", "success");
+    notify("Added to queue.", "success");
     setDocTypeDialogOpen(false);
   };
 
@@ -289,7 +289,7 @@ const BrowseLibraryPage = () => {
     const availableCount = (item.inventory || []).filter(inv => (inv.availability || inv.Availability) === "Available").length;
     if (isBook) {
       if (isItemBorrowedOrPending(item, true)) return "Borrowed / pending";
-      if (isInCart(item, true)) return "In cart";
+      if (isInCart(item, true)) return "In queue";
       if (availableCount === 0) return "No copies";
       return null;
     }
@@ -379,8 +379,10 @@ const BrowseLibraryPage = () => {
         />
 
         <FormControl size="small" sx={{ width:150 }}>
-          <InputLabel>Field</InputLabel>
+          <InputLabel id="field-select-label">Field</InputLabel>
           <Select
+            labelId="field-select-label"
+            id="field-select"
             label="Field"
             value={searchKey}
             onChange={e=>setSearchKey(e.target.value)}
@@ -393,8 +395,10 @@ const BrowseLibraryPage = () => {
         </FormControl>
 
         <FormControl size="small" sx={{ width:170 }}>
-          <InputLabel>Sort</InputLabel>
+          <InputLabel id="sort-select-label">Sort</InputLabel>
             <Select
+              labelId="sort-select-label"
+              id="sort-select"
               label="Sort"
               value={sort}
               onChange={e=>setSort(e.target.value)}
@@ -541,18 +545,6 @@ const BrowseLibraryPage = () => {
                     }
                   }}
                 >
-                  <Chip
-                    label={isBook ? "BOOK" : "DOC"}
-                    size="small"
-                    color={isBook ? "primary" : "secondary"}
-                    sx={{
-                      position:'absolute',
-                      top:8,
-                      right:8,
-                      fontWeight:700,
-                      borderRadius:0.5
-                    }}
-                  />
                   {reason && (
                     <Box
                       sx={{
@@ -574,25 +566,33 @@ const BrowseLibraryPage = () => {
                     </Box>
                   )}
 
-                  <Box mb={0.5}>
-                    <Typography
-                      fontWeight={700}
-                      fontSize={14}
-                      noWrap
-                      title={item.Title}
-                      sx={{ lineHeight:1.15 }}
-                    >
-                      {item.Title}
-                    </Typography>
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      noWrap
-                      title={item.Author || item.Publisher}
-                    >
-                      {(item.Author || item.Publisher || "")}
-                    </Typography>
-                  </Box>
+                  <Stack direction="row" alignItems="flex-start" spacing={1} mb={0.5}>
+                    <Box flexGrow={1} minWidth={0}>
+                      <Typography
+                        fontWeight={700}
+                        fontSize={14}
+                        noWrap
+                        title={item.Title}
+                        sx={{ lineHeight:1.15 }}
+                      >
+                        {item.Title}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        noWrap
+                        title={item.Author || item.Publisher}
+                      >
+                        {(item.Author || item.Publisher || "")}
+                      </Typography>
+                    </Box>
+                    <Chip
+                      label={isBook ? "BOOK" : "DOC"}
+                      size="small"
+                      color={isBook ? "primary" : "secondary"}
+                      sx={{ fontWeight:700, borderRadius:0.5, flexShrink: 0 }}
+                    />
+                  </Stack>
 
                   <Divider sx={{ my:1 }} />
 
@@ -648,7 +648,7 @@ const BrowseLibraryPage = () => {
                       boxShadow:'none'
                     }}
                   >
-                    {reason || "Add to Cart"}
+                    {reason || "Add to Queue"}
                   </Button>
                 </Paper>
               </Grid>
@@ -674,7 +674,7 @@ const BrowseLibraryPage = () => {
       )}
 
       {/* Floating Cart */}
-      <Tooltip title="Borrow Cart">
+      <Tooltip title="Borrow Queue">
         <Fab
           color="primary"
           onClick={()=>setCartOpen(true)}
@@ -687,12 +687,12 @@ const BrowseLibraryPage = () => {
           }}
         >
           <Badge badgeContent={cart.length} color="error">
-            <ShoppingCart />
+            <ListAlt />
           </Badge>
         </Fab>
       </Tooltip>
 
-      {/* Cart Drawer */}
+      {/* Queue Drawer */}
       <Drawer
         anchor="right"
         open={cartOpen}
@@ -705,7 +705,7 @@ const BrowseLibraryPage = () => {
         }}
       >
         <Box p={2} display="flex" alignItems="center" gap={1}>
-          <Typography fontWeight={800} fontSize={15}>Borrow Cart</Typography>
+          <Typography fontWeight={800} fontSize={15}>Borrow Queue</Typography>
           <Chip
             size="small"
             label={`${cart.length} item${cart.length!==1?'s':''}`}
@@ -731,7 +731,7 @@ const BrowseLibraryPage = () => {
         <Box p={2} sx={{ flexGrow:1, overflowY:'auto' }}>
           {!cart.length ? (
             <Typography color="text.secondary" align="center" mt={4} fontSize={13}>
-              Cart empty. Add items to submit a borrow request.
+              Queue empty. Add items to submit a borrow request.
             </Typography>
           ) : (
             <Stack spacing={1}>

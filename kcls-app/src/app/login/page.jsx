@@ -16,13 +16,48 @@ const LoginPage = () => {
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true); // NEW: initial auto-login check
   const [error, setError] = useState('');
   const [borrowerStatus, setBorrowerStatus] = useState(null); // null | "Pending" | "Rejected"
+
+  // Helper: choose route from stored user object
+  const routeFromUser = (u) => {
+    if (!u) return '/';
+    if (u.Role === 'Borrower') return '/borrower';
+    if (u.Role === 'Staff' && u.staff?.Position === 'Librarian') return '/librarian';
+    if (u.Role === 'Staff') return '/admin';
+    return '/';
+  };
 
   useEffect(() => {
     const remembered = localStorage.getItem('rememberedUsername');
     if (remembered) setUsername(remembered);
   }, []);
+
+  // Auto-login on mount if a session exists
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('user') || sessionStorage.getItem('user');
+      if (!raw) { setCheckingAuth(false); return; }
+      const u = JSON.parse(raw);
+
+      // If borrower is pending/rejected, show status (do not navigate)
+      const status = u?.borrower?.AccountStatus;
+      if (u?.Role === 'Borrower' && (status === 'Pending' || status === 'Rejected')) {
+        setBorrowerStatus(status);
+        setCheckingAuth(false);
+        return;
+      }
+
+      // Otherwise auto-navigate
+      const path = routeFromUser(u);
+      navigate(path, { replace: true });
+    } catch {
+      // ignore parse errors
+    } finally {
+      setCheckingAuth(false);
+    }
+  }, [navigate]);
 
   const storeUserSession = (data) => {
     if (rememberMe) {
@@ -34,6 +69,11 @@ const LoginPage = () => {
       localStorage.removeItem('user');
       localStorage.removeItem('rememberedUsername');
     }
+  };
+
+  const clearStoredSession = () => { // NEW
+    localStorage.removeItem('user');
+    sessionStorage.removeItem('user');
   };
 
   const handleLogin = async (e) => {
@@ -56,24 +96,20 @@ const LoginPage = () => {
         setError(data.error || 'Invalid credentials');
         logAudit('LOGIN_FAILURE', 'User', null, { username, reason: data.error || 'Invalid credentials' });
       } else {
-        storeUserSession(data);
-        logAudit('LOGIN_SUCCESS', 'User', data.UserID || data.userId || data.id, { username });
-
+        // If borrower is pending/rejected, do NOT store session; show status
         if (data.Role === 'Borrower') {
           const status = data.borrower?.AccountStatus;
-          if (status === "Pending" || status === "Rejected") {
+          if (status === 'Pending' || status === 'Rejected') {
             setBorrowerStatus(status);
             setLoading(false);
             return;
           }
-          navigate('/borrower');
-        } else if (data.Role === 'Staff' && data.staff?.Position === 'Librarian') {
-          navigate('/librarian');
-        } else if (data.Role === 'Staff') {
-          navigate('/admin');
-        } else {
-          navigate('/');
         }
+
+        // Store session only for allowed users and redirect
+        storeUserSession(data);
+        logAudit('LOGIN_SUCCESS', 'User', data.UserID || data.userId || data.id, { username });
+        navigate(routeFromUser(data));
       }
     } catch {
       setError('Unable to connect to server');
@@ -100,11 +136,20 @@ const LoginPage = () => {
             color="primary"
             fullWidth
             sx={{ mt: 2, fontWeight: 600 }}
-            onClick={() => setBorrowerStatus(null)}
+            onClick={() => { setBorrowerStatus(null); clearStoredSession(); }} // NEW: clear session
           >
             Back to Login
           </Button>
         </Paper>
+      </Box>
+    );
+  }
+
+  // Initial auto-login check spinner
+  if (checkingAuth) {
+    return (
+      <Box minHeight="100vh" display="flex" alignItems="center" justifyContent="center" sx={{ background: theme.palette.background.default }}>
+        <CircularProgress />
       </Box>
     );
   }
@@ -222,7 +267,6 @@ const LoginPage = () => {
               sx={{ fontSize: 12, fontWeight: 600, letterSpacing: 0.3 }}
               onClick={() => navigate('/forgot-password')}
             >
-              Forgot password?
             </Link>
           </Stack>
 

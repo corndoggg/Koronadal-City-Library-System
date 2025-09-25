@@ -16,11 +16,14 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, ChartToolti
 
 const REPORT_TYPES = [
   { key:'inventory_summary', label:'Inventory Summary' },
-  { key:'borrow_status', label:'Borrow Status & Overdue' },
+  { key:'borrow_activity', label:'Borrow Activity & Fines' },
   { key:'top_borrowed_books', label:'Top Borrowed Books' },
-  { key:'borrower_activity', label:'Borrower Activity' },
-  { key:'documents_mix', label:'Documents Digital vs Physical' },
-  { key:'books_no_available', label:'Books Without Available Copies' }
+  { key:'top_borrowed_documents', label:'Top Borrowed Documents' },
+  { key:'top_borrowers', label:'Top Borrowers' },
+  { key:'book_conditions', label:'Book Conditions' },
+  { key:'document_conditions', label:'Document Conditions' },
+  { key:'general_storage', label:'General Storage' },
+  { key:'storage_capacity', label:'Storage Capacity' }
 ];
 
 const dateISO = d => d ? new Date(d).toISOString().slice(0,10) : '';
@@ -42,6 +45,8 @@ const ReportsPage = () => {
   const [books, setBooks] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [borrows, setBorrows] = useState([]);
+  const [returnsTx, setReturnsTx] = useState([]); // ReturnTransactions with items
+  const [storages, setStorages] = useState([]); // Storage locations with Capacity
 
   const [bookInvMap, setBookInvMap] = useState({});
   const [docInvMap, setDocInvMap] = useState({});
@@ -49,6 +54,7 @@ const ReportsPage = () => {
   // NEW: maps for accurate lookups
   const [copyToBookMap, setCopyToBookMap] = useState({});
   const [borrowerNameMap, setBorrowerNameMap] = useState({});
+  const [borrowedItemIndex, setBorrowedItemIndex] = useState({}); // BorrowedItemID -> { type, bookCopyId, docStorageId }
 
   // Filters
   const [fromDate, setFromDate] = useState('');
@@ -84,16 +90,20 @@ const ReportsPage = () => {
     setErr(null);
     try {
       // Fetch users too (for borrower names)
-      const [bRes, dRes, brRes, uRes] = await Promise.all([
+      const [bRes, dRes, brRes, uRes, rtRes, sRes] = await Promise.all([
         axios.get(`${API_BASE}/books`),
         axios.get(`${API_BASE}/documents`),
         axios.get(`${API_BASE}/borrow`),
-        axios.get(`${API_BASE}/users`)
+        axios.get(`${API_BASE}/users`),
+        axios.get(`${API_BASE}/return`),
+        axios.get(`${API_BASE}/storages`)
       ]);
       const bks = bRes.data || [];
       const docs = dRes.data || [];
       const brs = brRes.data || [];
-      const users = uRes.data || [];
+  const users = uRes.data || [];
+  const rts = rtRes.data || [];
+  const sts = sRes.data || [];
 
       // Build borrower name map: BorrowerID -> Full Name
       const borrowerNames = {};
@@ -133,14 +143,27 @@ const ReportsPage = () => {
         dueTemp[tx.BorrowID] = tx.ReturnDate || null;
       }
 
+      // Build quick index for borrowed items (by id -> type/ids)
+      const bItemIdx = {};
+      brs.forEach(tx => (tx.items || []).forEach(it => {
+        bItemIdx[it.BorrowedItemID] = {
+          type: it.ItemType,
+          bookCopyId: it.BookCopyID ?? null,
+          docStorageId: it.DocumentStorageID ?? null
+        };
+      }));
+
       setBooks(bks);
       setDocuments(docs);
       setBorrows(brs);
+      setReturnsTx(rts);
+  setStorages(sts);
       setBookInvMap(bookInventories);
       setDocInvMap(docInventories);
       setDueMap(dueTemp);
       setCopyToBookMap(copyMap);
       setBorrowerNameMap(borrowerNames);
+      setBorrowedItemIndex(bItemIdx);
     } catch (e) {
       setErr(e.message || 'Failed loading');
     } finally {
@@ -161,12 +184,30 @@ const ReportsPage = () => {
   }, [borrows, fromDate, toDate]);
 
   // Derived data per report
+  // Helper: get returned items within date range, with parent ReturnDate
+  const returnedItemsFiltered = useMemo(() => {
+    const within = (d) => {
+      const s = fromDate || '0000-01-01';
+      const e = toDate || '9999-12-31';
+      return (!d || (d >= s && d <= e));
+    };
+    const items = [];
+    (returnsTx || []).forEach(rt => {
+      const rd = rt.ReturnDate ? rt.ReturnDate.slice(0,10) : '';
+      if (!within(rd)) return;
+      (rt.items || []).forEach(it => items.push({ ...it, ReturnDate: rd }));
+    });
+    return items;
+  }, [returnsTx, fromDate, toDate]);
+
   const dataBuilders = {
     inventory_summary: () => {
       const bookCopies = Object.values(bookInvMap).reduce((a,v)=>a+v.length,0);
       const bookAvail = Object.values(bookInvMap).reduce((a,v)=>a+v.filter(i=>(i.availability||i.Availability)==='Available').length,0);
+      const bookLost = Object.values(bookInvMap).reduce((a,v)=>a+v.filter(i=>(i.availability||i.Availability)==='Lost').length,0);
       const docCopies = Object.values(docInvMap).reduce((a,v)=>a+v.length,0);
       const docAvail = Object.values(docInvMap).reduce((a,v)=>a+v.filter(i=>(i.availability||i.Availability)==='Available').length,0);
+      const docLost = Object.values(docInvMap).reduce((a,v)=>a+v.filter(i=>(i.availability||i.Availability)==='Lost').length,0);
       const digital = documents.filter(d=>d.File_Path||d.file_path).length;
       return {
         title:'Inventory Summary',
@@ -175,19 +216,21 @@ const ReportsPage = () => {
           ['Book Titles', books.length],
             ['Book Copies', bookCopies],
             ['Book Copies Available', bookAvail],
+            ['Book Copies Lost', bookLost],
             ['Document Titles', documents.length],
             ['Document Physical Copies', docCopies],
             ['Document Physical Available', docAvail],
+            ['Document Physical Lost', docLost],
             ['Digital Documents', digital],
             ['Total Storage Items', bookCopies + docCopies]
         ]
       };
     },
-    borrow_status: () => {
+    borrow_activity: () => {
       const now = new Date();
       let pending=0, awaiting=0, active=0, returned=0, rejected=0, overdue=0;
       filteredBorrows.forEach(tx => {
-        let status;
+        let status='';
         if (tx.ReturnStatus === 'Returned'){ returned++; status='Returned'; }
         else if (tx.ApprovalStatus === 'Rejected'){ rejected++; status='Rejected'; }
         else if (tx.ApprovalStatus === 'Pending'){ pending++; status='Pending'; }
@@ -196,9 +239,20 @@ const ReportsPage = () => {
         const due = dueMap[tx.BorrowID] ? new Date(dueMap[tx.BorrowID]) : null;
         if (due && status !== 'Returned' && due < now) overdue++;
       });
+
+      // Fines and lost stats from returned items within date
+      const lostItems = returnedItemsFiltered.filter(it => (it.ReturnCondition||'') === 'Lost');
+      const lostPaid = lostItems.filter(it => (it.FinePaid||'No') === 'Yes');
+      const lostUnpaid = lostItems.filter(it => (it.FinePaid||'No') !== 'Yes');
+      const toNum = (v) => {
+        const n = parseFloat(v); return isNaN(n) ? 0 : n;
+      };
+      const totalFineCollected = returnedItemsFiltered.reduce((s,it)=> s + ((it.FinePaid==='Yes') ? toNum(it.Fine) : 0), 0);
+      const totalFineOutstanding = returnedItemsFiltered.reduce((s,it)=> s + ((it.FinePaid!=='Yes') ? toNum(it.Fine) : 0), 0);
+
       return {
-        title:'Borrow Status & Overdue',
-        headers:['Status','Count'],
+        title:'Borrow Activity & Fines',
+        headers:['Metric','Value'],
         rows:[
           ['Pending', pending],
           ['Awaiting Pickup', awaiting],
@@ -206,7 +260,11 @@ const ReportsPage = () => {
           ['Overdue', overdue],
           ['Returned', returned],
           ['Rejected', rejected],
-          ['Total', filteredBorrows.length]
+          ['Total Transactions', filteredBorrows.length],
+          ['Lost Items (paid)', lostPaid.length],
+          ['Lost Items (unpaid)', lostUnpaid.length],
+          ['Total Fine Collected (₱)', totalFineCollected.toFixed(2)],
+          ['Outstanding Fine (₱)', totalFineOutstanding.toFixed(2)]
         ]
       };
     },
@@ -239,7 +297,29 @@ const ReportsPage = () => {
         rows
       };
     },
-    borrower_activity: () => {
+    top_borrowed_documents: () => {
+      const counts = {};
+      filteredBorrows.forEach(tx => (tx.items||[]).forEach(it => {
+        if (it.ItemType === 'Document' && it.DocumentStorageID != null) {
+          const key = String(it.DocumentStorageID);
+          counts[key] = (counts[key] || 0) + 1;
+        }
+      }));
+      const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0, limit);
+      const rows = sorted.map(([storageId, c]) => {
+        // Find document title from inventories
+        const docEntry = Object.entries(docInvMap).find(([,inv]) => inv.some(i => String(i.Storage_ID ?? i.StorageID) === String(storageId)));
+        const docId = docEntry ? Number(docEntry[0]) : null;
+        const title = documents.find(d => d.Document_ID === docId)?.Title || 'Unknown';
+        return [storageId, title, c];
+      });
+      return {
+        title:`Top Borrowed Documents (limit ${limit})`,
+        headers:['Storage ID','Document Title','Borrow Count'],
+        rows
+      };
+    },
+    top_borrowers: () => {
       const byBorrower = {};
       filteredBorrows.forEach(tx => {
         const borrowerId = tx.BorrowerID || tx.UserID || 'Unknown';
@@ -257,31 +337,99 @@ const ReportsPage = () => {
         .sort((a,b)=>b[1]-a[1])
         .slice(0, limit);
       return {
-        title:`Borrower Activity (top ${limit})`,
+        title:`Top Borrowers (top ${limit})`,
         headers:['Borrower','Total','Returned','Overdue'],
         rows
       };
     },
-    documents_mix: () => {
-      const physCopies = Object.values(docInvMap).reduce((a,v)=>a+v.length,0);
-      const digital = documents.filter(d=>d.File_Path||d.file_path).length;
+    document_conditions: () => {
+      // Count current condition distribution from physical document inventory
+      const counts = {};
+      Object.values(docInvMap).forEach(list => {
+        (list || []).forEach(i => {
+          const cond = i.Condition || i.condition || 'Unknown';
+          counts[cond] = (counts[cond] || 0) + 1;
+        });
+      });
+      const rows = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
       return {
-        title:'Documents Digital vs Physical',
-        headers:['Type','Count'],
-        rows:[
-          ['Digital Documents', digital],
-          ['Physical Document Copies', physCopies]
-        ]
+        title:'Document Conditions (Current Inventory)',
+        headers:['Condition','Count'],
+        rows
       };
     },
-    books_no_available: () => {
-      const rows = books.filter(b => {
-        const inv = bookInvMap[b.Book_ID] || [];
-        return inv.length>0 && inv.every(i => (i.availability||i.Availability)!=='Available');
-      }).map(b => [b.Book_ID, b.Title, (bookInvMap[b.Book_ID]||[]).length]);
+
+    book_conditions: () => {
+      // Count current condition distribution from book inventory
+      const counts = {};
+      Object.values(bookInvMap).forEach(list => {
+        (list || []).forEach(i => {
+          const cond = i.condition || i.BookCondition || 'Unknown';
+          counts[cond] = (counts[cond] || 0) + 1;
+        });
+      });
+      const rows = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
       return {
-        title:'Books Without Any Available Copies',
-        headers:['Book ID','Title','Total Copies'],
+        title:'Book Conditions (Current Inventory)',
+        headers:['Condition','Count'],
+        rows
+      };
+    },
+    general_storage: () => {
+      // Aggregate availability across both books and documents
+      const summarize = (invMap) => {
+        const lists = Object.values(invMap);
+        const total = lists.reduce((a,v)=>a+v.length,0);
+        const by = (s) => lists.reduce((a,v)=>a+v.filter(i => (i.availability||i.Availability)===s).length,0);
+        return { total, available: by('Available'), borrowed: by('Borrowed'), reserved: by('Reserved'), lost: by('Lost') };
+      };
+      const bk = summarize(bookInvMap);
+      const dc = summarize(docInvMap);
+      const rows = [
+        ['Books', bk.total, bk.available, bk.borrowed, bk.reserved, bk.lost],
+        ['Documents', dc.total, dc.available, dc.borrowed, dc.reserved, dc.lost],
+        ['Grand Total', bk.total+dc.total, bk.available+dc.available, bk.borrowed+dc.borrowed, bk.reserved+dc.reserved, bk.lost+dc.lost]
+      ];
+      return {
+        title:'General Storage Availability (Books + Documents)',
+        headers:['Group','Total','Available','Borrowed','Reserved','Lost'],
+        rows
+      };
+    },
+
+    storage_capacity: () => {
+      // Combine book and document inventory usage per storage ID and compare against Storages.Capacity
+      const usageByStorage = {};
+      const addUsage = (locId) => {
+        if (!locId && locId !== 0) return;
+        const key = String(locId);
+        usageByStorage[key] = (usageByStorage[key] || 0) + 1;
+      };
+
+      Object.values(bookInvMap).forEach(list => (list||[]).forEach(i => {
+        const avail = i.availability || i.Availability;
+        if (avail === 'Lost') return; // exclude lost from occupying storage
+        addUsage(i.location || i.StorageLocation);
+      }));
+      Object.values(docInvMap).forEach(list => (list||[]).forEach(i => {
+        const avail = i.availability || i.Availability;
+        if (avail === 'Lost') return;
+        addUsage(i.StorageLocation || i.location);
+      }));
+
+      const rows = (storages || []).map(s => {
+        const id = s.ID ?? s.Id ?? s.id;
+        const name = s.Name || s.name || `Storage #${id}`;
+        const cap = Number(s.Capacity ?? s.capacity ?? 0) || 0;
+        const used = usageByStorage[String(id)] || 0;
+        const free = Math.max(0, cap - used);
+        const pct = cap > 0 ? ((used / cap) * 100).toFixed(1) + '%' : '—';
+        return [name, cap, used, free, pct];
+      }).sort((a,b)=> (b[2]/(b[1]||1)) - (a[2]/(a[1]||1))); // sort by utilization desc
+
+      return {
+        title:'Storage Capacity & Utilization',
+        headers:['Storage','Capacity','Used (copies)','Free','Utilization'],
         rows
       };
     }
@@ -304,28 +452,43 @@ const ReportsPage = () => {
   // Chart (for selected report types)
   const chartData = useMemo(() => {
     switch(reportType){
-      case 'borrow_status':
+      case 'borrow_activity':
         return {
           type:'bar',
           data:{
-            labels: currentReport.rows.filter(r=>r[0]!=='Total').map(r=>r[0]),
+            labels: currentReport.rows
+              .filter(r=>!String(r[0]).toLowerCase().includes('fine') && !String(r[0]).toLowerCase().includes('total'))
+              .map(r=>r[0]),
             datasets:[{
               label:'Count',
-              data: currentReport.rows.filter(r=>r[0]!=='Total').map(r=>r[1]),
+              data: currentReport.rows
+                .filter(r=>!String(r[0]).toLowerCase().includes('fine') && !String(r[0]).toLowerCase().includes('total'))
+                .map(r=>r[1]),
               backgroundColor:['#ffb300','#0288d1','#7b1fa2','#d32f2f','#2e7d32','#757575'],
               borderRadius:6,
               maxBarThickness:40
             }]
           }
         };
-      case 'documents_mix':
+      case 'book_conditions':
         return {
           type:'doughnut',
           data:{
             labels: currentReport.rows.map(r=>r[0]),
             datasets:[{
               data: currentReport.rows.map(r=>r[1]),
-              backgroundColor:['#9c27b0','#1976d2']
+              backgroundColor:['#43a047','#8bc34a','#fdd835','#fb8c00','#e53935','#6d4c41','#757575']
+            }]
+          }
+        };
+      case 'document_conditions':
+        return {
+          type:'doughnut',
+          data:{
+            labels: currentReport.rows.map(r=>r[0]),
+            datasets:[{
+              data: currentReport.rows.map(r=>r[1]),
+              backgroundColor:['#43a047','#8bc34a','#fdd835','#fb8c00','#e53935','#6d4c41','#757575']
             }]
           }
         };
@@ -529,7 +692,7 @@ const ReportsPage = () => {
           onChange={e=>setToDate(e.target.value)}
           InputLabelProps={{ shrink:true }}
         />
-        {(reportType==='top_borrowed_books' || reportType==='borrower_activity') && (
+        {(reportType==='top_borrowed_books' || reportType==='top_borrowed_documents' || reportType==='top_borrowers') && (
           <TextField
             label="Limit"
             size="small"
@@ -729,22 +892,7 @@ const ReportsPage = () => {
         )}
       </Grid>
 
-      <Paper
-        sx={{
-          mt:3, p:2, border: t=>`2px solid ${t.palette.divider}`, borderRadius:1
-        }}
-      >
-        <Typography fontWeight={700} fontSize={13} mb={1}>Report Scenarios Covered</Typography>
-        <Stack direction="row" gap={1} flexWrap="wrap">
-          <Chip size="small" label="Inventory capacity" />
-          <Chip size="small" label="Borrow workload" />
-          <Chip size="small" label="Overdue risk" />
-          <Chip size="small" label="Borrower ranking" />
-          <Chip size="small" label="Resource availability" />
-          <Chip size="small" label="Digital adoption" />
-          <Chip size="small" label="Collection gaps" />
-        </Stack>
-      </Paper>
+      {/* Footer removed to keep page focused on requested reports only */}
 
       {/* PDF Preview Dialog */}
       <Dialog

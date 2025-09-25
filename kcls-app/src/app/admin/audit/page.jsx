@@ -9,6 +9,8 @@ import SearchIcon from '@mui/icons-material/Search';
 import ClearIcon from '@mui/icons-material/Clear';
 import dayjs from 'dayjs';
 import axios from 'axios';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const API_BASE = import.meta.env.VITE_API_BASE;
 
@@ -57,7 +59,8 @@ const AuditLogsPage = () => {
         action: actionCode || undefined,
         targetType: targetType || undefined,
         userId: userId || undefined,
-        targetId: targetId || undefined
+        targetId: targetId || undefined,
+        q: detailsQuery || undefined
       };
       const res = await axios.get(`${API_BASE}/audit`, { params });
       setRows(res.data || []);
@@ -123,16 +126,69 @@ const AuditLogsPage = () => {
     fetchLogs();
   };
 
-  const filtered = useMemo(() => {
-    if (!detailsQuery) return rows;
-    const q = detailsQuery.toLowerCase();
-    return rows.filter(r =>
-      (r.Details || '').toLowerCase().includes(q)
-      || (r.ActionCode || '').toLowerCase().includes(q)
-      || (r.TargetTypeCode || '').toLowerCase().includes(q)
-      || String(r.TargetID || '').includes(q)
-    );
-  }, [rows, detailsQuery]);
+  const filtered = rows; // backend filters by q now
+  // Format Details nicely: parse JSON if possible and render a compact string
+  const formatDetails = (raw) => {
+    if (!raw) return '';
+    try {
+      const obj = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (obj && typeof obj === 'object') {
+        // Turn object into key: value pairs sorted by key
+        const entries = Object.entries(obj).sort(([a],[b])=>a.localeCompare(b));
+        return entries.map(([k,v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join('; ');
+      }
+    } catch {}
+    // Fallback: strip braces-like characters for aesthetics
+    return String(raw).replace(/[{}\[\]"]/g,'').replace(/[:]{2,}/g,': ');
+  };
+
+  // CSV export
+  const exportCSV = () => {
+    const headers = ['ID','Time (UTC)','Action','Target','User','Details','IP'];
+    const lines = [headers.join(',')];
+    filtered.forEach(r => {
+      const row = [
+        r.AuditID,
+        dayjs(r.CreatedAt).format('YYYY-MM-DD HH:mm:ss'),
+        r.ActionCode,
+        r.TargetTypeCode || '',
+        r.UserID || '',
+        formatDetails(r.Details),
+        r.IPAddress || ''
+      ].map(c => `"${String(c).replace(/"/g,'""')}"`).join(',');
+      lines.push(row);
+    });
+    const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `audit_logs_${dayjs().format('YYYYMMDD_HHmmss')}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  // PDF export via preview-less direct download
+  const exportPDF = () => {
+    const doc = new jsPDF({ orientation: 'l', unit: 'pt', format: 'a4' });
+    const rowsData = filtered.map(r => [
+      r.AuditID,
+      dayjs(r.CreatedAt).format('YYYY-MM-DD HH:mm:ss'),
+      r.ActionCode,
+      r.TargetTypeCode || '',
+      r.UserID || '',
+      formatDetails(r.Details),
+      r.IPAddress || ''
+    ]);
+    autoTable(doc, {
+      head: [['ID','Time (UTC)','Action','Target','User','Details','IP']],
+      body: rowsData,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [25,118,210] },
+      startY: 40,
+      margin: { left: 32, right: 32 }
+    });
+    doc.text('Audit Logs', 32, 26);
+    doc.save(`audit_logs_${dayjs().format('YYYYMMDD_HHmmss')}.pdf`);
+  };
 
   const paged = useMemo(() => {
     const start = page * rowsPerPage;
@@ -228,6 +284,18 @@ const AuditLogsPage = () => {
               onClick={handleClear}
               disabled={loading}
             >Clear</Button>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={exportCSV}
+              disabled={loading}
+            >Export CSV</Button>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={exportPDF}
+              disabled={loading}
+            >Export PDF</Button>
             <Tooltip title="Refresh">
               <span>
                 <IconButton onClick={fetchLogs} disabled={loading} size="small">
@@ -288,8 +356,8 @@ const AuditLogsPage = () => {
                         : '(system)'}
                     </TableCell>
                     <TableCell>
-                      <Tooltip title={r.Details || ''}>
-                        <span style={{ whiteSpace:'nowrap' }}>{detailsShort || ''}</span>
+                      <Tooltip title={formatDetails(r.Details)}>
+                        <span style={{ whiteSpace:'nowrap' }}>{formatDetails(detailsShort)}</span>
                       </Tooltip>
                     </TableCell>
                     <TableCell>{r.IPAddress || ''}</TableCell>

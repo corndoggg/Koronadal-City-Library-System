@@ -504,3 +504,126 @@ def get_borrow_due_date(borrow_id):
     finally:
         cursor.close()
         conn.close()
+
+
+# --- Mark borrowed item(s) as LOST (no return condition) ---
+@borrowreturn_bp.route('/lost', methods=['POST'])
+def mark_items_lost():
+    data = request.json or {}
+    borrow_id = data.get('borrowId')
+    items = data.get('items') or []
+    if not borrow_id or not items:
+        return jsonify({'error': 'borrowId and items are required'}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        conn.start_transaction()
+
+        # Fetch target borrowed items
+        ids = [it.get('borrowedItemId') for it in items if it.get('borrowedItemId')]
+        if not ids:
+            return jsonify({'error': 'No valid borrowedItemId provided'}), 400
+        fmt = ','.join(['%s'] * len(ids))
+        cursor.execute(f"""
+            SELECT BorrowedItemID, BorrowID, ItemType, BookCopyID, DocumentStorageID
+            FROM BorrowedItems
+            WHERE BorrowedItemID IN ({fmt}) AND BorrowID=%s
+        """, tuple(ids + [borrow_id]))
+        rows = cursor.fetchall() or []
+
+    # Update availability to 'Lost' for physical items
+        book_ids = [r['BookCopyID'] for r in rows if r['ItemType'] == 'Book' and r.get('BookCopyID')]
+        doc_storage_ids = [r['DocumentStorageID'] for r in rows if r['ItemType'] == 'Document' and r.get('DocumentStorageID')]
+
+        if book_ids:
+            fmtb = ','.join(['%s'] * len(book_ids))
+            cursor.execute(f"UPDATE Book_Inventory SET Availability='Lost' WHERE Copy_ID IN ({fmtb})", tuple(book_ids))
+        if doc_storage_ids:
+            fmtd = ','.join(['%s'] * len(doc_storage_ids))
+            cursor.execute(f"UPDATE Document_Inventory SET Availability='Lost' WHERE Storage_ID IN ({fmtd})", tuple(doc_storage_ids))
+
+        # Create a ReturnTransactions row to log the lost event and fines (if any)
+        remarks = (data.get('remarks') or '').strip()
+        cursor.execute(
+            """
+            INSERT INTO ReturnTransactions (BorrowID, ReturnDate, ReceivedByStaffID, Remarks)
+            VALUES (%s, CURDATE(), %s, %s)
+            """,
+            (borrow_id, data.get('receivedByStaffId'), f"[LOST] {remarks}" if remarks else "[LOST]")
+        )
+        return_id = cursor.lastrowid
+
+        # Insert ReturnedItems rows for each lost item, capturing fines if provided
+        # Use ReturnCondition='Lost' to denote lost items
+        ri_params = []
+        for it in data.get('items') or []:
+            bid = it.get('borrowedItemId')
+            if not bid:
+                continue
+            fine = float(it.get('fine') or 0)
+            fine_paid = it.get('finePaid') or 'No'
+            # Normalize boolean to Yes/No if needed
+            if isinstance(fine_paid, bool):
+                fine_paid = 'Yes' if fine_paid else 'No'
+            ri_params.append((return_id, bid, 'Lost', fine, fine_paid))
+        if ri_params:
+            cursor.executemany(
+                """
+                INSERT INTO ReturnedItems (ReturnID, BorrowedItemID, ReturnCondition, Fine, FinePaid)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                ri_params
+            )
+
+        # Auto-close borrow if no remaining physical items are still marked Borrowed
+        # Check for any physical borrowed items still Borrowed in inventory
+        cursor.execute("""
+            SELECT ItemType, BookCopyID, DocumentStorageID
+            FROM BorrowedItems WHERE BorrowID=%s
+        """, (borrow_id,))
+        all_items = cursor.fetchall() or []
+        remaining_copy_ids = [r['BookCopyID'] for r in all_items if r['ItemType']=='Book' and r.get('BookCopyID')]
+        remaining_doc_ids = [r['DocumentStorageID'] for r in all_items if r['ItemType']=='Document' and r.get('DocumentStorageID')]
+
+        still_borrowed = False
+        if remaining_copy_ids:
+            fmtr = ','.join(['%s'] * len(remaining_copy_ids))
+            cursor.execute(f"SELECT COUNT(*) AS c FROM Book_Inventory WHERE Copy_ID IN ({fmtr}) AND Availability='Borrowed'", tuple(remaining_copy_ids))
+            if (cursor.fetchone() or {}).get('c', 0) > 0:
+                still_borrowed = True
+        if (not still_borrowed) and remaining_doc_ids:
+            fmtrd = ','.join(['%s'] * len(remaining_doc_ids))
+            cursor.execute(f"SELECT COUNT(*) AS c FROM Document_Inventory WHERE Storage_ID IN ({fmtrd}) AND Availability='Borrowed'", tuple(remaining_doc_ids))
+            if (cursor.fetchone() or {}).get('c', 0) > 0:
+                still_borrowed = True
+
+        if not still_borrowed:
+            # Decide final status: if any returned items were Lost, set ReturnStatus='Lost', else 'Returned'
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS c
+                FROM ReturnTransactions rt
+                JOIN ReturnedItems ri ON ri.ReturnID = rt.ReturnID
+                WHERE rt.BorrowID=%s AND ri.ReturnCondition='Lost'
+                """,
+                (borrow_id,)
+            )
+            lost_count = (cursor.fetchone() or {}).get('c', 0)
+            final_status = 'Lost' if lost_count and lost_count > 0 else 'Returned'
+            cursor.execute("UPDATE BorrowTransactions SET ReturnStatus=%s WHERE BorrowID=%s", (final_status, borrow_id))
+
+        conn.commit()
+        return jsonify({
+            'message': 'Marked as lost',
+            'updatedBookCopies': len(book_ids),
+            'updatedDocCopies': len(doc_storage_ids),
+            'returnId': return_id,
+            'lostItemsRecorded': len(ri_params)
+        }), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()

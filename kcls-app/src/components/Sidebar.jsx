@@ -5,7 +5,15 @@ import {
 } from '@mui/material';
 import { useTheme, alpha } from '@mui/material/styles';
 import {
-  LayoutDashboard, BookOpen, FileText, Handshake, Package, UserCircle, BarChart3, Activity
+  LayoutDashboard,
+  BookOpen,
+  Files,
+  Warehouse,
+  ClipboardList,
+  Users,
+  BarChart3,
+  Settings,
+  FileSearch
 } from 'lucide-react';
 import { TOPBAR_HEIGHT, DRAWER_WIDTH } from '../constants/layout'; // changed: import DRAWER_WIDTH
 import { useSidebar } from '../contexts/SidebarContext';
@@ -15,19 +23,19 @@ const navLinksByRole = {
   librarian: [
     { href: '/librarian/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { href: '/librarian/books', icon: BookOpen, label: 'Books' },
-    { href: '/librarian/documents', icon: FileText, label: 'Documents' },
-    { href: '/librarian/storage', icon: Package, label: 'Storage' },
-    { href: '/librarian/borrows', icon: Handshake, label: 'Borrows' },
+    { href: '/librarian/documents', icon: Files, label: 'Documents' },
+    { href: '/librarian/storage', icon: Warehouse, label: 'Storage' },
+    { href: '/librarian/borrows', icon: ClipboardList, label: 'Borrows' },
   ],
   admin: [
     { href: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { href: '/admin/books', icon: BookOpen, label: 'Books' },
-    { href: '/admin/documents', icon: FileText, label: 'Documents' },
-    { href: '/admin/borrows', icon: Handshake, label: 'Borrows' },
-    { href: '/admin/users', icon: UserCircle, label: 'Users' },
+    { href: '/admin/documents', icon: Files, label: 'Documents' },
+    { href: '/admin/borrows', icon: ClipboardList, label: 'Borrows' },
+    { href: '/admin/users', icon: Users, label: 'Users' },
     { href: '/admin/reports', icon: BarChart3, label: 'Reports' },
-    { href: '/admin/system', icon: Activity, label: 'System' }, // added
-    { href: '/admin/audit-logs', icon: Activity, label: 'Audit Logs' }, // added
+    { href: '/admin/system', icon: Settings, label: 'System' }, // added
+    { href: '/admin/audit-logs', icon: FileSearch, label: 'Audit Logs' }, // added
   ],
 };
 
@@ -146,13 +154,26 @@ const Sidebar = () => {
                           position: 'relative',
                           borderRadius: 8,
                           px: collapsed ? 1 : 1.25,
-                          py: 0.6,
-                          minHeight: 36,
+                          py: 0.8,
+                          minHeight: 40,
                           gap: collapsed ? 0 : 0.75,
                           justifyContent: collapsed ? 'center' : 'flex-start',
                           color: isActive ? theme.palette.primary.main : theme.palette.text.secondary,
                           backgroundColor: isActive ? activeBg : 'transparent',
                           transition: 'background-color .18s, color .18s',
+                          // active indicator bar
+                          '&::before': {
+                            content: '""',
+                            position: 'absolute',
+                            left: 6,
+                            top: '15%',
+                            bottom: '15%',
+                            width: 3,
+                            borderRadius: 2,
+                            backgroundColor: theme.palette.primary.main,
+                            opacity: isActive ? 1 : 0,
+                            transition: 'opacity .2s'
+                          },
                           '&:hover': {
                             backgroundColor: isActive
                               ? alpha(theme.palette.primary.main, 0.12)
