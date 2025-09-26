@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
+import { formatDate } from '../../../utils/date';
 import axios from "axios";
 import {
   Box, Typography, TextField, Tabs, Tab, Grid, Chip, Stack, InputAdornment,
@@ -16,7 +17,7 @@ import DocumentPDFViewer from '../../../components/DocumentPDFViewer';
 const PAGE_SIZE_OPTIONS = [8, 12, 16, 24];
 const tomorrow = () => {
   const d = new Date(); d.setDate(d.getDate() + 1);
-  return d.toISOString().slice(0,10);
+  return formatDate(d);
 };
 
 const BrowseLibraryPage = () => {
@@ -39,7 +40,6 @@ const BrowseLibraryPage = () => {
 
   // Filters
   const [search, setSearch] = useState("");
-  const [searchKey, setSearchKey] = useState("All");
   const [sort, setSort] = useState("title_asc");
   const [onlyAvailable, setOnlyAvailable] = useState(false);
   const [page, setPage] = useState(1);
@@ -59,7 +59,8 @@ const BrowseLibraryPage = () => {
   const [pdfUrl, setPdfUrl] = useState('');
 
   useEffect(() => { fetchData(); fetchBorrowed(); }, []);
-  useEffect(() => { setPage(1); }, [tab, search, searchKey, sort, onlyAvailable, rowsPerPage]);
+  useEffect(() => { setPage(1); }, [tab, search, sort, onlyAvailable, rowsPerPage]);
+  useEffect(() => { setPage(1); }, [tab, search, sort, onlyAvailable, rowsPerPage]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -202,8 +203,8 @@ const BrowseLibraryPage = () => {
         borrowerId,
         purpose,
         items,
-        borrowDate: new Date().toISOString().slice(0,10),
-        returnDate: new Date(returnDate).toISOString().slice(0,10)
+        borrowDate: formatDate(new Date()),
+        returnDate: formatDate(new Date(returnDate))
       });
       notify("Borrow request submitted.", "success");
       setCart([]); setPurpose(""); setReturnDate(null);
@@ -242,9 +243,7 @@ const BrowseLibraryPage = () => {
       return String(val).toLowerCase().includes(q);
     };
 
-    const keys = searchKey === 'All'
-      ? searchableKeys
-      : searchableKeys.includes(searchKey) ? [searchKey] : searchableKeys;
+    return (list || []).filter(item => searchableKeys.some(k => matchValue(item?.[k])));
 
     return (list || []).filter(item => keys.some(k => matchValue(item?.[k])));
   };
@@ -335,7 +334,7 @@ const BrowseLibraryPage = () => {
       size="small"
       variant="text"
       startIcon={<RestartAlt fontSize="small" />}
-      onClick={() => { setSearch(""); setSearchKey("All"); setOnlyAvailable(false); setSort("title_asc"); }}
+      onClick={() => { setSearch(""); setOnlyAvailable(false); setSort("title_asc"); }}
       sx={{ fontWeight:600 }}
     >
       Reset
@@ -367,7 +366,7 @@ const BrowseLibraryPage = () => {
         </Box>
 
         <TextField
-          placeholder="Search..."
+          placeholder="Search title, author, category, publisher, ISBN..."
           size="small"
           value={search}
           onChange={e=>setSearch(e.target.value)}
@@ -375,24 +374,8 @@ const BrowseLibraryPage = () => {
             startAdornment:<InputAdornment position="start"><Search fontSize="small" /></InputAdornment>,
             sx:{ borderRadius:1 }
           }}
-          sx={{ width:230 }}
+          sx={{ width:320, maxWidth:'100%' }}
         />
-
-        <FormControl size="small" sx={{ width:150 }}>
-          <InputLabel id="field-select-label">Field</InputLabel>
-          <Select
-            labelId="field-select-label"
-            id="field-select"
-            label="Field"
-            value={searchKey}
-            onChange={e=>setSearchKey(e.target.value)}
-            sx={{ borderRadius:1 }}
-          >
-            {["All","Title","Author","Publisher","ISBN","Category"].map(k=>
-              <MenuItem key={k} value={k}>{k}</MenuItem>
-            )}
-          </Select>
-        </FormControl>
 
         <FormControl size="small" sx={{ width:170 }}>
           <InputLabel id="sort-select-label">Sort</InputLabel>
@@ -566,6 +549,21 @@ const BrowseLibraryPage = () => {
                     </Box>
                   )}
 
+                  {/* Placeholder image using placehold.co with encoded title */}
+                  <Box
+                    component="img"
+                    src={`https://placehold.co/400x200?text=${encodeURIComponent((item.Title||'Untitled').slice(0,40))}`}
+                    alt={item.Title || 'Untitled'}
+                    loading="lazy"
+                    sx={{
+                      width:'100%',
+                      height:110,
+                      objectFit:'cover',
+                      borderRadius:0.75,
+                      mb:1,
+                      border: theme => `1px solid ${theme.palette.divider}`
+                    }}
+                  />
                   <Stack direction="row" alignItems="flex-start" spacing={1} mb={0.5}>
                     <Box flexGrow={1} minWidth={0}>
                       <Typography
@@ -886,7 +884,7 @@ const BrowseLibraryPage = () => {
         open={toast.open}
         autoHideDuration={3200}
         onClose={()=>setToast({...toast, open:false})}
-        anchorOrigin={{ vertical:'bottom', horizontal:'right' }}
+        anchorOrigin={{ vertical:'bottom', horizontal:'center' }}
       >
         <Alert
           onClose={()=>setToast({...toast, open:false})}

@@ -2,6 +2,8 @@ import os
 import io
 import sqlite3
 import subprocess
+import gzip
+import shutil
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
@@ -10,9 +12,16 @@ def _server_dir():
     return os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 
 def get_backup_dir() -> str:
-    path = os.path.join(_server_dir(), "backups")
-    os.makedirs(path, exist_ok=True)
-    return path
+        """Determine backup directory.
+        Priority:
+            1. BACKUP_DIR env var (absolute or relative to container cwd)
+            2. server/backups default
+        Creates directory if missing.
+        """
+        base = os.getenv("BACKUP_DIR")
+        path = base if base else os.path.join(_server_dir(), "backups")
+        os.makedirs(path, exist_ok=True)
+        return os.path.abspath(path)
 
 def _ts() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
@@ -76,9 +85,7 @@ def _parse_db_config(app):
     return {"type": "sqlite", "path": uri}
 
 def backup_sqlite(db_path: str) -> dict:
-    """
-    Creates a consistent backup of a SQLite database using the backup API.
-    """
+    """Creates a consistent backup of a SQLite database using the backup API."""
     backup_dir = get_backup_dir()
     out_name = f"sqlite_backup_{_ts()}.sqlite3"
     out_path = os.path.join(backup_dir, out_name)
@@ -99,7 +106,10 @@ def backup_sqlite(db_path: str) -> dict:
       src.close()
 
     size = os.path.getsize(out_path)
-    return {"file": out_name, "path": out_path, "size": size, "db_type": "sqlite"}
+    result = {"file": out_name, "path": out_path, "size": size, "db_type": "sqlite"}
+    result = _maybe_compress(result)
+    _enforce_retention()
+    return result
 
 def _which(cmd: str) -> str | None:
     # Cross-platform which
@@ -115,20 +125,33 @@ def _which(cmd: str) -> str | None:
     return None
 
 def _find_mysqldump() -> str | None:
-    # Prefer explicit env var if set
+    """
+    Attempts to locate a MySQL/MariaDB dump utility.
+    Priority order:
+      1. MYSQLDUMP_PATH env var (exact file path)
+      2. MARIADB_DUMP_PATH env var (exact file path)
+      3. mysqldump in PATH
+      4. mariadb-dump in PATH (newer MariaDB installs)
+    Returns absolute path or None.
+    """
     explicit = os.getenv("MYSQLDUMP_PATH")
     if explicit and os.path.isfile(explicit):
         return explicit
-    return _which("mysqldump")
+    explicit_maria = os.getenv("MARIADB_DUMP_PATH")
+    if explicit_maria and os.path.isfile(explicit_maria):
+        return explicit_maria
+    found = _which("mysqldump")
+    if found:
+        return found
+    return _which("mariadb-dump")
 
 def backup_mysql(cfg: dict) -> dict:
-    """
-    Uses mysqldump to create a .sql dump.
-    cfg expects: host, port, name, user, password
-    """
+    """Uses mysqldump / mariadb-dump to create a .sql (optionally .gz) dump."""
     mysqldump = _find_mysqldump()
     if not mysqldump:
-        raise RuntimeError("MISSING_MYSQLDUMP: mysqldump not found on PATH. Install MySQL client tools and add to PATH or set MYSQLDUMP_PATH.")
+        raise RuntimeError(
+            "MISSING_MYSQLDUMP: Could not locate 'mysqldump' or 'mariadb-dump'. Install client tools and ensure PATH includes /usr/bin, or set MYSQLDUMP_PATH or MARIADB_DUMP_PATH."
+        )
 
     backup_dir = get_backup_dir()
     out_name = f"mysql_backup_{_ts()}.sql"
@@ -161,12 +184,13 @@ def backup_mysql(cfg: dict) -> dict:
         raise RuntimeError(f"mysqldump failed: {proc.stderr.decode(errors='ignore') or 'unknown error'}")
 
     size = os.path.getsize(out_path)
-    return {"file": out_name, "path": out_path, "size": size, "db_type": "mysql"}
+    result = {"file": out_name, "path": out_path, "size": size, "db_type": "mysql"}
+    result = _maybe_compress(result)
+    _enforce_retention()
+    return result
 
 def create_backup(app) -> dict:
-    """
-    Auto-detects DB type and creates backup. Returns metadata.
-    """
+    """Auto-detect DB type and create backup. Returns metadata."""
     cfg = _parse_db_config(app)
     db_type = (cfg.get("type") or "").lower()
 
@@ -184,16 +208,14 @@ def create_backup(app) -> dict:
     raise RuntimeError(f"Unsupported database type: {db_type or 'unknown'}")
 
 def list_backups() -> list[dict]:
-    """
-    Returns available backups in the backup directory with size and timestamp.
-    """
+    """Return available backups (including compressed) with size & timestamp."""
     backup_dir = get_backup_dir()
     results = []
     for name in sorted(os.listdir(backup_dir)):
         path = os.path.join(backup_dir, name)
         if not os.path.isfile(path):
             continue
-        if not (name.endswith(".sql") or name.endswith(".sqlite3")):
+        if not (name.endswith(".sql") or name.endswith(".sqlite3") or name.endswith(".sql.gz") or name.endswith(".sqlite3.gz")):
             continue
         stat = os.stat(path)
         results.append({
@@ -204,3 +226,41 @@ def list_backups() -> list[dict]:
     # newest first
     results.sort(key=lambda x: x["mtime"], reverse=True)
     return results
+
+# --- Enhancements for container / production usage ---
+
+def _maybe_compress(result: dict) -> dict:
+    """Optionally gzip the dump if COMPRESS_BACKUPS env set (true/1/yes)."""
+    if os.getenv("COMPRESS_BACKUPS", "").lower() in ("1", "true", "yes"):
+        path = result.get("path")
+        if path and not path.endswith(".gz") and os.path.isfile(path):
+            gz_path = path + ".gz"
+            try:
+                with open(path, "rb") as fin, gzip.open(gz_path, "wb") as fout:
+                    shutil.copyfileobj(fin, fout)
+                os.remove(path)
+                result["path"] = gz_path
+                result["file"] = os.path.basename(gz_path)
+                result["size"] = os.path.getsize(gz_path)
+            except Exception:
+                # Leave uncompressed on failure
+                pass
+    return result
+
+def _enforce_retention():
+    """Keep only the newest BACKUP_RETENTION backups (if set)."""
+    limit = os.getenv("BACKUP_RETENTION")
+    if not limit:
+        return
+    try:
+        n = int(limit)
+    except ValueError:
+        return
+    if n <= 0:
+        return
+    backups = list_backups()
+    for b in backups[n:]:  # remove older beyond limit
+        try:
+            os.remove(os.path.join(get_backup_dir(), b["file"]))
+        except Exception:
+            pass

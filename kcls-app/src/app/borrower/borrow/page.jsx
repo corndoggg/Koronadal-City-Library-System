@@ -29,6 +29,7 @@ import {
   Close
 } from "@mui/icons-material";
 import { alpha } from "@mui/material/styles";
+import { formatDate } from '../../../utils/date';
 import DocumentPDFViewer from "../../../components/DocumentPDFViewer"; // added
 
 const BorrowerBorrowPage = () => {
@@ -77,19 +78,15 @@ const BorrowerBorrowPage = () => {
       const obj = {};
       await Promise.all(
         transactions.map(async (tx) => {
-          try {
-            const r = await axios.get(`${API_BASE}/borrow/${tx.BorrowID}/due-date`);
-            obj[tx.BorrowID] = r.data?.DueDate || null;
-          } catch {
-            obj[tx.BorrowID] = tx.ReturnDate || null;
-          }
+          // Simplified: derive due/return date from transaction fields
+          // Prefer explicit DueDate if present, else ReturnDate (server may use either naming)
+          obj[tx.BorrowID] = tx.DueDate || tx.ReturnDate || null;
         })
       );
       setDueDates(obj);
     })();
   }, [transactions, API_BASE]);
-
-  // Helper: prefer Document_ID (fallbacks for any legacy payloads)
+  // Removed stray JSX artifact from previous patch
   const getDocumentId = (obj) => obj?.Document_ID ?? obj?.DocumentID ?? obj?.documentId ?? obj?.DocumentId;
 
   // fetch item metadata (books, physical docs by storage, digital docs by document id)
@@ -459,7 +456,7 @@ const BorrowerBorrowPage = () => {
                 </Typography>
                 <Divider flexItem orientation="vertical" />
                 <Typography variant="caption" fontWeight={600} color="text.secondary">
-                  Borrowed: {tx.BorrowDate ? tx.BorrowDate.slice(0, 10) : "—"}
+                  Borrowed: {tx.BorrowDate ? formatDate(tx.BorrowDate) : "—"}
                 </Typography>
                 <Typography
                   variant="caption"
@@ -470,7 +467,7 @@ const BorrowerBorrowPage = () => {
                       : "text.secondary"
                   }
                 >
-                  {digitalOnly ? "Expires" : "Due"}: {due ? due.slice(0, 10) : "—"}
+                  {digitalOnly ? "Expires" : "Due"}: {due ? formatDate(due) : "—"}
                 </Typography>
                 <Box ml="auto" />
                 <Tooltip title="View details">
@@ -679,10 +676,10 @@ const BorrowerBorrowPage = () => {
                 }}
               >
                 <MetaLine k="Borrow ID" v={selectedTx.BorrowID} />
-                <MetaLine k="Borrowed" v={selectedTx.BorrowDate?.slice(0, 10)} />
+                <MetaLine k="Borrowed" v={selectedTx.BorrowDate ? formatDate(selectedTx.BorrowDate) : ''} />
                 <MetaLine
                   k={isDigitalOnlyTx(selectedTx) ? "Expires" : "Due"}
-                  v={dueDates[selectedTx.BorrowID]?.slice(0, 10)}
+                  v={dueDates[selectedTx.BorrowID] ? formatDate(dueDates[selectedTx.BorrowID]) : ''}
                 />
                 <MetaLine k="Purpose" v={selectedTx.Purpose} />
                 <MetaLine k="Status" v={deriveStatus(selectedTx).label} />

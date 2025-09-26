@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { formatDate } from '../../../utils/date';
 import axios from "axios";
 import {
   Box, Paper, Typography, TextField, InputAdornment, IconButton, Tooltip, Chip,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Stack, Button,
   Dialog, DialogTitle, DialogContent, DialogActions, Avatar, Select, MenuItem, FormControl, InputLabel,
-  Checkbox, FormControlLabel, CircularProgress, ButtonGroup, Menu
+  Checkbox, FormControlLabel, CircularProgress
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import { useSystemSettings } from '../../../contexts/SystemSettingsContext.jsx'; // added
@@ -218,9 +219,7 @@ const DocumentApprovalPage = () => {
   const [approveDlgOpen, setApproveDlgOpen] = useState(false);
   const [approveDue, setApproveDue] = useState("");
   const [approveTarget, setApproveTarget] = useState(null);
-  // NEW: quick approve menu
-  const [approveMenuAnchor, setApproveMenuAnchor] = useState(null);
-  const [approveMenuTx, setApproveMenuTx] = useState(null);
+  // Quick approve options removed per request
 
   const openApprove = (tx) => {
     if (isDigitalOnlyTx(tx)) {
@@ -247,27 +246,7 @@ const DocumentApprovalPage = () => {
     } finally { setActionLoading(false); }
   };
 
-  // NEW: Quick approve helpers (7/14/30 days)
-  const addDays = (n) => {
-    const d = new Date();
-    d.setDate(d.getDate() + n);
-    return d.toISOString().slice(0, 10);
-  };
-  const openApproveMenu = (e, tx) => { setApproveMenuAnchor(e.currentTarget); setApproveMenuTx(tx); };
-  const closeApproveMenu = () => { setApproveMenuAnchor(null); setApproveMenuTx(null); };
-  const quickApprove = async (tx, days) => {
-    setActionLoading(true);
-    try {
-      if (isDigitalOnlyTx(tx)) {
-        await axios.put(`${API_BASE}/borrow/${tx.BorrowID}/approve?role=admin`, { returnDate: addDays(days) });
-        logAudit('BORROW_APPROVE', 'Borrow', tx.BorrowID, { role: 'admin', mode: 'digital', days });
-      } else {
-        await axios.put(`${API_BASE}/borrow/${tx.BorrowID}/approve?role=admin`);
-        logAudit('BORROW_APPROVE', 'Borrow', tx.BorrowID, { role: 'admin', mode: 'physical/mixed' });
-      }
-      await fetchTransactions();
-    } finally { setActionLoading(false); closeApproveMenu(); }
-  };
+  // Removed quick approve (+days) functionality
 
   const approveTx = async (tx) => {
     setActionLoading(true);
@@ -345,11 +324,17 @@ const DocumentApprovalPage = () => {
     return 6;
   };
   const rows = useMemo(() => {
-    return [...filtered].sort((a, b) => {
+    const base = [...filtered].sort((a, b) => {
       const la = (statusMap[a.BorrowID]?.label) || "Unknown";
       const lb = (statusMap[b.BorrowID]?.label) || "Unknown";
-      return statusPriority(la) - statusPriority(lb);
+      const diff = statusPriority(la) - statusPriority(lb);
+      if (diff !== 0) return diff;
+      const ta = a.BorrowDate ? new Date(a.BorrowDate).getTime() : 0;
+      const tb = b.BorrowDate ? new Date(b.BorrowDate).getTime() : 0;
+      if (tb !== ta) return tb - ta; // latest first
+      return (b.BorrowID || 0) - (a.BorrowID || 0);
     });
+    return base;
   }, [filtered, statusMap]);
 
   const summary = useMemo(() => {
@@ -400,8 +385,8 @@ const DocumentApprovalPage = () => {
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
             <InfoBlock label="Borrower" value={borrowerInfo} />
             <InfoBlock label="Purpose" value={selectedTx.Purpose || "—"} />
-            <InfoBlock label={digitalOnly ? "Expires" : "Due Date"} value={dueDate ? dueDate.slice(0, 10) : "—"} />
-            <InfoBlock label="Borrow Date" value={selectedTx.BorrowDate?.slice(0, 10) || "—"} />
+            <InfoBlock label={digitalOnly ? "Expires" : "Due Date"} value={dueDate ? formatDate(dueDate) : "—"} />
+            <InfoBlock label="Borrow Date" value={selectedTx.BorrowDate ? formatDate(selectedTx.BorrowDate) : "—"} />
             <InfoBlock label="Status" value={<StatusChip tx={selectedTx} />} />
           </Box>
           <Box sx={{ p: 1.5, border: `1.5px solid ${theme.palette.divider}`, borderRadius: 1, bgcolor: 'background.paper' }}>
@@ -771,7 +756,7 @@ const DocumentApprovalPage = () => {
                   <TableCell>Borrower</TableCell>
                   <TableCell width={90} align="center">Items</TableCell>
                   <TableCell>Purpose</TableCell>
-                  <TableCell width={260} align="center">Actions</TableCell>
+                  <TableCell width={230} align="center">Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody sx={{ '& tr:hover': { backgroundColor: theme.palette.action.hover }, '& td': { borderBottom: `1px solid ${theme.palette.divider}` } }}>
@@ -782,71 +767,51 @@ const DocumentApprovalPage = () => {
                   return (
                     <TableRow key={tx.BorrowID}>
                       <TableCell><StatusChip tx={tx} /></TableCell>
-                      <TableCell><Typography fontSize={12} fontWeight={600}>{tx.BorrowDate?.slice(0, 10) || "—"}</Typography></TableCell>
+                      <TableCell><Typography fontSize={12} fontWeight={600}>{tx.BorrowDate ? formatDate(tx.BorrowDate) : "—"}</Typography></TableCell>
                       <TableCell>
                         <Typography fontSize={12} fontWeight={700} color={s.label.startsWith("Overdue") ? 'error.main' : 'text.primary'}>
-                          {due ? due.slice(0, 10) : "—"}
+                          {due ? formatDate(due) : "—"}
                         </Typography>
                       </TableCell>
                       <TableCell><Typography fontSize={13} fontWeight={600} noWrap>{getBorrowerInfo(tx.BorrowerID)}</Typography></TableCell>
                       <TableCell align="center">
-                        <Chip size="small" label={(tx.items||[]).length} sx={{ borderRadius: 0.75 }} />
-                        {digitalOnly && <Chip size="small" label="Digital" color="info" variant="outlined" sx={{ ml: 0.5, borderRadius: 0.75 }} />}
+                        <Chip size="small" label={(tx.items||[]).length} sx={{ borderRadius: 0.75, fontWeight: 600 }} />
                       </TableCell>
                       <TableCell><Typography fontSize={12} noWrap maxWidth={180}>{tx.Purpose || '—'}</Typography></TableCell>
                       <TableCell align="center">
-                        <Stack direction="row" spacing={0.75} justifyContent="center" flexWrap="wrap">
+                        <Stack direction="row" spacing={0.75} justifyContent="center" alignItems="center" sx={{ flexWrap: 'nowrap' }}>
                           <Tooltip title="View Details">
-                            <Button size="small" variant="outlined" startIcon={<Visibility />}
-                              onClick={() => { setSelectedTx(tx); setModalOpen(true); }} sx={{ borderRadius: 0.75, fontWeight: 600 }}>
-                              View
-                            </Button>
+                            <IconButton size="small" onClick={() => { setSelectedTx(tx); setModalOpen(true); }}
+                              sx={{ border: `1px solid ${theme.palette.divider}`, borderRadius: 0.75 }}>
+                              <Visibility fontSize="small" />
+                            </IconButton>
                           </Tooltip>
-
-                          {/* Pending: allow Approve/Reject (digital or physical) */}
-                          {tx.ApprovalStatus === "Pending" && (
+                          {tx.ApprovalStatus === 'Pending' && (
                             <>
-                              <ButtonGroup variant="outlined" size="small" sx={{ borderRadius: 1 }}>
-                                <Button color="success" onClick={() => openApprove(tx)} startIcon={<CheckCircle />}
-                                  sx={{ borderRadius: 0.75, fontWeight: 600 }}>Approve</Button>
-                                <Button onClick={(e) => openApproveMenu(e, tx)} sx={{ minWidth: 32 }}>▼</Button>
-                              </ButtonGroup>
-                              <Menu anchorEl={approveMenuAnchor} open={!!approveMenuAnchor && approveMenuTx?.BorrowID===tx.BorrowID} onClose={closeApproveMenu}>
-                                <MenuItem onClick={() => quickApprove(tx, 7)}>Approve +7 days</MenuItem>
-                                <MenuItem onClick={() => quickApprove(tx, 14)}>Approve +14 days</MenuItem>
-                                <MenuItem onClick={() => quickApprove(tx, 30)}>Approve +30 days</MenuItem>
-                              </Menu>
+                              <Tooltip title="Approve">
+                                <IconButton size="small" color="success" onClick={() => openApprove(tx)}
+                                  sx={{ border: `1px solid ${alpha(theme.palette.success.main,.5)}`, borderRadius: 0.75 }}>
+                                  <CheckCircle fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
                               <Tooltip title="Reject">
                                 <IconButton size="small" color="error" onClick={() => rejectTx(tx)}
-                                  sx={{ border: `1px solid ${alpha(theme.palette.error.main, .5)}`, borderRadius: 0.75 }}>
+                                  sx={{ border: `1px solid ${alpha(theme.palette.error.main,.5)}`, borderRadius: 0.75 }}>
                                   <Cancel fontSize="small" />
                                 </IconButton>
                               </Tooltip>
                             </>
                           )}
-
-                          {/* Digital-only: no retrieval/return actions */}
-                          {!digitalOnly && tx.ApprovalStatus === "Approved" && tx.RetrievalStatus !== "Retrieved" && (
-                            <Tooltip title="Mark Retrieved">
-                              <Button size="small" variant="contained" onClick={() => markRetrieved(tx)}
-                                sx={{ borderRadius: 0.75, fontWeight: 700 }}>
-                                Retrieved
-                              </Button>
-                            </Tooltip>
+                          {!digitalOnly && tx.ApprovalStatus === 'Approved' && tx.RetrievalStatus !== 'Retrieved' && (
+                            <Button size="small" variant="contained" onClick={() => markRetrieved(tx)}
+                              sx={{ borderRadius: 0.75, fontWeight: 700, px: 1.5 }}>Retrieved</Button>
                           )}
-
-                          {!digitalOnly && tx.RetrievalStatus === "Retrieved" && tx.ReturnStatus !== "Returned" && (
-                            <Tooltip title="Return Items">
-                              <Button size="small" color="secondary" variant="contained" onClick={() => openReturnModal(tx)}
-                                sx={{ borderRadius: 0.75, fontWeight: 700 }}>
-                                Return
-                              </Button>
-                            </Tooltip>
+                          {!digitalOnly && tx.RetrievalStatus === 'Retrieved' && tx.ReturnStatus !== 'Returned' && (
+                            <Button size="small" color="secondary" variant="contained" onClick={() => openReturnModal(tx)}
+                              sx={{ borderRadius: 0.75, fontWeight: 700, px: 1.5 }}>Return</Button>
                           )}
-                          {/* Row-level Mark Lost removed; use per-item Lost inside the Return modal */}
-
-                          {tx.ReturnStatus === "Returned" && !digitalOnly && (
-                            <Chip size="small" label="Completed" color="success" icon={<DoneAll fontSize="small" />}
+                          {tx.ReturnStatus === 'Returned' && !digitalOnly && (
+                            <Chip size="small" label="Done" color="success" icon={<DoneAll fontSize="small" />}
                               sx={{ borderRadius: 0.75, fontWeight: 600 }} />
                           )}
                         </Stack>

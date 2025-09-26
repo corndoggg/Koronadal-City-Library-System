@@ -10,8 +10,10 @@ import SupervisorAccountIcon from '@mui/icons-material/SupervisorAccount';
 import GroupIcon from '@mui/icons-material/Group';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 import SearchIcon from '@mui/icons-material/Search';
 import UsersFormModal from '../../../components/UsersFormModal';
+import UserDetailsModal from '../../../components/UserDetailsModal';
 
 const API_BASE = import.meta.env.VITE_API_BASE;
 
@@ -31,6 +33,8 @@ const UserManagementPage = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [isEdit, setIsEdit] = useState(false);
   const [editUser, setEditUser] = useState(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsUser, setDetailsUser] = useState(null);
 
   // Snackbar state
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' });
@@ -60,6 +64,11 @@ const UserManagementPage = () => {
     setIsEdit(true);
     setEditUser(user);
     setModalOpen(true);
+  };
+
+  const handleView = (user) => {
+    setDetailsUser(user);
+    setDetailsOpen(true);
   };
 
   const handleSave = async (payload) => {
@@ -330,6 +339,19 @@ const UserManagementPage = () => {
                     </TableCell>
                     <TableCell align="center">
                       <Stack direction="row" spacing={0.75} justifyContent="center">
+                        <Tooltip title="View Details">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleView(user)}
+                            sx={{
+                              border: `1px solid ${theme.palette.divider}`,
+                              borderRadius: 0.75,
+                              '&:hover': { bgcolor: theme.palette.action.hover }
+                            }}
+                          >
+                            <VisibilityIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
                         <Tooltip title="Edit">
                           <IconButton
                             size="small"
@@ -418,6 +440,13 @@ const UserManagementPage = () => {
         onSave={handleSave}
         isEdit={isEdit}
         userData={editUser}
+      />
+
+      <UserDetailsModal
+        open={detailsOpen}
+        onClose={() => { setDetailsOpen(false); setDetailsUser(null); }}
+        user={detailsUser}
+        onEdit={(u) => handleEdit(u)}
       />
 
       {/* Snackbar */}

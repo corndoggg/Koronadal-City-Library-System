@@ -13,6 +13,7 @@ import {
 } from "@mui/icons-material";
 import { alpha } from "@mui/material/styles";
 import { useSystemSettings } from '../../../contexts/SystemSettingsContext.jsx'; // added
+import { formatDate } from '../../../utils/date';
 import { logAudit } from '../../../utils/auditLogger.js'; // NEW
 
 const API_BASE = import.meta.env.VITE_API_BASE;
@@ -611,8 +612,8 @@ const LibrarianBorrowPage = () => {
           >
             <InfoBlock label="Borrower" value={borrowerInfo || selectedTx.BorrowerID} />
             <InfoBlock label="Purpose" value={selectedTx.Purpose || "—"} />
-            <InfoBlock label="Borrow Date" value={selectedTx.BorrowDate?.slice(0, 10) || "—"} />
-            <InfoBlock label="Due Date" value={dueDate ? dueDate.slice(0, 10) : "—"} />
+            <InfoBlock label="Borrow Date" value={selectedTx.BorrowDate ? formatDate(selectedTx.BorrowDate) : "—"} />
+            <InfoBlock label="Due Date" value={dueDate ? formatDate(dueDate) : "—"} />
             <InfoBlock label="Status" value={<StatusChip tx={selectedTx} />} />
           </Box>
 
@@ -835,7 +836,13 @@ const LibrarianBorrowPage = () => {
     if (d === "Rejected") return 5;
     return 6;
   };
-  const sortedTransactions = [...filteredTransactions].sort((a, b) => statusPriority(a) - statusPriority(b));
+  // Sort latest borrowings first (primary: BorrowDate desc, fallback: BorrowID desc)
+  const sortedTransactions = [...filteredTransactions].sort((a, b) => {
+    const ta = a.BorrowDate ? new Date(a.BorrowDate).getTime() : 0;
+    const tb = b.BorrowDate ? new Date(b.BorrowDate).getTime() : 0;
+    if (tb !== ta) return tb - ta;
+    return (b.BorrowID || 0) - (a.BorrowID || 0);
+  });
 
   return (
     <Box p={3} sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
@@ -1006,7 +1013,7 @@ const LibrarianBorrowPage = () => {
                       </TableCell>
                       <TableCell>
                         <Typography fontSize={12} fontWeight={600}>
-                          {tx.BorrowDate ? tx.BorrowDate.slice(0, 10) : "—"}
+                          {tx.BorrowDate ? formatDate(tx.BorrowDate) : "—"}
                         </Typography>
                       </TableCell>
                       <TableCell>
@@ -1015,7 +1022,7 @@ const LibrarianBorrowPage = () => {
                           fontWeight={700}
                           color={isOverdue ? 'error.main' : 'text.primary'}
                         >
-                          {due ? due.slice(0, 10) : "—"}
+                          {due ? formatDate(due) : "—"}
                         </Typography>
                       </TableCell>
                       <TableCell>

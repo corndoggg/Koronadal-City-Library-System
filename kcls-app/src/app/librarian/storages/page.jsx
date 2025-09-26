@@ -29,6 +29,9 @@ const StorageManagementPage = () => {
   const [openEditInv, setOpenEditInv] = useState(false);
   const [viewAllOpen, setViewAllOpen] = useState(false);
   const [viewAllItems, setViewAllItems] = useState([]);
+  const [viewAllSearch, setViewAllSearch] = useState("");
+  const [viewAllPage, setViewAllPage] = useState(0);
+  const rowsPerPage = 10;
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
@@ -207,8 +210,28 @@ const StorageManagementPage = () => {
 
   const handleViewAll = (storageId) => {
     setViewAllItems(allItems.filter(i => String(i.storageId) === String(storageId)));
+    setViewAllSearch("");
+    setViewAllPage(0);
     setViewAllOpen(true);
   };
+
+  const filteredViewAllItems = useMemo(() => {
+    const q = viewAllSearch.toLowerCase();
+    if (!q) return viewAllItems;
+    return viewAllItems.filter(item =>
+      (item.title && item.title.toLowerCase().includes(q)) ||
+      (item.accessionNumber && item.accessionNumber.toLowerCase().includes(q)) ||
+      (item.availability && item.availability.toLowerCase().includes(q)) ||
+      (item.condition && item.condition.toLowerCase().includes(q))
+    );
+  }, [viewAllItems, viewAllSearch]);
+
+  const paginatedViewAll = useMemo(() => {
+    const start = viewAllPage * rowsPerPage;
+    return filteredViewAllItems.slice(start, start + rowsPerPage);
+  }, [filteredViewAllItems, viewAllPage]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredViewAllItems.length / rowsPerPage));
 
   return (
     <Box p={3} sx={{ minHeight: "100vh", bgcolor: 'background.default', position: 'relative' }}>
@@ -405,9 +428,8 @@ const StorageManagementPage = () => {
                     }
                   }}
                 >
-                  <TableCell width="25%">Storage</TableCell>
-                  <TableCell>Items (sample up to 5)</TableCell>
-                  <TableCell width="12%" align="center">Actions</TableCell>
+                  <TableCell width="35%">Storage</TableCell>
+                  <TableCell width="15%" align="center">Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody
@@ -418,7 +440,6 @@ const StorageManagementPage = () => {
               >
                 {filteredStorages.map(storage => {
                   const itemsInStorage = allItems.filter(i => String(i.storageId) === String(storage.ID));
-                  const showItems = itemsInStorage.slice(0, 5);
                   const availableCount = itemsInStorage.filter(i => i.availability === 'Available').length;
                   const usedCount = itemsInStorage.length;
                   const capacity = Number(storage.Capacity ?? 0);
@@ -451,52 +472,24 @@ const StorageManagementPage = () => {
                           </Stack>
                         </Stack>
                       </TableCell>
-                      <TableCell>
-                        <Stack direction="row" flexWrap="wrap" gap={0.75}>
-                          {showItems.length > 0 ? (
-                            showItems.map((item, idx) => (
-                              <Chip
-                                key={idx}
-                                size="small"
-                                icon={item.type === "Book" ? <Book fontSize="small" /> : <Article fontSize="small" />}
-                                label={
-                                  item.type === "Book"
-                                    ? `${item.title} • Acc# ${item.accessionNumber || '-'} • ${item.availability}`
-                                    : `${item.title} • ${item.availability}`
-                                }
-                                color={item.type === "Book" ? "primary" : "secondary"}
-                                variant="outlined"
-                                onClick={() => handleEditInventory(
-                                  { type: item.type, title: item.title, id: item.id }, item.inv
-                                )}
-                                sx={{
-                                  maxWidth: 280,
-                                  '& .MuiChip-label': { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-                                  borderRadius: 0.75,
-                                  fontSize: 11,
-                                  fontWeight: 600
-                                }}
-                              />
-                            ))
-                          ) : (
-                            <Typography variant="caption" color="text.disabled">
-                              No items
-                            </Typography>
-                          )}
-                          {itemsInStorage.length > 5 && (
-                            <Button
-                              size="small"
-                              variant="text"
-                              startIcon={<Visibility fontSize="small" />}
-                              onClick={() => handleViewAll(storage.ID)}
-                              sx={{ fontWeight: 700, borderRadius: 0.75 }}
-                            >
-                              View all ({itemsInStorage.length})
-                            </Button>
-                          )}
-                        </Stack>
-                      </TableCell>
                       <TableCell align="center">
+                        <Tooltip title={`View Items (${itemsInStorage.length})`}>
+                          <span>
+                            <IconButton
+                              size="small"
+                              disabled={!itemsInStorage.length}
+                              onClick={() => handleViewAll(storage.ID)}
+                              sx={{
+                                mr: 1,
+                                border: `1px solid ${theme.palette.divider}`,
+                                borderRadius: 0.75,
+                                '&:hover': { bgcolor: theme.palette.action.hover }
+                              }}
+                            >
+                              <Visibility fontSize="small" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
                         <Tooltip title="Edit Storage">
                           <IconButton
                             size="small"
@@ -535,7 +528,7 @@ const StorageManagementPage = () => {
                 })}
                 {filteredStorages.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={3} align="center" sx={{ py: 6 }}>
+                    <TableCell colSpan={2} align="center" sx={{ py: 6 }}>
                       <Typography variant="body2" color="text.secondary">
                         No storage locations found{search ? ' for this search.' : '.'}
                       </Typography>
@@ -571,11 +564,26 @@ const StorageManagementPage = () => {
           Items in Location
         </DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
+          <TextField
+            size="small"
+            placeholder="Search items (title / accession / availability / condition)"
+            fullWidth
+            value={viewAllSearch}
+            onChange={e => { setViewAllSearch(e.target.value); setViewAllPage(0); }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search fontSize="small" />
+                </InputAdornment>
+              )
+            }}
+            sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 1 } }}
+          />
           <Stack direction="column" gap={1}>
-            {viewAllItems.length === 0 ? (
-              <Typography color="text.secondary">No items in this location.</Typography>
+            {filteredViewAllItems.length === 0 ? (
+              <Typography color="text.secondary">No items match this search.</Typography>
             ) : (
-              viewAllItems.map((item, idx) => (
+              paginatedViewAll.map((item, idx) => (
                 <Chip
                   key={idx}
                   icon={item.type === "Book" ? <Book /> : <Article />}
@@ -597,6 +605,40 @@ const StorageManagementPage = () => {
                 />
               ))
             )}
+          </Stack>
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            justifyContent="space-between"
+            alignItems={{ xs: 'flex-start', sm: 'center' }}
+            gap={1.5}
+            sx={{ mt: 2 }}
+          >
+            <Typography variant="caption" color="text.secondary" fontWeight={600}>
+              {filteredViewAllItems.length ? `Showing ${Math.min(filteredViewAllItems.length, viewAllPage * rowsPerPage + 1)}-${Math.min(filteredViewAllItems.length, (viewAllPage + 1) * rowsPerPage)} of ${filteredViewAllItems.length}` : ' '} 
+            </Typography>
+            <Stack direction="row" gap={1} alignItems="center">
+              <Button
+                size="small"
+                variant="outlined"
+                disabled={viewAllPage === 0}
+                onClick={() => setViewAllPage(p => Math.max(0, p - 1))}
+                sx={{ borderRadius: 1 }}
+              >
+                Prev
+              </Button>
+              <Typography variant="caption" fontWeight={700}>
+                Page {viewAllPage + 1} / {totalPages}
+              </Typography>
+              <Button
+                size="small"
+                variant="outlined"
+                disabled={viewAllPage >= totalPages - 1}
+                onClick={() => setViewAllPage(p => Math.min(totalPages - 1, p + 1))}
+                sx={{ borderRadius: 1 }}
+              >
+                Next
+              </Button>
+            </Stack>
           </Stack>
         </DialogContent>
         <DialogActions

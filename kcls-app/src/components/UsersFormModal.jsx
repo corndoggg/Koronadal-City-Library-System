@@ -3,6 +3,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, Typography,
   Button, TextField, MenuItem, Grid, Box, Select, InputLabel, FormControl, useTheme
 } from '@mui/material';
+import { formatDate } from '../utils/date';
 
 const staffPositions = ['Librarian', 'Admin'];
 const borrowerTypes = ['Researcher', 'Government Agency'];
@@ -46,7 +47,7 @@ const UsersFormModal = ({
         barangay: userData.Barangay || '',
         city: userData.City || '',
         province: userData.Province || '',
-        dateofbirth: userData.DateOfBirth ? userData.DateOfBirth.slice(0, 10) : ''
+        dateofbirth: userData.DateOfBirth ? formatDate(userData.DateOfBirth) : ''
       });
       // Ensure staff and borrower details are always filled on edit
       setStaff(

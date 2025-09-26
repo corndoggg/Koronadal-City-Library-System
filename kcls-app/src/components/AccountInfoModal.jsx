@@ -3,7 +3,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, Typography, Box, Divider, useTheme
 } from '@mui/material';
-
+import { formatDate } from '../utils/date';
 const Row = ({ label, value }) => (
   <Box
     sx={{
@@ -120,7 +120,7 @@ const AccountInfoModal = ({ open, onClose, user = {} }) => {
           />
           <Row
             label="Birth Date"
-            value={user.DateOfBirth ? user.DateOfBirth.slice(0, 10) : ''}
+            value={user.DateOfBirth ? formatDate(user.DateOfBirth) : ''}
           />
         </Box>
       </DialogContent>

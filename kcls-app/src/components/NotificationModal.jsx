@@ -14,12 +14,13 @@ import {
   Delete as DeleteIcon,
   OpenInNew as OpenInNewIcon
 } from "@mui/icons-material";
+import { formatDateTime as formatDateTimeNumeric } from '../utils/date';
 
 const API_BASE = import.meta.env.VITE_API_BASE;
 
 const formatDateTime = (iso) => {
-  if (!iso) return "—";
-  try { return new Date(iso).toLocaleString(); } catch { return iso; }
+  const v = formatDateTimeNumeric(iso);
+  return v || '—';
 };
 
 // Helpers to make text formal and informative

@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box, Paper, Typography, Stack, TextField, Button, Divider,
-  Alert, Snackbar, CircularProgress, Chip
+  Alert, Snackbar, CircularProgress, Chip,
+  Dialog, DialogTitle, DialogContent, DialogActions
 } from '@mui/material';
 import { Save as SaveIcon, Restore as ResetIcon, Backup as BackupIcon, Refresh as RefreshIcon, Download as DownloadIcon } from '@mui/icons-material';
 import { useSystemSettings } from '../../../contexts/SystemSettingsContext.jsx';
+import { formatDateTime } from '../../../utils/date';
 
 const SettingsPage = () => {
   const { settings: ctxSettings, loading: ctxLoading, save: saveCtx, refresh } = useSystemSettings();
@@ -13,6 +15,7 @@ const SettingsPage = () => {
   const [fineInput, setFineInput] = useState(() => Number(ctxSettings?.fine ?? 5));
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState({ open: false, text: '', severity: 'success' });
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   useEffect(() => {
     // keep input in sync when context loads/changes
@@ -20,6 +23,8 @@ const SettingsPage = () => {
       setFineInput(Number(ctxSettings.fine));
     }
   }, [ctxSettings]);
+
+  const originalFine = useMemo(() => Number(ctxSettings?.fine ?? 5), [ctxSettings]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -32,6 +37,12 @@ const SettingsPage = () => {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleAttemptSave = () => {
+    if (fineInput === '' || Number.isNaN(Number(fineInput))) return; // invalid input guard
+    // Always require explicit confirmation (even if unchanged) for clarity
+    setConfirmOpen(true);
   };
 
   const handleReset = async () => {
@@ -56,7 +67,8 @@ const SettingsPage = () => {
     return `${x.toFixed(x < 10 ? 2 : 1)} ${units[i]}`;
   };
   const fmtTime = (t) => {
-    try { return new Date((t || 0) * 1000).toLocaleString(); } catch { return '—'; }
+    const v = formatDateTime((t || 0) * 1000);
+    return v || '—';
   };
 
   const loadBackups = async () => {
@@ -132,7 +144,7 @@ const SettingsPage = () => {
             <Stack direction="row" spacing={1}>
               <Button
                 variant="contained"
-                onClick={handleSave}
+                onClick={handleAttemptSave}
                 disabled={ctxLoading || saving || fineInput === '' || Number.isNaN(Number(fineInput))}
               >
                 {saving ? 'Saving…' : 'Save'}
@@ -228,6 +240,56 @@ const SettingsPage = () => {
         onClose={() => setMsg({ ...msg, open: false })}
         message={msg.text}
       />
+
+      {/* Confirmation Dialog */}
+      <Dialog
+        open={confirmOpen}
+        onClose={() => !saving && setConfirmOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx:{ borderRadius:1 } }}
+      >
+        <DialogTitle sx={{ fontWeight:800, pb:1 }}>Confirm Fine Update</DialogTitle>
+        <DialogContent sx={{ pt:0 }}>
+          <Typography variant="body2" sx={{ mb:1 }}>
+            Set the global fine per day to <b>{fineInput}</b>? This applies to future penalty calculations.
+          </Typography>
+          <Stack direction="row" spacing={3} sx={{ fontSize:13, mb:1 }}>
+            <Box>
+              <Typography variant="caption" color="text.secondary" fontWeight={600}>Current</Typography><br />
+              <Typography fontWeight={700}>{originalFine}</Typography>
+            </Box>
+            <Box>
+              <Typography variant="caption" color="text.secondary" fontWeight={600}>New</Typography><br />
+              <Typography fontWeight={700} color={Number(fineInput) === originalFine ? 'text.secondary' : 'primary.main'}>
+                {fineInput}
+              </Typography>
+            </Box>
+          </Stack>
+          {Number(fineInput) === originalFine ? (
+            <Alert severity="info" sx={{ mt:1 }} variant="outlined">
+              The value is unchanged. You can still confirm to re-save.
+            </Alert>
+          ) : (
+            <Alert severity="warning" sx={{ mt:1 }} variant="outlined">
+              Existing computed fines will not be retroactively recalculated.
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px:2, pb:1.5 }}>
+          <Button size="small" onClick={() => !saving && setConfirmOpen(false)} disabled={saving}>Cancel</Button>
+          <Button
+            size="small"
+            variant="contained"
+            onClick={() => { setConfirmOpen(false); handleSave(); }}
+            disabled={saving}
+            color="primary"
+            sx={{ fontWeight:700 }}
+          >
+            {saving ? 'Saving…' : 'Confirm'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

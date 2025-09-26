@@ -195,126 +195,72 @@ const AdminDocumentManagementPage = () => {
                       }
                     }}
                   >
-                    {/* Top banner */}
+                    {/* Thumbnail / placeholder */}
                     <Box
+                      component="img"
+                      src={`https://placehold.co/600x160/EEE/555?text=${encodeURIComponent((doc.Title || 'Document').slice(0,50))}`}
+                      alt={doc.Title ? `Placeholder for ${doc.Title}` : 'PDF document placeholder'}
                       sx={{
-                        height: 100,
-                        background: theme =>
-                          `linear-gradient(135deg, ${alpha(theme.palette.primary.main,0.12)}, ${alpha(theme.palette.primary.main,0.02)})`,
-                        borderBottom: theme => `1.5px solid ${theme.palette.divider}`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: 42,
-                        color: 'primary.main',
-                        fontWeight: 800,
-                        letterSpacing: 1
+                        height: 120,
+                        width: '100%',
+                        objectFit: 'cover',
+                        borderBottom: theme => `1.5px solid ${theme.palette.divider}`
                       }}
-                    >
-                      PDF
-                    </Box>
+                    />
 
-                    <Box sx={{ p: 1.75, display: 'flex', flexDirection: 'column', gap: 0.5, flexGrow: 1 }}>
+                    <Box sx={{ p: 1.5, display: 'flex', flexDirection: 'column', gap: 0.75, flexGrow: 1 }}>
                       <Typography
                         variant="subtitle1"
-                        fontWeight={700}
-                        noWrap
+                        fontWeight={800}
                         title={doc.Title}
-                        sx={{ lineHeight: 1.15 }}
+                        sx={{ lineHeight: 1.1, display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2, overflow: 'hidden' }}
                       >
-                        {doc.Title}
+                        {doc.Title || 'Untitled Document'}
                       </Typography>
-                      <Typography
-                        variant="body2"
-                        color="text.secondary"
-                        noWrap
-                      >
-                        {doc.Author || '—'}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {doc.Category || '—'} &bull; {doc.Year || '—'}
-                      </Typography>
-                      <Stack direction="row" spacing={0.5} flexWrap="wrap" mt={0.5}>
-                        <Chip
-                          size="small"
-                          label={doc.Department || 'No Dept'}
-                          sx={{ fontSize: 10, fontWeight: 600, borderRadius: 0.5 }}
-                        />
-                        <Chip
-                          size="small"
-                          color="info"
-                          label={doc.Classification || 'Class?'}
-                          sx={{ fontSize: 10, fontWeight: 600, borderRadius: 0.5 }}
-                        />
-                        <Chip
-                          size="small"
-                          color={doc.Sensitivity === 'Public' ? 'success' : 'warning'}
-                          label={doc.Sensitivity || 'Sensitivity'}
-                          sx={{ fontSize: 10, fontWeight: 600, borderRadius: 0.5 }}
-                        />
-                        <Chip
-                          size="small"
-                          color="primary"
-                          label={`Copies: ${copies.length}`}
-                          sx={{ fontSize: 10, fontWeight: 700, borderRadius: 0.5 }}
-                        />
+                      <Stack spacing={0.25} sx={{ fontSize: 12 }}>
+                        <Typography variant="caption" sx={{ fontSize: 11 }} color="text.secondary">
+                          <strong>Author:</strong> {doc.Author || '—'}
+                        </Typography>
+                        <Typography variant="caption" sx={{ fontSize: 11 }} color="text.secondary">
+                          <strong>Category:</strong> {doc.Category || '—'}
+                        </Typography>
+                        <Typography variant="caption" sx={{ fontSize: 11 }} color="text.secondary">
+                          <strong>Year:</strong> {doc.Year || '—'}
+                        </Typography>
+                        <Typography variant="caption" sx={{ fontSize: 11 }} color="text.secondary">
+                          <strong>Department:</strong> {doc.Department || '—'}
+                        </Typography>
                       </Stack>
 
+                      {/* Tags */}
+                      <Stack direction="row" spacing={0.5} flexWrap="wrap" mt={0.5}>
+                        <Chip size="small" variant="outlined" label={`Class: ${doc.Classification || '—'}`} sx={{ fontSize: 10, fontWeight: 600, borderRadius: 0.5 }} />
+                        <Chip size="small" color={doc.Sensitivity === 'Public' ? 'success' : 'warning'} label={doc.Sensitivity || 'Sensitivity'} sx={{ fontSize: 10, fontWeight: 600, borderRadius: 0.5 }} />
+                        <Chip size="small" color="primary" label={`Copies ${copies.length}`} sx={{ fontSize: 10, fontWeight: 700, borderRadius: 0.5 }} />
+                      </Stack>
+
+                      {/* Section label */}
                       {copies.length > 0 && (
-                        <Box
-                          mt={1}
-                          sx={{
-                            p: 1,
-                            border: theme => `1.5px solid ${theme.palette.divider}`,
-                            borderRadius: 0.75,
-                            bgcolor: theme => alpha(theme.palette.primary.main, 0.03),
-                            maxHeight: 120,
-                            overflowY: 'auto',
-                            '&::-webkit-scrollbar': { width: 6 },
-                            '&::-webkit-scrollbar-thumb': {
-                              background: theme => alpha(theme.palette.primary.main, 0.25),
-                              borderRadius: 3
-                            }
-                          }}
-                        >
-                          {copies.slice(0, 4).map((inv, i) => (
-                            <Box
-                              key={i}
-                              sx={{
-                                display: 'flex',
-                                flexWrap: 'wrap',
-                                gap: 0.75,
-                                mb: 0.75,
-                                fontSize: 11,
-                                lineHeight: 1.2
-                              }}
-                            >
-                              <Chip
-                                size="small"
-                                label={inv.availability || '—'}
-                                color={inv.availability === 'Available' ? 'success' : 'warning'}
-                                sx={{ height: 20, fontSize: 10, fontWeight: 600 }}
-                              />
-                              <Chip
-                                size="small"
-                                variant="outlined"
-                                label={inv.condition || 'Cond?'}
-                                sx={{ height: 20, fontSize: 10, fontWeight: 600 }}
-                              />
-                              <Chip
-                                size="small"
-                                variant="outlined"
-                                label={inv.location || 'Loc?'}
-                                sx={{ height: 20, fontSize: 10, fontWeight: 600 }}
-                              />
-                            </Box>
+                        <Typography variant="overline" sx={{ mt: 1, fontSize: 10, letterSpacing: 0.5, opacity: 0.75 }}>
+                          Inventory (first 4)
+                        </Typography>
+                      )}
+
+                      {copies.length > 0 && (
+                        <Stack mt={0.5} spacing={0.5} sx={{ maxHeight: 120, overflowY: 'auto', pr: 0.5 }}>
+                          {copies.slice(0,4).map((inv,i)=>(
+                            <Stack key={i} direction="row" spacing={0.5} sx={{ alignItems:'center' }}>
+                              <Chip size="small" label={inv.availability || '—'} color={inv.availability === 'Available' ? 'success' : 'warning'} sx={{ height:20, fontSize:10, fontWeight:600 }} />
+                              <Chip size="small" variant="outlined" label={inv.condition || 'Cond?'} sx={{ height:20, fontSize:10, fontWeight:600 }} />
+                              <Chip size="small" variant="outlined" label={inv.location || 'Loc?'} sx={{ height:20, fontSize:10, fontWeight:600 }} />
+                            </Stack>
                           ))}
                           {copies.length > 4 && (
-                            <Typography variant="caption" color="text.secondary">
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize:10 }}>
                               +{copies.length - 4} more…
                             </Typography>
                           )}
-                        </Box>
+                        </Stack>
                       )}
                     </Box>
 

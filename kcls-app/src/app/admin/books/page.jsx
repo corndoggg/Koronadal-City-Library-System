@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
   Box, Typography, TextField, Button, IconButton, useTheme,
-  Pagination, Snackbar, Alert, Tooltip, Grid, Chip, CircularProgress, Paper
+  Pagination, Snackbar, Alert, Tooltip, Grid, Chip, CircularProgress, Paper, Stack
 } from '@mui/material';
 import { Edit, Book } from '@mui/icons-material';
 import BookFormModal from '../../../components/BookFormModal.jsx';
@@ -168,125 +168,62 @@ const AdminBookManagementPage = () => {
                     }
                   }}
                 >
-                  {/* Top banner (same style philosophy as documents page) */}
+                  {/* Dynamic placeholder thumbnail */}
                   <Box
+                    component="img"
+                    src={`https://placehold.co/600x160/EEE/555?text=${encodeURIComponent((book.Title||'Book').slice(0,50))}`}
+                    alt={book.Title ? `Placeholder for ${book.Title}` : 'Book cover placeholder'}
                     sx={{
-                      height: 100,
-                      background: theme =>
-                        `linear-gradient(135deg, ${alpha(theme.palette.primary.main,0.12)}, ${alpha(theme.palette.primary.main,0.02)})`,
-                      borderBottom: theme => `1.5px solid ${theme.palette.divider}`,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 40,
-                      color: 'primary.main',
-                      fontWeight: 800,
-                      letterSpacing: 1
+                      height: 120,
+                      width: '100%',
+                      objectFit: 'cover',
+                      borderBottom: theme => `1.5px solid ${theme.palette.divider}`
                     }}
-                  >
-                    BOOK
-                  </Box>
+                  />
 
                   {/* Content */}
-                  <Box sx={{ p: 1.75, display: 'flex', flexDirection: 'column', gap: 0.5, flexGrow: 1 }}>
+                  <Box sx={{ p: 1.5, display: 'flex', flexDirection: 'column', gap: 0.75, flexGrow: 1 }}>
                     <Typography
                       variant="subtitle1"
-                      fontWeight={700}
-                      noWrap
+                      fontWeight={800}
                       title={book.Title}
-                      sx={{ lineHeight: 1.15 }}
+                      sx={{ lineHeight: 1.1, display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2, overflow: 'hidden' }}
                     >
-                      {book.Title}
+                      {book.Title || 'Untitled Book'}
                     </Typography>
-                    <Typography variant="body2" color="text.secondary" noWrap>
-                      {book.Author || '—'}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {book.Publisher || '—'} &bull; {book.Year || '—'}
-                    </Typography>
-
-                    <Box mt={0.5} display="flex" flexWrap="wrap" gap={0.5}>
-                      <Chip
-                        size="small"
-                        label={book.Subject || 'Subject?'}
-                        sx={{ fontSize: 10, fontWeight: 600, borderRadius: 0.5 }}
-                      />
-                      <Chip
-                        size="small"
-                        color="info"
-                        label={book.Language || 'Lang?'}
-                        sx={{ fontSize: 10, fontWeight: 600, borderRadius: 0.5 }}
-                      />
-                      <Chip
-                        size="small"
-                        variant="outlined"
-                        label={`Ed: ${book.Edition || '—'}`}
-                        sx={{ fontSize: 10, fontWeight: 600, borderRadius: 0.5 }}
-                      />
-                      <Chip
-                        size="small"
-                        color="primary"
-                        label={`Copies: ${book.inventory?.length || 0}`}
-                        sx={{ fontSize: 10, fontWeight: 700, borderRadius: 0.5 }}
-                      />
-                    </Box>
-
-                    {/* Inventory preview similar to documents style */}
+                    <Stack spacing={0.25} sx={{ fontSize: 12 }}>
+                      <Typography variant="caption" sx={{ fontSize: 11 }} color="text.secondary"><strong>Author:</strong> {book.Author || '—'}</Typography>
+                      <Typography variant="caption" sx={{ fontSize: 11 }} color="text.secondary"><strong>Publisher:</strong> {book.Publisher || '—'}</Typography>
+                      <Typography variant="caption" sx={{ fontSize: 11 }} color="text.secondary"><strong>Year:</strong> {book.Year || '—'}</Typography>
+                      <Typography variant="caption" sx={{ fontSize: 11 }} color="text.secondary"><strong>ISBN:</strong> {book.ISBN || '—'}</Typography>
+                      <Typography variant="caption" sx={{ fontSize: 11 }} color="text.secondary"><strong>Subject:</strong> {book.Subject || '—'}</Typography>
+                    </Stack>
+                    {/* Tags */}
+                    <Stack direction="row" spacing={0.5} flexWrap="wrap" mt={0.5}>
+                      <Chip size="small" variant="outlined" label={`Ed: ${book.Edition || '—'}`} sx={{ fontSize: 10, fontWeight: 600, borderRadius: 0.5 }} />
+                      <Chip size="small" color="info" label={book.Language || 'Lang?'} sx={{ fontSize: 10, fontWeight: 600, borderRadius: 0.5 }} />
+                      <Chip size="small" color="primary" label={`Copies ${book.inventory?.length || 0}`} sx={{ fontSize: 10, fontWeight: 700, borderRadius: 0.5 }} />
+                    </Stack>
                     {book.inventory?.length > 0 && (
-                      <Box
-                        mt={1}
-                        sx={{
-                          p: 1,
-                          border: theme => `1.5px solid ${theme.palette.divider}`,
-                          borderRadius: 0.75,
-                          bgcolor: theme => alpha(theme.palette.primary.main, 0.03),
-                          maxHeight: 120,
-                          overflowY: 'auto',
-                          '&::-webkit-scrollbar': { width: 6 },
-                          '&::-webkit-scrollbar-thumb': {
-                            background: theme => alpha(theme.palette.primary.main, 0.25),
-                            borderRadius: 3
-                          }
-                        }}
-                      >
-                        {book.inventory.slice(0, 4).map((copy, i) => (
-                          <Box
-                            key={i}
-                            sx={{
-                              display: 'flex',
-                              flexWrap: 'wrap',
-                              gap: 0.75,
-                              mb: 0.75,
-                              fontSize: 11,
-                              lineHeight: 1.2
-                            }}
-                          >
-                            <Chip
-                              size="small"
-                              label={copy.availability || copy.Availability || '—'}
-                              color={(copy.availability || copy.Availability) === 'Available' ? 'success' : 'warning'}
-                              sx={{ height: 20, fontSize: 10, fontWeight: 600 }}
-                            />
-                            <Chip
-                              size="small"
-                              variant="outlined"
-                              label={copy.condition || copy.Condition || 'Cond?'}
-                              sx={{ height: 20, fontSize: 10, fontWeight: 600 }}
-                            />
-                            <Chip
-                              size="small"
-                              variant="outlined"
-                              label={getLocationName(copy.location)}
-                              sx={{ height: 20, fontSize: 10, fontWeight: 600 }}
-                            />
-                          </Box>
+                      <Typography variant="overline" sx={{ mt: 1, fontSize: 10, letterSpacing: 0.5, opacity: 0.75 }}>
+                        Inventory (first 4)
+                      </Typography>
+                    )}
+                    {book.inventory?.length > 0 && (
+                      <Stack mt={0.5} spacing={0.5} sx={{ maxHeight: 120, overflowY: 'auto', pr: 0.5 }}>
+                        {book.inventory.slice(0,4).map((copy,i)=>(
+                          <Stack key={i} direction="row" spacing={0.5} sx={{ alignItems:'center' }}>
+                            <Chip size="small" label={copy.availability || copy.Availability || '—'} color={(copy.availability || copy.Availability) === 'Available' ? 'success' : 'warning'} sx={{ height:20, fontSize:10, fontWeight:600 }} />
+                            <Chip size="small" variant="outlined" label={copy.condition || copy.Condition || 'Cond?'} sx={{ height:20, fontSize:10, fontWeight:600 }} />
+                            <Chip size="small" variant="outlined" label={getLocationName(copy.location)} sx={{ height:20, fontSize:10, fontWeight:600 }} />
+                          </Stack>
                         ))}
                         {book.inventory.length > 4 && (
-                          <Typography variant="caption" color="text.secondary">
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize:10 }}>
                             +{book.inventory.length - 4} more…
                           </Typography>
                         )}
-                      </Box>
+                      </Stack>
                     )}
                   </Box>
 

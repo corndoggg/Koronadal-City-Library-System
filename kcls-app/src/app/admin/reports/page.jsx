@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { formatDate } from '../../../utils/date';
 import {
   Box, Paper, Typography, Tabs, Tab, Divider, Stack, IconButton, Tooltip,
   Button, TextField, MenuItem, Chip, Skeleton, Grid,
@@ -13,6 +14,7 @@ import {
   Chart as ChartJS, CategoryScale, LinearScale, BarElement, ArcElement, Tooltip as ChartTooltip, Legend
 } from 'chart.js';
 ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, ChartTooltip, Legend);
+import { nowDateTime } from '../../../utils/date';
 
 const REPORT_TYPES = [
   { key:'inventory_summary', label:'Inventory Summary' },
@@ -26,7 +28,8 @@ const REPORT_TYPES = [
   { key:'storage_capacity', label:'Storage Capacity' }
 ];
 
-const dateISO = d => d ? new Date(d).toISOString().slice(0,10) : '';
+// Centralized date formatting
+const dateISO = d => d ? formatDate(d) : '';
 
 const fullName = (u) => {
   const f = (u.Firstname || '').trim();
@@ -176,7 +179,7 @@ const ReportsPage = () => {
   const filteredBorrows = useMemo(() => {
     if (!fromDate && !toDate) return borrows;
     return borrows.filter(b => {
-      const d = b.BorrowDate ? b.BorrowDate.slice(0,10) : '';
+  const d = b.BorrowDate ? formatDate(b.BorrowDate) : '';
       if (fromDate && d < fromDate) return false;
       if (toDate && d > toDate) return false;
       return true;
@@ -193,7 +196,7 @@ const ReportsPage = () => {
     };
     const items = [];
     (returnsTx || []).forEach(rt => {
-      const rd = rt.ReturnDate ? rt.ReturnDate.slice(0,10) : '';
+  const rd = rt.ReturnDate ? formatDate(rt.ReturnDate) : '';
       if (!within(rd)) return;
       (rt.items || []).forEach(it => items.push({ ...it, ReturnDate: rd }));
     });
@@ -501,7 +504,7 @@ const ReportsPage = () => {
     const rows = exportScope === 'page' ? pagedRows : currentReport.rows;
     const lines = [
       `"${currentReport.title}"`,
-      `"Generated: ${new Date().toLocaleString()} by ${adminName}"`,
+  `"Generated: ${nowDateTime()} by ${adminName}"`,
       currentReport.headers.map(h=>`"${h}"`).join(',')
     ];
     rows.forEach(r=>{
@@ -531,7 +534,7 @@ const ReportsPage = () => {
       cursorY += 18;
 
       doc.setFontSize(10);
-      doc.text(`Generated: ${new Date().toLocaleString()}  •  By: ${adminName}`, marginX, cursorY);
+  doc.text(`Generated: ${nowDateTime()}  •  By: ${adminName}`, marginX, cursorY);
       cursorY += 14;
 
       if (fromDate || toDate) {
@@ -556,7 +559,7 @@ const ReportsPage = () => {
             const pageHeight = pageSize.getHeight();
             doc.setFontSize(8);
             doc.text(
-              `Generated: ${new Date().toLocaleString()} • ${adminName}`,
+              `Generated: ${nowDateTime()} • ${adminName}`,
               marginX,
               pageHeight - 18
             );

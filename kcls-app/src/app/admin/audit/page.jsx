@@ -153,8 +153,7 @@ const AuditLogsPage = () => {
         r.ActionCode,
         r.TargetTypeCode || '',
         r.UserID || '',
-        formatDetails(r.Details),
-        r.IPAddress || ''
+        formatDetails(r.Details)
       ].map(c => `"${String(c).replace(/"/g,'""')}"`).join(',');
       lines.push(row);
     });
@@ -175,8 +174,7 @@ const AuditLogsPage = () => {
       r.ActionCode,
       r.TargetTypeCode || '',
       r.UserID || '',
-      formatDetails(r.Details),
-      r.IPAddress || ''
+      formatDetails(r.Details)
     ]);
     autoTable(doc, {
       head: [['ID','Time (UTC)','Action','Target','User','Details','IP']],
@@ -326,7 +324,6 @@ const AuditLogsPage = () => {
                 <TableCell sx={{ fontWeight:700 }}>Target</TableCell>
                 <TableCell sx={{ fontWeight:700 }}>User</TableCell>
                 <TableCell sx={{ fontWeight:700, minWidth:260 }}>Details</TableCell>
-                <TableCell sx={{ fontWeight:700 }}>IP</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -360,7 +357,6 @@ const AuditLogsPage = () => {
                         <span style={{ whiteSpace:'nowrap' }}>{formatDetails(detailsShort)}</span>
                       </Tooltip>
                     </TableCell>
-                    <TableCell>{r.IPAddress || ''}</TableCell>
                   </TableRow>
                 );
               })}
