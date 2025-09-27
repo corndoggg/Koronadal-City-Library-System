@@ -441,9 +441,34 @@ def add_return_transaction():
                     WHERE Storage_ID IN ({fmt_in})
                 """, tuple(values + ids))
 
-        cursor.execute("""
-            UPDATE BorrowTransactions SET ReturnStatus='Returned' WHERE BorrowID=%s
-        """, (data['borrowId'],))
+        # Determine final status by checking if any physical items remain in 'Borrowed' state
+        # If none remain, mark overall as 'Returned', else keep 'Not Returned'
+        borrow_id = data['borrowId']
+        cursor.execute(
+            """
+            SELECT ItemType, BookCopyID, DocumentStorageID
+            FROM BorrowedItems WHERE BorrowID=%s
+            """,
+            (borrow_id,)
+        )
+        all_items = cursor.fetchall() or []
+        remaining_copy_ids = [r['BookCopyID'] for r in all_items if r['ItemType']=='Book' and r.get('BookCopyID')]
+        remaining_doc_ids = [r['DocumentStorageID'] for r in all_items if r['ItemType']=='Document' and r.get('DocumentStorageID')]
+
+        still_borrowed = False
+        if remaining_copy_ids:
+            fmtr = ','.join(['%s'] * len(remaining_copy_ids))
+            cursor.execute(f"SELECT COUNT(*) AS c FROM Book_Inventory WHERE Copy_ID IN ({fmtr}) AND Availability='Borrowed'", tuple(remaining_copy_ids))
+            if (cursor.fetchone() or {}).get('c', 0) > 0:
+                still_borrowed = True
+        if (not still_borrowed) and remaining_doc_ids:
+            fmtrd = ','.join(['%s'] * len(remaining_doc_ids))
+            cursor.execute(f"SELECT COUNT(*) AS c FROM Document_Inventory WHERE Storage_ID IN ({fmtrd}) AND Availability='Borrowed'", tuple(remaining_doc_ids))
+            if (cursor.fetchone() or {}).get('c', 0) > 0:
+                still_borrowed = True
+
+        final_status = 'Returned' if not still_borrowed else 'Not Returned'
+        cursor.execute("UPDATE BorrowTransactions SET ReturnStatus=%s WHERE BorrowID=%s", (final_status, borrow_id))
 
         notify_return_recorded(cursor, data['borrowId'])
         conn.commit()
@@ -599,19 +624,8 @@ def mark_items_lost():
                 still_borrowed = True
 
         if not still_borrowed:
-            # Decide final status: if any returned items were Lost, set ReturnStatus='Lost', else 'Returned'
-            cursor.execute(
-                """
-                SELECT COUNT(*) AS c
-                FROM ReturnTransactions rt
-                JOIN ReturnedItems ri ON ri.ReturnID = rt.ReturnID
-                WHERE rt.BorrowID=%s AND ri.ReturnCondition='Lost'
-                """,
-                (borrow_id,)
-            )
-            lost_count = (cursor.fetchone() or {}).get('c', 0)
-            final_status = 'Lost' if lost_count and lost_count > 0 else 'Returned'
-            cursor.execute("UPDATE BorrowTransactions SET ReturnStatus=%s WHERE BorrowID=%s", (final_status, borrow_id))
+            # Close the transaction: mark as 'Returned' when no items are left in Borrowed state
+            cursor.execute("UPDATE BorrowTransactions SET ReturnStatus=%s WHERE BorrowID=%s", ('Returned', borrow_id))
 
         conn.commit()
         return jsonify({

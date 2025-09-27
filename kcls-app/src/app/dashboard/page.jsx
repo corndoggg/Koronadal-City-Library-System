@@ -5,7 +5,7 @@ import {
   Stack, Skeleton, Button, FormControl, Select, MenuItem, InputLabel,
   List, ListItem, ListItemText, ListItemAvatar, Avatar
 } from '@mui/material';
-import { alpha } from '@mui/material/styles';
+import { alpha, useTheme } from '@mui/material/styles';
 import { RefreshCw, X } from 'lucide-react';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import {
@@ -18,6 +18,22 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, PointElemen
 
 const number = v => Intl.NumberFormat().format(v || 0);
 
+const surfacePaper = (extra = {}) => (theme) => ({
+  borderRadius: 2,
+  border: `1px solid ${alpha(theme.palette.divider, 0.5)}`,
+  background: `linear-gradient(135deg, ${alpha(theme.palette.background.paper, 0.98)}, ${alpha(theme.palette.primary.light, 0.08)})`,
+  boxShadow: `0 18px 36px ${alpha(theme.palette.common.black, 0.05)}`,
+  backdropFilter: 'blur(4px)',
+  overflow: 'hidden',
+  ...extra
+});
+
+const softBadge = (theme) => ({
+  backgroundColor: alpha(theme.palette.primary.main, 0.12),
+  color: theme.palette.primary.main,
+  fontWeight: 700
+});
+
 // Dummy minimal lucide icons fallback (if not imported) — replace or ensure imports exist
 const IconBook = props => <span {...props}>📘</span>;
 const IconDoc = props => <span {...props}>📄</span>;
@@ -25,6 +41,7 @@ const IconBorrow = props => <span {...props}>🔄</span>;
 const IconStore = props => <span {...props}>📦</span>;
 
 const DashboardPage = () => {
+  const theme = useTheme();
   const API_BASE = import.meta.env.VITE_API_BASE;
 
   const [loading, setLoading] = useState(false);
@@ -51,6 +68,24 @@ const DashboardPage = () => {
   const [statusFilter, setStatusFilter] = useState(''); // 'Pending' | 'Awaiting Pickup' | 'Active' | 'Overdue' | 'Returned' | 'Rejected'
 
   const statusBarRef = useRef(null);
+
+  const monthFormatter = useMemo(
+    () => new Intl.DateTimeFormat(undefined, { month: 'short', year: 'numeric' }),
+    []
+  );
+
+  const statusChipStyle = useCallback((status) => {
+    const palette = theme.palette;
+    const map = {
+      Returned: { bg: alpha(palette.success.main, 0.18), color: palette.success.main },
+      Active: { bg: alpha(palette.info.main, 0.18), color: palette.info.darker || palette.info.main },
+      Overdue: { bg: alpha(palette.error.main, 0.18), color: palette.error.main },
+      Rejected: { bg: alpha(palette.warning.main, 0.18), color: palette.warning.dark },
+      Pending: { bg: alpha(palette.grey[500], 0.18), color: palette.grey[700] },
+      'Awaiting Pickup': { bg: alpha(palette.primary.main, 0.18), color: palette.primary.main }
+    };
+    return map[status] || { bg: alpha(palette.text.primary, 0.12), color: palette.text.primary };
+  }, [theme]);
 
   // Utility: availability value with casing fallback
   const availVal = (row) => (row?.Availability ?? row?.availability ?? 'Available');
@@ -292,25 +327,26 @@ const DashboardPage = () => {
   const borrowTrend = useMemo(() => {
     const now = new Date();
     const labels = [];
-    const keyFor = (y, m) => `${y}-${String(m + 1).padStart(2, '0')}`;
+    const keys = [];
     const map = {};
     for (let i = rangeMonths - 1; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const k = keyFor(d.getFullYear(), d.getMonth());
-      labels.push(k);
-      map[k] = 0;
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      keys.push(key);
+      labels.push(monthFormatter.format(d));
+      map[key] = 0;
     }
     filteredTrendBorrows.forEach(tx => {
       const d = parseBorrowDate(tx);
       if (!d) return;
-      const k = keyFor(d.getFullYear(), d.getMonth());
-      if (k in map) map[k] += 1; // count
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      if (key in map) map[key] += 1; // count
     });
     return {
       labels,
       datasets: [{
         label: 'Borrows',
-        data: labels.map(l => map[l]),
+        data: keys.map(k => map[k]),
         borderColor: '#1976d2',
         backgroundColor: alpha('#1976d2', .22),
         tension: .25,
@@ -319,7 +355,7 @@ const DashboardPage = () => {
         pointHoverRadius: 6
       }]
     };
-  }, [filteredTrendBorrows, rangeMonths]);
+  }, [filteredTrendBorrows, rangeMonths, monthFormatter]);
 
   // NEW: Borrow Mix (Books vs Docs Physical vs Docs Digital)
   const borrowMixDoughnut = useMemo(() => {
@@ -482,8 +518,16 @@ const DashboardPage = () => {
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
+    layout: { padding: 6 },
     plugins: {
-      legend: { position: 'bottom' },
+      legend: {
+        position: 'bottom',
+        labels: {
+          usePointStyle: true,
+          padding: 12,
+          font: { size: 11, weight: 600 }
+        }
+      },
       tooltip: {
         callbacks: {
           label: (ctx) => {
@@ -500,6 +544,7 @@ const DashboardPage = () => {
   const barOptions = {
     responsive: true,
     maintainAspectRatio: false,
+    layout: { padding: { top: 8, right: 8, left: 4, bottom: 0 } },
     plugins: {
       legend: { display: false },
       tooltip: {
@@ -508,14 +553,35 @@ const DashboardPage = () => {
         }
       }
     },
-    scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } }
+    scales:{
+      x: {
+        grid: { display: false },
+        ticks: {
+          autoSkip: false,
+          maxRotation: 18,
+          minRotation: 18,
+          font: { size: 11, weight: 600 },
+          color: '#4f4f4f'
+        }
+      },
+      y:{
+        beginAtZero:true,
+        ticks:{ precision:0 },
+        grid: { color: 'rgba(0,0,0,0.08)' }
+      }
+    }
   };
 
   const lineOptions = {
     responsive: true,
     maintainAspectRatio: false,
+    layout: { padding: { top: 8, right: 8, left: 4, bottom: 0 } },
     plugins: { legend: { display: false } },
     scales: {
+      x: {
+        grid: { display: false },
+        ticks: { font: { size: 11, weight: 500 }, color: '#4f4f4f' }
+      },
       y: { beginAtZero: true, ticks: { precision: 0 } }
     }
   };
@@ -556,30 +622,52 @@ const DashboardPage = () => {
   const trendTotals = borrowTrend.datasets[0].data.reduce((a,b)=>a+(b||0),0);
 
   return (
-    <Box p={3} sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
+    <Box p={{ xs: 2, md: 3 }} sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
       <Paper
-        sx={{
-          p:2, mb:3, display:'flex', flexWrap:'wrap', gap:2,
-          alignItems:'center', border: theme => `2px solid ${theme.palette.divider}`, borderRadius:1
-        }}
+        sx={surfacePaper({
+          mb: 3,
+          px: { xs: 2.5, md: 3.25 },
+          py: { xs: 2, md: 2.75 },
+          display: 'flex',
+          flexDirection: { xs: 'column', xl: 'row' },
+          gap: { xs: 2, md: 2.75 },
+          alignItems: { xs: 'flex-start', xl: 'center' }
+        })}
       >
-        <Box>
-          <Typography fontWeight={800} fontSize={18}>Dashboard Overview</Typography>
-          <Typography variant="caption" color="text.secondary" fontWeight={600}>Visual metrics & trends</Typography>
-        </Box>
+        <Stack spacing={0.75} flexGrow={1} pr={{ xs: 0, xl: 3 }}>
+          <Typography fontWeight={800} fontSize={22}>Dashboard Overview</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Visual metrics that track library usage, inventory health, and borrower activity.
+          </Typography>
+        </Stack>
 
-        <Stack direction="row" spacing={1} alignItems="center" sx={{ ml: 'auto' }} flexWrap="wrap">
-          <FormControl size="small" sx={{ minWidth: 140 }}>
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          spacing={1.5}
+          alignItems={{ xs: 'stretch', sm: 'center' }}
+          justifyContent="flex-end"
+          sx={{ width: { xs: '100%', xl: 'auto' } }}
+          flexWrap="wrap"
+        >
+          <FormControl size="small" sx={{ minWidth: 150 }}>
             <InputLabel>Trend Range</InputLabel>
-            <Select label="Trend Range" value={rangeMonths} onChange={e => setRangeMonths(Number(e.target.value))}>
+            <Select
+              label="Trend Range"
+              value={rangeMonths}
+              onChange={e => setRangeMonths(Number(e.target.value))}
+            >
               <MenuItem value={3}>Last 3 months</MenuItem>
               <MenuItem value={6}>Last 6 months</MenuItem>
               <MenuItem value={12}>Last 12 months</MenuItem>
             </Select>
           </FormControl>
-          <FormControl size="small" sx={{ minWidth: 150 }}>
+          <FormControl size="small" sx={{ minWidth: 160 }}>
             <InputLabel>Auto Refresh</InputLabel>
-            <Select label="Auto Refresh" value={autoMs} onChange={e => setAutoMs(Number(e.target.value))}>
+            <Select
+              label="Auto Refresh"
+              value={autoMs}
+              onChange={e => setAutoMs(Number(e.target.value))}
+            >
               <MenuItem value={0}>Manual</MenuItem>
               <MenuItem value={30000}>Every 30s</MenuItem>
               <MenuItem value={60000}>Every 1m</MenuItem>
@@ -587,14 +675,18 @@ const DashboardPage = () => {
           </FormControl>
 
           {lastUpdated && (
-            <Chip size="small" label={`Updated ${lastUpdated.toLocaleTimeString()}`} sx={{ fontWeight:600 }} />
+            <Chip
+              size="small"
+              label={`Updated ${lastUpdated.toLocaleTimeString()}`}
+              sx={theme => ({ fontWeight: 600, backgroundColor: alpha(theme.palette.success.main, 0.12), color: theme.palette.success.main })}
+            />
           )}
           <Tooltip title="Refresh">
             <IconButton
               size="small"
               onClick={fetchAll}
               disabled={loading}
-              sx={{ border: theme=>`1.5px solid ${theme.palette.divider}`, borderRadius:1 }}
+              sx={theme => ({ border: `1.5px solid ${alpha(theme.palette.primary.main, 0.4)}`, borderRadius: 1, color: theme.palette.primary.main })}
             >
               <RefreshCw size={16} />
             </IconButton>
@@ -604,10 +696,12 @@ const DashboardPage = () => {
 
       {err && (
         <Paper
-          sx={{
-            p:2, mb:2, border: theme => `2px solid ${alpha(theme.palette.error.main,.4)}`, borderRadius:1,
-            bgcolor: theme => alpha(theme.palette.error.main,.08)
-          }}
+          sx={theme => ({
+            ...surfacePaper({})(theme),
+            mb: 2,
+            border: `1px solid ${alpha(theme.palette.error.main, 0.4)}`,
+            background: `linear-gradient(135deg, ${alpha(theme.palette.error.light, 0.18)}, ${alpha(theme.palette.background.paper, 0.96)})`
+          })}
         >
           <Typography variant="body2" fontWeight={600} color="error.main">{err}</Typography>
           <Button
@@ -633,7 +727,7 @@ const DashboardPage = () => {
       <Grid container spacing={2.25} mt={0.5}>
         {/* Availability */}
         <Grid item xs={12} md={4}>
-          <Paper sx={{ p:2, height:360, display:'flex', flexDirection:'column', border: theme=>`2px solid ${theme.palette.divider}`, borderRadius:1 }}>
+          <Paper sx={surfacePaper({ p: 2.5, height: { xs: 320, md: 360 }, display: 'flex', flexDirection: 'column' })}>
             <Typography fontWeight={800} fontSize={14}>Availability Distribution</Typography>
             <Divider sx={{ my:1 }} />
             {loading ? <Skeleton variant="rounded" height={240} /> : availTotals ? (
@@ -648,7 +742,7 @@ const DashboardPage = () => {
 
         {/* Borrow Status */}
         <Grid item xs={12} md={4}>
-          <Paper sx={{ p:2, height:360, display:'flex', flexDirection:'column', border: theme=>`2px solid ${theme.palette.divider}`, borderRadius:1 }}>
+          <Paper sx={surfacePaper({ p: 2.5, height: { xs: 320, md: 360 }, display: 'flex', flexDirection: 'column' })}>
             <Stack direction="row" alignItems="center" gap={1}>
               <Typography fontWeight={800} fontSize={14}>Borrow Status</Typography>
               {!!statusFilter && (
@@ -684,7 +778,7 @@ const DashboardPage = () => {
 
         {/* REPLACED: Borrow Mix instead of Top Book Categories */}
         <Grid item xs={12} md={4}>
-          <Paper sx={{ p:2, height:360, display:'flex', flexDirection:'column', border: theme=>`2px solid ${theme.palette.divider}`, borderRadius:1 }}>
+          <Paper sx={surfacePaper({ p: 2.5, height: { xs: 320, md: 360 }, display: 'flex', flexDirection: 'column' })}>
             <Typography fontWeight={800} fontSize={14}>Borrow Mix</Typography>
             <Divider sx={{ my:1 }} />
             {loading ? <Skeleton variant="rounded" height={240} /> : (
@@ -695,7 +789,7 @@ const DashboardPage = () => {
 
         {/* Monthly Trend */}
         <Grid item xs={12}>
-          <Paper sx={{ p:2, height:360, display:'flex', flexDirection:'column', border: theme=>`2px solid ${theme.palette.divider}`, borderRadius:1 }}>
+          <Paper sx={surfacePaper({ p: 2.5, height: { xs: 320, md: 360 }, display: 'flex', flexDirection: 'column' })}>
             <Stack direction="row" alignItems="center" gap={1}>
               <Typography fontWeight={800} fontSize={14}>Monthly Borrow Trend ({rangeMonths} mo)</Typography>
               {!!statusFilter && <Chip size="small" label={`Filtered: ${statusFilter}`} sx={{ fontWeight:700 }} />}
@@ -715,23 +809,51 @@ const DashboardPage = () => {
 
         {/* NEW: Top Borrowers */}
         <Grid item xs={12} md={6}>
-          <Paper sx={{ p:2, minHeight:320, display:'flex', flexDirection:'column', border: theme=>`2px solid ${theme.palette.divider}`, borderRadius:1 }}>
+          <Paper sx={surfacePaper({ p: 2.5, minHeight: 320, display: 'flex', flexDirection: 'column' })}>
             <Typography fontWeight={800} fontSize={14}>Top Borrowers</Typography>
             <Divider sx={{ my:1 }} />
-            {loading ? <Skeleton variant="rounded" height={220} /> : (
+              {loading ? <Skeleton variant="rounded" height={220} /> : (
               <List dense>
                 {topBorrowers.length ? topBorrowers.map(b => (
-                  <ListItem key={b.id} divider>
+                  <ListItem
+                    key={b.id}
+                    divider
+                    alignItems="flex-start"
+                    sx={{ gap: 1 }}
+                  >
                     <ListItemAvatar>
-                      <Avatar>{String(b.name || '').slice(0,1).toUpperCase()}</Avatar>
+                      <Avatar sx={{ fontWeight: 700 }}>{String(b.name || '').slice(0,1).toUpperCase()}</Avatar>
                     </ListItemAvatar>
                     <ListItemText
                       primaryTypographyProps={{ fontWeight: 700, fontSize: 13 }}
                       secondaryTypographyProps={{ fontSize: 12 }}
                       primary={b.name}
-                      secondary={`Total: ${number(b.total)} • Active: ${number(b.active)}`}
+                      secondary={(
+                        <Stack spacing={0.5} mt={0.5} alignItems="flex-start">
+                          <Typography variant="caption" color="text.secondary">ID: {b.id}</Typography>
+                          <Stack direction="row" spacing={0.75} flexWrap="wrap">
+                            <Chip
+                              size="small"
+                              label={`Total ${number(b.total)}`}
+                              sx={{
+                                fontWeight: 600,
+                                backgroundColor: alpha(theme.palette.primary.main, 0.12),
+                                color: theme.palette.primary.main
+                              }}
+                            />
+                            <Chip
+                              size="small"
+                              label={`Active ${number(b.active)}`}
+                              sx={{
+                                fontWeight: 600,
+                                backgroundColor: alpha(theme.palette.success.main, 0.16),
+                                color: theme.palette.success.main
+                              }}
+                            />
+                          </Stack>
+                        </Stack>
+                      )}
                     />
-                    <Chip size="small" label={`#${b.id}`} />
                   </ListItem>
                 )) : (
                   <Typography variant="caption" color="text.secondary">No borrower data.</Typography>
@@ -743,22 +865,38 @@ const DashboardPage = () => {
 
         {/* NEW: Recent Borrow Activity */}
         <Grid item xs={12} md={6}>
-          <Paper sx={{ p:2, minHeight:320, display:'flex', flexDirection:'column', border: theme=>`2px solid ${theme.palette.divider}`, borderRadius:1 }}>
+          <Paper sx={surfacePaper({ p: 2.5, minHeight: 320, display: 'flex', flexDirection: 'column' })}>
             <Typography fontWeight={800} fontSize={14}>Recent Borrow Activity</Typography>
             <Divider sx={{ my:1 }} />
             {loading ? <Skeleton variant="rounded" height={220} /> : (
               <List dense>
-                {recentActivity.length ? recentActivity.map(it => (
-                  <ListItem key={it.id} divider secondaryAction={<Chip size="small" label={it.status} />}>
-                    <ListItemAvatar><Avatar>🔄</Avatar></ListItemAvatar>
-                    <ListItemText
-                      primaryTypographyProps={{ fontWeight: 700, fontSize: 13 }}
-                      secondaryTypographyProps={{ fontSize: 12 }}
-                      primary={it.who}
-                      secondary={`${it.itemsSummary}${it.date ? ` • ${it.date}` : ''}`}
-                    />
-                  </ListItem>
-                )) : (
+                {recentActivity.length ? recentActivity.map(it => {
+                  const style = statusChipStyle(it.status);
+                  return (
+                    <ListItem key={it.id} divider alignItems="flex-start" sx={{ gap: 1 }}>
+                      <ListItemAvatar>
+                        <Avatar sx={{ bgcolor: alpha(theme.palette.info.main, 0.18), color: theme.palette.info.main }}>🔄</Avatar>
+                      </ListItemAvatar>
+                      <ListItemText
+                        primaryTypographyProps={{ fontWeight: 700, fontSize: 13 }}
+                        secondary={(
+                          <Stack spacing={0.5} mt={0.25} alignItems="flex-start">
+                            <Typography variant="caption" color="text.secondary">
+                              {it.itemsSummary}{it.date ? ` • ${it.date}` : ''}
+                            </Typography>
+                            <Chip
+                              size="small"
+                              label={it.status}
+                              sx={{ fontWeight: 600, bgcolor: style.bg, color: style.color }}
+                            />
+                          </Stack>
+                        )}
+                        secondaryTypographyProps={{ component: 'div' }}
+                        primary={it.who}
+                      />
+                    </ListItem>
+                  );
+                }) : (
                   <Typography variant="caption" color="text.secondary">No recent activity.</Typography>
                 )}
               </List>
@@ -767,11 +905,7 @@ const DashboardPage = () => {
         </Grid>
       </Grid>
 
-      <Paper
-        sx={{
-          mt:3, p:2, border: theme=>`2px solid ${theme.palette.divider}`, borderRadius:1
-        }}
-      >
+      <Paper sx={surfacePaper({ mt: 3, p: 2.5 })}>
         <Typography fontWeight={700} fontSize={13} mb={1}>Scenarios Highlighted</Typography>
         <Stack direction="row" gap={1} flexWrap="wrap">
           <Chip size="small" label="Availability mix" />
@@ -788,28 +922,19 @@ const DashboardPage = () => {
 
 // Add: SummaryCard component used by the summary grid
 const SummaryCard = ({ icon: Icon, title, value, sub, color = '#1976d2', loading }) => (
-  <Paper
-    elevation={0}
-    sx={{
-      p: 1.5,
-      display: 'flex',
-      alignItems: 'center',
-      gap: 1.25,
-      border: theme => `2px solid ${theme.palette.divider}`,
-      borderRadius: 1
-    }}
-  >
+  <Paper sx={theme => surfacePaper({ display: 'flex', alignItems: 'center', gap: 1.75, p: 2 })(theme)}>
     <Box
       sx={{
-        width: 44,
-        height: 44,
-        borderRadius: 1,
-        bgcolor: alpha(color, 0.12),
+        width: 52,
+        height: 52,
+        borderRadius: 2,
+        background: `linear-gradient(135deg, ${alpha(color, 0.24)}, ${alpha(color, 0.08)})`,
         color,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        flexShrink: 0
+        flexShrink: 0,
+        fontSize: 24
       }}
     >
       {Icon ? <Icon /> : <span>•</span>}
@@ -817,13 +942,13 @@ const SummaryCard = ({ icon: Icon, title, value, sub, color = '#1976d2', loading
     <Box sx={{ minWidth: 0, flexGrow: 1 }}>
       {loading ? (
         <>
-          <Skeleton width={80} height={18} />
-          <Skeleton width={160} height={12} sx={{ mt: 0.5 }} />
+          <Skeleton width={80} height={22} sx={{ borderRadius: 1 }} />
+          <Skeleton width={160} height={14} sx={{ mt: 0.5, borderRadius: 1 }} />
         </>
       ) : (
         <>
-          <Typography fontWeight={800} fontSize={18} noWrap>{value}</Typography>
-          <Typography variant="caption" color="text.secondary" display="block" noWrap>{title}</Typography>
+          <Typography fontWeight={800} fontSize={22} noWrap>{value}</Typography>
+          <Typography variant="body2" color="text.secondary" noWrap>{title}</Typography>
           <Typography variant="caption" color="text.secondary" display="block" noWrap>{sub}</Typography>
         </>
       )}

@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Typography,
-  Button, TextField, MenuItem, Grid, Box, Select, InputLabel, FormControl, useTheme
+  Button, TextField, MenuItem, Grid, Box, useTheme
 } from '@mui/material';
 import { formatDate } from '../utils/date';
 
@@ -15,7 +15,7 @@ const defaultDetails = {
 };
 
 const defaultStaff = { position: '' };
-const defaultBorrower = { type: '', department: '', accountstatus: 'Pending' };
+const defaultBorrower = { type: '', department: '', accountstatus: '' };
 
 const UsersFormModal = ({
   open,
@@ -25,7 +25,7 @@ const UsersFormModal = ({
   userData = null
 }) => {
   const theme = useTheme();
-  const [role, setRole] = useState('Staff');
+  const [role, setRole] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [details, setDetails] = useState(defaultDetails);
@@ -34,7 +34,7 @@ const UsersFormModal = ({
 
   useEffect(() => {
     if (isEdit && userData) {
-      setRole(userData.Role || 'Staff');
+  setRole(userData.Role || '');
       setUsername(userData.Username || '');
       setPassword('');
       setDetails({
@@ -60,12 +60,12 @@ const UsersFormModal = ({
           ? {
               type: userData.borrower?.Type || '',
               department: userData.borrower?.Department || '',
-              accountstatus: userData.borrower?.AccountStatus || 'Pending'
+              accountstatus: userData.borrower?.AccountStatus || ''
             }
           : defaultBorrower
       );
     } else {
-      setRole('Staff');
+  setRole('');
       setUsername('');
       setPassword('');
       setDetails(defaultDetails);
@@ -97,6 +97,57 @@ const UsersFormModal = ({
     };
     onSave(payload);
   };
+
+  const baseSelectMenuProps = useMemo(() => ({
+    PaperProps: {
+      sx: {
+        maxHeight: 320,
+        minWidth: 260,
+        '& .MuiMenuItem-root': {
+          whiteSpace: 'normal',
+          lineHeight: 1.25,
+          alignItems: 'flex-start'
+        }
+      }
+    }
+  }), []);
+
+  const wideSelectMenuProps = useMemo(() => ({
+    PaperProps: {
+      sx: {
+        maxHeight: 320,
+        minWidth: 320,
+        '& .MuiMenuItem-root': {
+          whiteSpace: 'normal',
+          lineHeight: 1.25,
+          alignItems: 'flex-start'
+        }
+      }
+    }
+  }), []);
+
+  const renderEmptyValue = label => value => (
+    value ? (
+      value
+    ) : (
+      <Typography component="span" color="text.disabled" sx={{ fontStyle: 'italic' }}>
+        {`Select ${label.toLowerCase()}`}
+      </Typography>
+    )
+  );
+
+  const isStaff = role === 'Staff';
+  const isBorrower = role === 'Borrower';
+  const staffIncomplete = isStaff && !staff.position;
+  const borrowerIncomplete =
+    isBorrower && (!borrower.type || !borrower.accountstatus);
+
+  const submitDisabled =
+    !username ||
+    !role ||
+    (!isEdit && (!password || password.length < 6)) ||
+    staffIncomplete ||
+    borrowerIncomplete;
 
   return (
     <Dialog
@@ -190,18 +241,27 @@ const UsersFormModal = ({
                 />
               </Grid>
               <Grid item xs={12} md={4}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>Role</InputLabel>
-                  <Select
-                    value={role}
-                    label="Role"
-                    onChange={e => setRole(e.target.value)}
-                    disabled={isEdit}
-                  >
-                    <MenuItem value="Staff">Staff</MenuItem>
-                    <MenuItem value="Borrower">Borrower</MenuItem>
-                  </Select>
-                </FormControl>
+                <TextField
+                  select
+                  label="Role"
+                  value={role}
+                  onChange={e => setRole(e.target.value)}
+                  fullWidth
+                  size="medium"
+                  disabled={isEdit}
+                  InputLabelProps={{ shrink: true }}
+                  InputProps={{ sx: { borderRadius: 1, minHeight: 54 } }}
+                  SelectProps={{
+                    MenuProps: baseSelectMenuProps,
+                    displayEmpty: true,
+                    renderValue: renderEmptyValue('Role')
+                  }}
+                  helperText={isEdit ? 'Role cannot be changed' : 'Pick the account role'}
+                >
+                  <MenuItem value="" disabled>Select a role</MenuItem>
+                  <MenuItem value="Staff">Staff</MenuItem>
+                  <MenuItem value="Borrower">Borrower</MenuItem>
+                </TextField>
               </Grid>
             </Grid>
           </Box>
@@ -356,21 +416,30 @@ const UsersFormModal = ({
                 </Typography>
               </Box>
               <Grid container spacing={1.5}>
-                <Grid item xs={12} md={6}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Position</InputLabel>
-                    <Select
-                      name="position"
-                      value={staff.position}
-                      label="Position"
-                      onChange={handleStaffChange}
-                      required
-                    >
-                      {staffPositions.map(pos => (
-                        <MenuItem key={pos} value={pos}>{pos}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                <Grid item xs={12}>
+                  <TextField
+                    select
+                    label="Position"
+                    name="position"
+                    value={staff.position}
+                    onChange={handleStaffChange}
+                    fullWidth
+                    size="medium"
+                    required
+                    InputLabelProps={{ shrink: true }}
+                    InputProps={{ sx: { borderRadius: 1, minHeight: 54 } }}
+                    SelectProps={{
+                      MenuProps: wideSelectMenuProps,
+                      displayEmpty: true,
+                      renderValue: renderEmptyValue('Position')
+                    }}
+                    helperText="Assign the staff member's primary role"
+                  >
+                    <MenuItem value="" disabled>Select a position</MenuItem>
+                    {staffPositions.map(pos => (
+                      <MenuItem key={pos} value={pos}>{pos}</MenuItem>
+                    ))}
+                  </TextField>
                 </Grid>
               </Grid>
             </Box>
@@ -396,20 +465,29 @@ const UsersFormModal = ({
               </Box>
               <Grid container spacing={1.5}>
                 <Grid item xs={12} md={4}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Type</InputLabel>
-                    <Select
-                      name="type"
-                      value={borrower.type}
-                      label="Type"
-                      onChange={handleBorrowerChange}
-                      required
-                    >
-                      {borrowerTypes.map(type => (
-                        <MenuItem key={type} value={type}>{type}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                  <TextField
+                    select
+                    label="Type"
+                    name="type"
+                    value={borrower.type}
+                    onChange={handleBorrowerChange}
+                    fullWidth
+                    size="medium"
+                    required
+                    InputLabelProps={{ shrink: true }}
+                    InputProps={{ sx: { borderRadius: 1, minHeight: 54 } }}
+                    SelectProps={{
+                      MenuProps: baseSelectMenuProps,
+                      displayEmpty: true,
+                      renderValue: renderEmptyValue('Type')
+                    }}
+                    helperText="Choose how this borrower will be categorized"
+                  >
+                    <MenuItem value="" disabled>Select a type</MenuItem>
+                    {borrowerTypes.map(type => (
+                      <MenuItem key={type} value={type}>{type}</MenuItem>
+                    ))}
+                  </TextField>
                 </Grid>
                 <Grid item xs={12} md={4}>
                   <TextField
@@ -422,20 +500,29 @@ const UsersFormModal = ({
                   />
                 </Grid>
                 <Grid item xs={12} md={4}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Status</InputLabel>
-                    <Select
-                      name="accountstatus"
-                      value={borrower.accountstatus}
-                      label="Status"
-                      onChange={handleBorrowerChange}
-                      required
-                    >
-                      {accountStatuses.map(status => (
-                        <MenuItem key={status} value={status}>{status}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                  <TextField
+                    select
+                    label="Status"
+                    name="accountstatus"
+                    value={borrower.accountstatus}
+                    onChange={handleBorrowerChange}
+                    fullWidth
+                    size="medium"
+                    required
+                    InputLabelProps={{ shrink: true }}
+                    InputProps={{ sx: { borderRadius: 1, minHeight: 54 } }}
+                    SelectProps={{
+                      MenuProps: baseSelectMenuProps,
+                      displayEmpty: true,
+                      renderValue: renderEmptyValue('Status')
+                    }}
+                    helperText="Select current registration status"
+                  >
+                    <MenuItem value="" disabled>Select a status</MenuItem>
+                    {accountStatuses.map(status => (
+                      <MenuItem key={status} value={status}>{status}</MenuItem>
+                    ))}
+                  </TextField>
                 </Grid>
               </Grid>
             </Box>
@@ -464,7 +551,7 @@ const UsersFormModal = ({
               variant="contained"
               size="small"
               sx={{ borderRadius: 1, fontWeight: 700 }}
-              disabled={!username || (!isEdit && (!password || password.length < 6))}
+              disabled={submitDisabled}
           >
             {isEdit ? 'Update' : 'Add'}
           </Button>

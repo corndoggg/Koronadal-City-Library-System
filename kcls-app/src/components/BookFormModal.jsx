@@ -148,8 +148,7 @@ const BookFormModal = ({
     { key: 'accessionNumber', label: 'Accession Number', required: true },
     { key: 'location', label: 'Location', required: true, select: true, options: locations },
     { key: 'availability', label: 'Availability', select: true, options: ['Available', 'Borrowed', 'Reserved', 'Lost'] },
-    { key: 'condition', label: 'Condition', select: true, options: conditionOptions },
-    { key: 'physicalStatus', label: 'Physical Status' }
+    { key: 'condition', label: 'Condition', select: true, options: conditionOptions }
   ];
 
   const availabilityStats = useMemo(() => {
@@ -165,6 +164,55 @@ const BookFormModal = ({
     !copyForm.accessionNumber ||
     !copyForm.location ||
     accessionExists(copyForm.accessionNumber, editCopyIndex);
+
+  const baseSelectMenuProps = useMemo(() => ({
+    PaperProps: {
+      sx: {
+        maxHeight: 320,
+        minWidth: 260,
+        '& .MuiMenuItem-root': {
+          whiteSpace: 'normal',
+          lineHeight: 1.25,
+          alignItems: 'flex-start'
+        }
+      }
+    }
+  }), []);
+
+  const wideSelectMenuProps = useMemo(() => ({
+    PaperProps: {
+      sx: {
+        maxHeight: 320,
+        minWidth: 320,
+        '& .MuiMenuItem-root': {
+          whiteSpace: 'normal',
+          lineHeight: 1.25,
+          alignItems: 'flex-start'
+        }
+      }
+    }
+  }), []);
+
+  const formatLocationLabel = (value) => {
+    if (!value) {
+      return (
+        <Typography component="span" color="text.disabled" sx={{ fontStyle: 'italic' }}>
+          Select a location
+        </Typography>
+      );
+    }
+    const label = getLocationName(value);
+    return label || `Location #${value}`;
+  };
+
+  const renderEmptyValue = (label) => (value) =>
+    value ? (
+      value
+    ) : (
+      <Typography component="span" color="text.disabled" sx={{ fontStyle: 'italic' }}>
+        {`Select ${label.toLowerCase()}`}
+      </Typography>
+    );
 
   return (
     <>
@@ -330,92 +378,140 @@ const BookFormModal = ({
                     {editCopyIndex !== null ? 'Edit Copy' : 'Add Book Copy'}
                   </Typography>
                   <Grid container spacing={2}>
-                    {copyFields.map(({ key, label, required, select, options }) => (
-                      <Grid item xs={12} sm={6} key={key}>
-                        {select && key === 'location' ? (
-                          <TextField
-                            select
-                            label={label}
-                            name={key}
-                            value={copyForm[key]}
-                            onChange={e => {
-                              handleCopyChange(e);
-                              setUnsaved(true);
-                            }}
-                            fullWidth
-                            size="small"
-                            required={required}
-                            helperText={locations.length === 0 ? 'Add locations first.' : ''}
-                            disabled={locations.length === 0}
-                            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1 } }}
-                          >
-                            {locations.length === 0 && <MenuItem value="">No locations</MenuItem>}
-                            {locations.map(loc => (
-                              <MenuItem key={loc.ID} value={String(loc.ID)}>
-                                {loc.Name}
+                    {copyFields.map(({ key, label, required, select, options }) => {
+                      const isLocationField = key === 'location';
+                      return (
+                        <Grid
+                          item
+                          key={key}
+                          xs={12}
+                          sm={isLocationField ? 12 : 6}
+                        >
+                          {select && isLocationField ? (
+                            <TextField
+                              select
+                              label={label}
+                              name={key}
+                              value={copyForm[key]}
+                              onChange={e => {
+                                handleCopyChange(e);
+                                setUnsaved(true);
+                              }}
+                              fullWidth
+                              size="medium"
+                              required={required}
+                              helperText={locations.length === 0 ? 'Add locations first.' : 'Choose where this copy is stored.'}
+                              disabled={locations.length === 0}
+                              InputLabelProps={{ shrink: true }}
+                              SelectProps={{
+                                displayEmpty: true,
+                                MenuProps: wideSelectMenuProps,
+                                renderValue: (value) => formatLocationLabel(value)
+                              }}
+                              sx={{
+                                '& .MuiOutlinedInput-root': { borderRadius: 1, minHeight: 54 },
+                                '& .MuiSelect-select': { display: 'flex', alignItems: 'center' },
+                                '& .MuiInputLabel-root': { fontWeight: 600 }
+                              }}
+                            >
+                              <MenuItem value="" disabled>
+                                <Typography color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                                  Select a location
+                                </Typography>
                               </MenuItem>
-                            ))}
-                          </TextField>
-                        ) : select ? (
-                          <TextField
-                            select
-                            label={label}
-                            name={key}
-                            value={copyForm[key]}
-                            onChange={e => {
-                              handleCopyChange(e);
-                              setUnsaved(true);
-                            }}
-                            fullWidth
-                            size="small"
-                            required={required}
-                            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1 } }}
-                          >
-                            {options.map(opt => (
-                              <MenuItem key={opt} value={opt}>
-                                {opt}
+                              {locations.length === 0 && <MenuItem value="no-location" disabled>No locations</MenuItem>}
+                              {locations.map(loc => (
+                                <MenuItem key={loc.ID} value={String(loc.ID)} sx={{ whiteSpace: 'normal', alignItems: 'flex-start' }}>
+                                  <Stack spacing={0.25}>
+                                    <Typography fontWeight={600}>{loc.Name}</Typography>
+                                    {typeof loc.Capacity !== 'undefined' && (
+                                      <Typography variant="caption" color="text.secondary">
+                                        Capacity: {loc.Capacity || 'Unlimited'}
+                                      </Typography>
+                                    )}
+                                  </Stack>
+                                </MenuItem>
+                              ))}
+                            </TextField>
+                          ) : select ? (
+                            <TextField
+                              select
+                              label={label}
+                              name={key}
+                              value={copyForm[key]}
+                              onChange={e => {
+                                handleCopyChange(e);
+                                setUnsaved(true);
+                              }}
+                              fullWidth
+                              size="medium"
+                              required={required}
+                              InputLabelProps={{ shrink: true }}
+                              SelectProps={{
+                                MenuProps: baseSelectMenuProps,
+                                displayEmpty: true,
+                                renderValue: renderEmptyValue(label)
+                              }}
+                              sx={{
+                                '& .MuiOutlinedInput-root': { borderRadius: 1, minHeight: 54 },
+                                '& .MuiInputLabel-root': { fontWeight: 600 }
+                              }}
+                            >
+                              <MenuItem value="" disabled>
+                                <Typography color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                                  {`Select ${label.toLowerCase()}`}
+                                </Typography>
                               </MenuItem>
-                            ))}
-                          </TextField>
-                        ) : (
-                          <TextField
-                            label={label}
-                            name={key}
-                            value={copyForm[key]}
-                            onChange={e => {
-                              handleCopyChange(e);
-                              setUnsaved(true);
-                            }}
-                            fullWidth
-                            size="small"
-                            required={required}
-                            autoComplete="off"
-                            error={
-                              key === 'accessionNumber' &&
-                              !!copyForm.accessionNumber &&
-                              accessionExists(copyForm.accessionNumber, editCopyIndex)
-                            }
-                            helperText={
-                              key === 'accessionNumber' &&
-                              accessionExists(copyForm.accessionNumber, editCopyIndex)
-                                ? 'Accession already used.'
-                                : ' '
-                            }
-                            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1 } }}
-                          />
-                        )}
-                      </Grid>
-                    ))}
+                              {options.map(opt => (
+                                <MenuItem key={opt} value={opt} sx={{ whiteSpace: 'normal' }}>
+                                  {opt}
+                                </MenuItem>
+                              ))}
+                            </TextField>
+                          ) : (
+                            <TextField
+                              label={label}
+                              name={key}
+                              value={copyForm[key]}
+                              onChange={e => {
+                                handleCopyChange(e);
+                                setUnsaved(true);
+                              }}
+                              fullWidth
+                              size="medium"
+                              required={required}
+                              autoComplete="off"
+                              error={
+                                key === 'accessionNumber' &&
+                                !!copyForm.accessionNumber &&
+                                accessionExists(copyForm.accessionNumber, editCopyIndex)
+                              }
+                              helperText={
+                                key === 'accessionNumber' &&
+                                accessionExists(copyForm.accessionNumber, editCopyIndex)
+                                  ? 'Accession already used.'
+                                  : ' '
+                              }
+                              InputLabelProps={{ shrink: true }}
+                              sx={{
+                                '& .MuiOutlinedInput-root': { borderRadius: 1, minHeight: 54 },
+                                '& .MuiInputLabel-root': { fontWeight: 600 }
+                              }}
+                            />
+                          )}
+                        </Grid>
+                      );
+                    })}
 
                     <Grid item xs={12} sm={6}>
                       <Button
-                        size="small"
+                        size="medium"
                         variant="outlined"
                         startIcon={<AutoFixHigh />}
                         onClick={generateAccession}
                         fullWidth
                         disabled={!!copyForm.accessionNumber}
-                        sx={{ height: '100%', fontWeight: 600 }}
+                        sx={{ minHeight: 54, fontWeight: 600, borderRadius: 1 }}
                       >
                         Auto Accession
                       </Button>
@@ -425,11 +521,11 @@ const BookFormModal = ({
                       <Stack direction="row" spacing={1}>
                         <Button
                           variant="contained"
-                          size="small"
+                          size="medium"
                           startIcon={editCopyIndex !== null ? <Save /> : <Add />}
                           onClick={handleCopyAction}
                           disabled={copyInvalid || locations.length === 0}
-                          sx={{ fontWeight: 700 }}
+                          sx={{ fontWeight: 700, borderRadius: 1, minHeight: 48 }}
                         >
                           {editCopyIndex !== null ? 'Update Copy' : 'Add Copy'}
                         </Button>
@@ -437,10 +533,10 @@ const BookFormModal = ({
                           <Button
                             variant="text"
                             color="secondary"
-                            size="small"
+                            size="medium"
                             startIcon={<Cancel />}
                             onClick={cancelEditCopy}
-                            sx={{ fontWeight: 600 }}
+                            sx={{ fontWeight: 600, borderRadius: 1, minHeight: 48 }}
                           >
                             Cancel
                           </Button>
@@ -528,7 +624,7 @@ const BookFormModal = ({
                         <TableCell>Location</TableCell>
                         <TableCell>Availability</TableCell>
                         <TableCell>Condition</TableCell>
-                        <TableCell>Physical Status</TableCell>
+                        
                         <TableCell align="center">Actions</TableCell>
                       </TableRow>
                     </TableHead>
@@ -559,7 +655,6 @@ const BookFormModal = ({
                             />
                           </TableCell>
                           <TableCell>{copy.condition || '-'}</TableCell>
-                          <TableCell>{copy.physicalStatus || '-'}</TableCell>
                           <TableCell align="center">
                             <Tooltip title="Edit">
                               <IconButton

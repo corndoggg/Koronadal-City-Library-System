@@ -114,7 +114,6 @@ CREATE TABLE IF NOT EXISTS `Book_Inventory` (
   `Book_ID` INT(11) NOT NULL,
   `Accession_Number` VARCHAR(50) DEFAULT NULL,
   `Availability` VARCHAR(50) DEFAULT NULL,
-  `Physical_Status` VARCHAR(100) DEFAULT NULL,
   `BookCondition` VARCHAR(100) DEFAULT NULL,
   `StorageLocation` INT(11) NOT NULL,
   PRIMARY KEY (`Copy_ID`),

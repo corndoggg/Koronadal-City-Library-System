@@ -13,7 +13,6 @@ def get_inventory(book_id):
             bi.Copy_ID, 
             bi.Accession_Number AS accessionNumber, 
             bi.Availability AS availability, 
-            bi.Physical_Status AS physicalStatus, 
             bi.BookCondition AS `condition`, 
             bi.StorageLocation AS location,      
             s.Name AS locationName
@@ -37,7 +36,6 @@ def get_inventory_copy(copy_id):
             bi.Book_ID, 
             bi.Accession_Number AS accessionNumber, 
             bi.Availability AS availability, 
-            bi.Physical_Status AS physicalStatus, 
             bi.BookCondition AS `condition`,
             bi.StorageLocation AS location,
             s.Name AS locationName
@@ -59,13 +57,12 @@ def add_inventory(book_id):
     cursor.execute("""
         INSERT INTO Book_Inventory (
             Book_ID, Accession_Number, Availability, 
-            Physical_Status, BookCondition, StorageLocation
-        ) VALUES (%s, %s, %s, %s, %s, %s)
+            BookCondition, StorageLocation
+        ) VALUES (%s, %s, %s, %s, %s)
     """, (
         book_id,
         copy['accessionNumber'],
         copy['availability'],
-        copy['physicalStatus'],
         copy['condition'],
         copy['location']
     ))
@@ -85,7 +82,6 @@ def update_copy(book_id, copy_id):
         SET 
             Accession_Number = %s, 
             Availability = %s, 
-            Physical_Status = %s,
             BookCondition = %s, 
             StorageLocation = %s 
         WHERE 
@@ -93,7 +89,6 @@ def update_copy(book_id, copy_id):
     """, (
         copy['accessionNumber'],
         copy['availability'],
-        copy['physicalStatus'],
         copy['condition'],
         copy['location'],
         copy_id,

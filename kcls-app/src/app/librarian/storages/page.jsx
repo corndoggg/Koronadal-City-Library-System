@@ -133,7 +133,6 @@ const StorageManagementPage = () => {
           {
             accessionNumber: editInv.accessionNumber,
             availability: editInv.availability || "Available",
-            physicalStatus: editInv.physicalStatus ?? "",
             condition: editInv.condition || "Good",
             location: Number.isNaN(locId) ? editInv.location : locId
           }

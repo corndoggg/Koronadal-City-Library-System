@@ -15,7 +15,8 @@ import {
 import { logAudit } from '../../../utils/auditLogger.js'; // NEW
 
 const API_BASE = import.meta.env.VITE_API_BASE;
-const returnConditions = ['Good', 'Fair', 'Average', 'Poor', 'Bad', 'Lost'];
+// Lost is controlled exclusively by the Lost checkbox, not as a condition option
+const returnConditions = ['Good', 'Fair', 'Average', 'Poor', 'Bad'];
 // const FINE_PER_DAY = parseFloat(import.meta.env.VITE_FINE) || 0; // remove this line
 
 const DocumentApprovalPage = () => {
@@ -42,6 +43,9 @@ const DocumentApprovalPage = () => {
   const [returnRemarks, setReturnRemarks] = useState("");
   // NEW: lost handling state
   // Row-level lost removed; use per-item lost inside the return modal only
+  // Ensure lost flow auxiliary states exist for markLost
+  const [lostRemarks, setLostRemarks] = useState("");
+  const [lostSubmitting, setLostSubmitting] = useState(false);
 
   // Only fetch transactions on mount
   useEffect(() => { fetchTransactions(); }, []);
@@ -523,7 +527,10 @@ const DocumentApprovalPage = () => {
           remarks: returnRemarks || undefined
         });
       }
-      logAudit('BORROW_RETURN', 'Borrow', returnTx.BorrowID, { items: items.length }); // NEW
+  // Log after both operations; include summary counts
+  const lostCount = lostItems.length;
+  const returnedCount = keptItems.length;
+  logAudit('BORROW_RETURN', 'Borrow', returnTx.BorrowID, { lostItems: lostCount, returnedItems: returnedCount });
       setReturnModalOpen(false);
       await fetchTransactions();
     } finally { setActionLoading(false); }
@@ -552,7 +559,7 @@ const DocumentApprovalPage = () => {
   };
 
   const renderReturnModal = () => !returnTx ? null : (
-    <Dialog open={returnModalOpen} onClose={() => setReturnModalOpen(false)} maxWidth="sm" fullWidth
+    <Dialog open={returnModalOpen} onClose={() => setReturnModalOpen(false)} maxWidth="md" fullWidth
       PaperProps={{ sx: { borderRadius: 1, border: `2px solid ${theme.palette.divider}` } }}>
       <DialogTitle sx={{ fontWeight: 800, py: 1.25, borderBottom: `2px solid ${theme.palette.divider}` }}>
         Return Items • Borrow #{returnTx.BorrowID}
@@ -607,65 +614,77 @@ const DocumentApprovalPage = () => {
             }}>Auto-calc fines</Button>
           </Stack>
         </Paper>
-        {(returnTx.items || []).map(item => {
-          const dueRaw = dueDates[returnTx.BorrowID];
-          const today = startOfDay(new Date());
-          const due = dueRaw ? startOfDay(new Date(dueRaw)) : null;
-          const days = due ? Math.max(0, Math.floor((today - due) / 86400000)) : 0;
-          const autoFine = (days * finePerDay).toFixed(2); // changed
-          return (
-            <Box key={item.BorrowedItemID} sx={{ p: 1.5, border: `1.5px solid ${theme.palette.divider}`, borderRadius: 1, bgcolor: 'background.paper' }}>
-              <Stack direction="row" spacing={1} alignItems="center">
-                <Avatar sx={{ bgcolor: theme.palette.secondary.main, width: 36, height: 36, borderRadius: 1 }}>
-                  <Article fontSize="small" />
-                </Avatar>
-                <Box>
-                  <Typography fontWeight={700} fontSize={13}>Doc Storage #{item.DocumentStorageID}</Typography>
-                  {docDetails[item.DocumentStorageID]?.Title && (
-                    <Typography variant="caption" color="text.secondary">
-                      {docDetails[item.DocumentStorageID].Title}
+        <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1 }}>
+          <Table size="small" stickyHeader>
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 700 }}>Item</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Title</TableCell>
+                <TableCell sx={{ fontWeight: 700, width: 180 }}>Condition</TableCell>
+                <TableCell sx={{ fontWeight: 700, width: 80 }} align="center">Lost</TableCell>
+                <TableCell sx={{ fontWeight: 700, width: 120 }}>Fine</TableCell>
+                <TableCell sx={{ fontWeight: 700, width: 90 }} align="center">Paid</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {(returnTx.items || []).map(item => (
+                <TableRow key={item.BorrowedItemID} hover>
+                  <TableCell>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Avatar sx={{ bgcolor: theme.palette.secondary.main, width: 28, height: 28, borderRadius: 1 }}>
+                        <Article fontSize="small" />
+                      </Avatar>
+                      <Typography fontSize={12} fontWeight={700}>Doc Storage #{item.DocumentStorageID}</Typography>
+                    </Stack>
+                  </TableCell>
+                  <TableCell>
+                    <Typography fontSize={12} color="text.secondary" noWrap>
+                      {docDetails[item.DocumentStorageID]?.Title || '—'}
                     </Typography>
-                  )}
-                </Box>
-              </Stack>
-              <FormControl fullWidth size="small" sx={{ mt: 1 }}>
-                <InputLabel>Return Condition</InputLabel>
-                <Select
-                  label="Return Condition"
-                  value={returnData[item.BorrowedItemID]?.condition || "Good"}
-                  onChange={e => handleReturnChange(item.BorrowedItemID, "condition", e.target.value)}
-                  disabled={!!returnData[item.BorrowedItemID]?.lost}
-                >
-                  {returnConditions.map(o => <MenuItem key={o} value={o}>{o}</MenuItem>)}
-                </Select>
-              </FormControl>
-              <FormControlLabel
-                sx={{ m: 0, mt: 0.5 }}
-                control={<Checkbox checked={!!returnData[item.BorrowedItemID]?.lost}
-                  onChange={e => handleReturnChange(item.BorrowedItemID, 'lost', e.target.checked)} />}
-                label="Mark this item Lost"
-              />
-              <TextField
-                label="Fine"
-                type="number"
-                size="small"
-                value={returnData[item.BorrowedItemID]?.fine ?? 0}
-                onChange={e => handleReturnChange(item.BorrowedItemID, "fine", e.target.value)}
-                inputProps={{ min: 0, step: "0.01" }}
-                sx={{ mt: 1 }}
-              />
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
-                Auto: {finePerDay.toFixed(2)}/day × {days} day(s) = {autoFine} {/* changed */}
-              </Typography>
-              <FormControlLabel
-                sx={{ m: 0, mt: 0.5 }}
-                control={<Checkbox checked={!!returnData[item.BorrowedItemID]?.finePaid}
-                  onChange={e => handleReturnChange(item.BorrowedItemID, "finePaid", e.target.checked)} />}
-                label="Fine Paid"
-              />
-            </Box>
-          );
-        })}
+                  </TableCell>
+                  <TableCell>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Return Condition</InputLabel>
+                      <Select
+                        label="Return Condition"
+                        value={returnData[item.BorrowedItemID]?.condition || 'Good'}
+                        onChange={e => handleReturnChange(item.BorrowedItemID, 'condition', e.target.value)}
+                        disabled={!!returnData[item.BorrowedItemID]?.lost}
+                      >
+                        {returnConditions.map(o => (
+                          <MenuItem key={o} value={o}>{o}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </TableCell>
+                  <TableCell align="center">
+                    <Checkbox
+                      checked={!!returnData[item.BorrowedItemID]?.lost}
+                      onChange={e => handleReturnChange(item.BorrowedItemID, 'lost', e.target.checked)}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <TextField
+                      label="Fine"
+                      type="number"
+                      size="small"
+                      value={returnData[item.BorrowedItemID]?.fine ?? 0}
+                      onChange={e => handleReturnChange(item.BorrowedItemID, 'fine', e.target.value)}
+                      inputProps={{ min: 0, step: '0.01' }}
+                      fullWidth
+                    />
+                  </TableCell>
+                  <TableCell align="center">
+                    <Checkbox
+                      checked={!!returnData[item.BorrowedItemID]?.finePaid}
+                      onChange={e => handleReturnChange(item.BorrowedItemID, 'finePaid', e.target.checked)}
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
         {/* Summary */}
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
           <Chip label={`Items: ${(returnTx.items || []).length}`} size="small" />

@@ -9,7 +9,7 @@ import { alpha } from '@mui/material/styles';
 import BookFormModal from '../../../components/BookFormModal';
 
 const initialBookForm = { title: '', author: '', edition: '', publisher: '', year: '', subject: '', language: '', isbn: '' };
-const initialCopyForm = { accessionNumber: '', availability: 'Available', physicalStatus: '', condition: '', location: '' };
+const initialCopyForm = { accessionNumber: '', availability: 'Available', condition: '', location: '' };
 
 const BookManagementPage = () => {
   const theme = useTheme(), API_BASE = import.meta.env.VITE_API_BASE;
