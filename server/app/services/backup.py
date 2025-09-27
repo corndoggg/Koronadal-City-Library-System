@@ -4,8 +4,12 @@ import sqlite3
 import subprocess
 import gzip
 import shutil
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, time
 from urllib.parse import urlparse
+from decimal import Decimal
+
+import mysql.connector
+from mysql.connector import Error as MySQLError
 
 def _server_dir():
     # app/services -> app -> server
@@ -148,46 +152,173 @@ def _find_mysqldump() -> str | None:
 def backup_mysql(cfg: dict) -> dict:
     """Uses mysqldump / mariadb-dump to create a .sql (optionally .gz) dump."""
     mysqldump = _find_mysqldump()
-    if not mysqldump:
-        raise RuntimeError(
-            "MISSING_MYSQLDUMP: Could not locate 'mysqldump' or 'mariadb-dump'. Install client tools and ensure PATH includes /usr/bin, or set MYSQLDUMP_PATH or MARIADB_DUMP_PATH."
-        )
 
     backup_dir = get_backup_dir()
     out_name = f"mysql_backup_{_ts()}.sql"
     out_path = os.path.join(backup_dir, out_name)
 
-    cmd = [
-        mysqldump,
-        "-h", str(cfg.get("host", "localhost")),
-        "-P", str(cfg.get("port", 3306)),
-        "-u", str(cfg.get("user", "")),
-        f"--password={cfg.get('password','')}",
-        "--routines",
-        "--events",
-        "--triggers",
-        "--single-transaction",
-        "--set-gtid-purged=OFF",
-        str(cfg.get("name", "")),
-    ]
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
-    # Run and write to file
-    with open(out_path, "wb") as f:
-        proc = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE)
-    if proc.returncode != 0:
-        # Clean failed file
+    if mysqldump:
+        cmd = [
+            mysqldump,
+            "-h", str(cfg.get("host", "localhost")),
+            "-P", str(cfg.get("port", 3306)),
+            "-u", str(cfg.get("user", "")),
+            f"--password={cfg.get('password','')}",
+            "--routines",
+            "--events",
+            "--triggers",
+            "--single-transaction",
+            "--set-gtid-purged=OFF",
+            str(cfg.get("name", "")),
+        ]
+
+        with open(out_path, "wb") as f:
+            proc = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE)
+        if proc.returncode != 0:
+            try:
+                if os.path.exists(out_path):
+                    os.remove(out_path)
+            except Exception:
+                pass
+            raise RuntimeError(f"mysqldump failed: {proc.stderr.decode(errors='ignore') or 'unknown error'}")
+
+        method = "mysqldump"
+    else:
         try:
-            if os.path.exists(out_path):
-                os.remove(out_path)
-        except:
-            pass
-        raise RuntimeError(f"mysqldump failed: {proc.stderr.decode(errors='ignore') or 'unknown error'}")
+            _python_mysql_backup(cfg, out_path)
+        except Exception as exc:
+            try:
+                if os.path.exists(out_path):
+                    os.remove(out_path)
+            except Exception:
+                pass
+            raise RuntimeError(
+                "MISSING_MYSQLDUMP: Python fallback failed when creating the backup. "
+                "Install MySQL client tools (mysqldump/mariadb-dump) or provide MYSQLDUMP_PATH. "
+                f"Details: {exc}"
+            )
+        method = "python"
 
     size = os.path.getsize(out_path)
-    result = {"file": out_name, "path": out_path, "size": size, "db_type": "mysql"}
+    result = {"file": out_name, "path": out_path, "size": size, "db_type": "mysql", "method": method}
     result = _maybe_compress(result)
     _enforce_retention()
     return result
+
+
+def _mysql_escape_value(value):
+    if value is None:
+        return "NULL"
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, (int, float, Decimal)):
+        return str(value)
+    if isinstance(value, datetime):
+        return f"'{value.strftime('%Y-%m-%d %H:%M:%S')}'"
+    if isinstance(value, date):
+        return f"'{value.strftime('%Y-%m-%d')}'"
+    if isinstance(value, time):
+        return f"'{value.strftime('%H:%M:%S')}'"
+    if isinstance(value, bytes):
+        return "0x" + value.hex()
+    escaped = str(value).replace("\\", "\\\\").replace("'", "\\'")
+    return f"'{escaped}'"
+
+
+def _python_mysql_backup(cfg: dict, out_path: str) -> None:
+    required = ["host", "port", "name", "user"]
+    if not all(cfg.get(k) for k in required):
+        raise RuntimeError("Incomplete MySQL config. Host, port, name, and user are required for Python backup fallback.")
+
+    try:
+        conn = mysql.connector.connect(
+            host=cfg.get("host"),
+            port=int(cfg.get("port", 3306)),
+            user=cfg.get("user"),
+            password=cfg.get("password", ""),
+            database=cfg.get("name"),
+            charset="utf8mb4",
+        )
+    except MySQLError as exc:
+        raise RuntimeError(f"MySQL connection failed: {exc}")
+
+    cursor = None
+    try:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+        except MySQLError:
+            pass
+        try:
+            cursor.execute("START TRANSACTION WITH CONSISTENT SNAPSHOT")
+        except MySQLError:
+            pass
+
+        cursor.execute("SHOW FULL TABLES")
+        rows = cursor.fetchall()
+        tables = [(r[0], r[1]) for r in rows]
+        tables.sort(key=lambda x: x[0])
+
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write("-- MariaDB/MySQL logical backup generated via Python fallback\n")
+            f.write(f"-- Host: {cfg.get('host')}\n")
+            f.write(f"-- Database: {cfg.get('name')}\n")
+            f.write(f"-- Timestamp: {datetime.utcnow().isoformat()}Z\n\n")
+            f.write("SET NAMES utf8mb4;\n")
+            f.write("SET FOREIGN_KEY_CHECKS=0;\n")
+            f.write(f"USE `{cfg.get('name')}`;\n\n")
+
+            for table_name, table_type in tables:
+                if table_type and table_type.upper() == "VIEW":
+                    cursor.execute(f"SHOW CREATE VIEW `{table_name}`")
+                    create_view = cursor.fetchone()
+                    if create_view and len(create_view) > 1:
+                        f.write(f"-- ----------------------------\n-- Structure for view `{table_name}`\n-- ----------------------------\n")
+                        f.write(f"DROP VIEW IF EXISTS `{table_name}`;\n")
+                        f.write(create_view[1] + ";\n\n")
+                    continue
+
+                cursor.execute(f"SHOW CREATE TABLE `{table_name}`")
+                create_row = cursor.fetchone()
+                if not create_row or len(create_row) < 2:
+                    continue
+                create_stmt = create_row[1]
+
+                f.write(f"-- ----------------------------\n-- Structure for table `{table_name}`\n-- ----------------------------\n")
+                f.write(f"DROP TABLE IF EXISTS `{table_name}`;\n")
+                f.write(create_stmt + ";\n\n")
+
+                data_cursor = conn.cursor()
+                try:
+                    data_cursor.execute(f"SELECT * FROM `{table_name}`")
+                    has_description = bool(data_cursor.description)
+
+                    f.write(f"-- ----------------------------\n-- Data for table `{table_name}`\n-- ----------------------------\n")
+
+                    batch = data_cursor.fetchmany(size=500)
+                    while batch:
+                        for row in batch:
+                            values = ", ".join(_mysql_escape_value(value) for value in row)
+                            if has_description:
+                                f.write(f"INSERT INTO `{table_name}` VALUES ({values});\n")
+                        batch = data_cursor.fetchmany(size=500)
+                    f.write("\n")
+                finally:
+                    data_cursor.close()
+
+            f.write("SET FOREIGN_KEY_CHECKS=1;\n")
+            f.write("COMMIT;\n")
+
+        conn.commit()
+    finally:
+        try:
+            if cursor is not None:
+                cursor.close()
+        except Exception:
+            pass
+        conn.close()
 
 def create_backup(app) -> dict:
     """Auto-detect DB type and create backup. Returns metadata."""

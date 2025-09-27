@@ -2,9 +2,10 @@
 import React, { useState } from 'react';
 import {
   Box, Paper, Typography, TextField, Grid, Button, Alert, MenuItem,
-  Stack, CircularProgress, Divider
+  Stack, CircularProgress, Divider, FormControlLabel, Checkbox, Link
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
+import TermsDialog from '../../components/TermsDialog.jsx';
 
 const API_BASE = import.meta.env.VITE_API_BASE;
 
@@ -51,6 +52,8 @@ const RegisterBorrowerPage = () => {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
+  const [termsOpen, setTermsOpen] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [form, setForm] = useState({
     username: '',
     password: '',
@@ -85,7 +88,8 @@ const RegisterBorrowerPage = () => {
 
   const canSubmit =
     form.borrowerType &&
-    (form.borrowerType !== 'External' ? form.department : true);
+    (form.borrowerType !== 'External' ? form.department : true) &&
+    termsAccepted;
 
   const submit = async () => {
     setError('');
@@ -122,6 +126,7 @@ const RegisterBorrowerPage = () => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Registration failed');
       setSuccess(true);
+      setTermsAccepted(false);
     } catch (err) {
       setError(err.message || 'Registration failed');
     }
@@ -130,6 +135,7 @@ const RegisterBorrowerPage = () => {
 
   if (success) {
     return (
+      <>
       <Box minHeight="100vh" display="flex" alignItems="center" justifyContent="center" sx={{ p: 2 }}>
         <Paper sx={{ p: 4, borderRadius: 3, maxWidth: 420, width: '100%' }} elevation={4}>
           <Typography variant="h5" fontWeight={700} color="primary" gutterBottom>
@@ -148,6 +154,8 @@ const RegisterBorrowerPage = () => {
           </Stack>
         </Paper>
       </Box>
+      <TermsDialog open={termsOpen} onClose={() => setTermsOpen(false)} />
+      </>
     );
   }
 
@@ -396,6 +404,32 @@ const RegisterBorrowerPage = () => {
             </Grid>
 
             <Grid item xs={12}>
+              <FormControlLabel
+                control={(
+                  <Checkbox
+                    checked={termsAccepted}
+                    onChange={(e) => setTermsAccepted(e.target.checked)}
+                    color="primary"
+                  />
+                )}
+                label={(
+                  <Typography variant="body2">
+                    I agree to the{' '}
+                    <Link component="button" type="button" onClick={() => setTermsOpen(true)} sx={{ fontWeight: 600 }}>
+                      Terms &amp; Conditions
+                    </Link>
+                    .
+                  </Typography>
+                )}
+              />
+              {!termsAccepted && (
+                <Typography variant="caption" color="error.main" sx={{ ml: 4 }}>
+                  You must accept the Terms &amp; Conditions to continue.
+                </Typography>
+              )}
+            </Grid>
+
+            <Grid item xs={12}>
               <Stack
                 direction={{ xs: 'column-reverse', sm: 'row' }}
                 spacing={2}
@@ -426,6 +460,7 @@ const RegisterBorrowerPage = () => {
           </Grid>
         )}
       </Paper>
+      <TermsDialog open={termsOpen} onClose={() => setTermsOpen(false)} />
     </Box>
   );
 };

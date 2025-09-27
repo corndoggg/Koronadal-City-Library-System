@@ -6,6 +6,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { alpha } from '@mui/material/styles';
 import { logAudit } from '../../utils/auditLogger.js'; // NEW
+import TermsDialog from '../../components/TermsDialog.jsx';
 
 const API_BASE = import.meta.env.VITE_API_BASE;
 
@@ -19,6 +20,7 @@ const LoginPage = () => {
   const [checkingAuth, setCheckingAuth] = useState(true); // NEW: initial auto-login check
   const [error, setError] = useState('');
   const [borrowerStatus, setBorrowerStatus] = useState(null); // null | "Pending" | "Rejected"
+  const [termsOpen, setTermsOpen] = useState(false);
 
   // Helper: choose route from stored user object
   const routeFromUser = (u) => {
@@ -301,6 +303,20 @@ const LoginPage = () => {
             {loading ? <CircularProgress size={22} color="inherit" /> : 'Login'}
           </Button>
 
+          <Link
+            component="button"
+            type="button"
+            onClick={() => setTermsOpen(true)}
+            sx={{
+              fontSize: 12,
+              fontWeight: 600,
+              letterSpacing: 0.3,
+              textAlign: 'center'
+            }}
+          >
+            View Terms &amp; Conditions
+          </Link>
+
           <Divider sx={{ my: 1.5 }} />
 
           <Box textAlign="center">
@@ -324,6 +340,7 @@ const LoginPage = () => {
           </Box>
         </Box>
       </Paper>
+      <TermsDialog open={termsOpen} onClose={() => setTermsOpen(false)} />
     </Box>
   );
 };
