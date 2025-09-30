@@ -30,12 +30,20 @@ const AdminDocumentManagementPage = () => {
         res.data.map(async (doc) => {
           try {
             const invRes = await axios.get(`${API_BASE}/documents/inventory/${doc.Document_ID}`);
-            const normalizedInventory = (invRes.data || []).map(inv => ({
-              availability: inv.availability || inv.Availability || "",
-              condition: inv.condition || inv.Condition || "",
-              location: inv.location || inv.Location || inv.LocationName || "",
-              Storage_ID: inv.Storage_ID
-            }));
+            const normalizedInventory = (invRes.data || []).map(inv => {
+              const storageId =
+                inv.Storage_ID ?? inv.storage_id ?? inv.Location_ID ?? inv.location_id ??
+                inv.LocationID ?? inv.storageId ?? inv.StorageId ?? null;
+              const storageLocation =
+                inv.StorageLocation ?? inv.storageLocation ?? inv.storage_location ?? storageId;
+              return {
+                availability: inv.availability || inv.Availability || "",
+                condition: inv.condition || inv.Condition || "",
+                location: storageLocation != null && storageLocation !== "" ? String(storageLocation) : "",
+                locationName: inv.Location ?? inv.location ?? "",
+                Storage_ID: storageId ?? null
+              };
+            });
             return { ...doc, inventory: normalizedInventory };
           } catch { return { ...doc, inventory: [] }; }
         })
@@ -252,7 +260,7 @@ const AdminDocumentManagementPage = () => {
                             <Stack key={i} direction="row" spacing={0.5} sx={{ alignItems:'center' }}>
                               <Chip size="small" label={inv.availability || '—'} color={inv.availability === 'Available' ? 'success' : 'warning'} sx={{ height:20, fontSize:10, fontWeight:600 }} />
                               <Chip size="small" variant="outlined" label={inv.condition || 'Cond?'} sx={{ height:20, fontSize:10, fontWeight:600 }} />
-                              <Chip size="small" variant="outlined" label={inv.location || 'Loc?'} sx={{ height:20, fontSize:10, fontWeight:600 }} />
+                              <Chip size="small" variant="outlined" label={inv.locationName || inv.location || 'Loc?'} sx={{ height:20, fontSize:10, fontWeight:600 }} />
                             </Stack>
                           ))}
                           {copies.length > 4 && (

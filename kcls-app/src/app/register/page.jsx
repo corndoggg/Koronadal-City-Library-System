@@ -9,7 +9,7 @@ import TermsDialog from '../../components/TermsDialog.jsx';
 
 const API_BASE = import.meta.env.VITE_API_BASE;
 
-const borrowerTypes = ['Researcher', 'Government Agency', 'External'];
+const borrowerTypes = ['Researcher', 'Government Agency'];
 
 const selectMenuProps = {
   PaperProps: {
@@ -88,7 +88,7 @@ const RegisterBorrowerPage = () => {
 
   const canSubmit =
     form.borrowerType &&
-    (form.borrowerType !== 'External' ? form.department : true) &&
+    form.department &&
     termsAccepted;
 
   const submit = async () => {
@@ -114,7 +114,7 @@ const RegisterBorrowerPage = () => {
         },
         borrower: {
           type: form.borrowerType,
-          department: form.borrowerType !== 'External' ? form.department : null,
+          department: form.department,
           accountstatus: 'Pending'
         }
       };
@@ -386,18 +386,10 @@ const RegisterBorrowerPage = () => {
                     value={form.department}
                     onChange={handleChange}
                     fullWidth
-                    disabled={form.borrowerType === 'External' || !form.borrowerType}
-                    required={form.borrowerType && form.borrowerType !== 'External'}
-                    helperText={
-                      form.borrowerType === 'External'
-                        ? 'Not required for External'
-                        : 'Required for research and agency borrowers'
-                    }
-                    placeholder={
-                      form.borrowerType === 'External'
-                        ? 'Disabled for External'
-                        : 'Enter your department or office'
-                    }
+                    disabled={!form.borrowerType}
+                    required={Boolean(form.borrowerType)}
+                    helperText="Required for registration"
+                    placeholder="Enter your department or office"
                   />
                 </Grid>
               </Grid>

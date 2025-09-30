@@ -37,18 +37,28 @@ const LibrarianDocumentManagementPage = () => {
         (res.data || []).map(async doc => {
           try {
             const invRes = await axios.get(`${API_BASE}/documents/inventory/${doc.Document_ID}`);
-            const normalizedInventory = (invRes.data || []).map(inv => ({
-              availability: inv.availability || inv.Availability || "",
-              condition: inv.condition || inv.Condition || "",
-              location: inv.location || inv.Location || inv.LocationName || "",
-              Storage_ID: inv.Storage_ID
-            }));
+            const normalizedInventory = (invRes.data || []).map(inv => {
+              const storageId =
+                inv.Storage_ID ?? inv.storage_id ?? inv.Location_ID ?? inv.location_id ??
+                inv.LocationID ?? inv.storageId ?? inv.StorageId ?? null;
+              const storageLocation =
+                inv.StorageLocation ?? inv.storageLocation ?? inv.storage_location ?? storageId;
+              return {
+                availability: inv.availability || inv.Availability || "",
+                condition: inv.condition || inv.Condition || "",
+                location: storageLocation != null && storageLocation !== "" ? String(storageLocation) : "",
+                locationName: inv.Location ?? inv.location ?? "",
+                Storage_ID: storageId ?? null
+              };
+            });
             return { ...doc, inventory: normalizedInventory };
-          } catch { return { ...doc, inventory: [] }; }
+          } catch (error) {
+            return { ...doc, inventory: [] };
+          }
         })
       );
       setDocuments(docsWithInventory);
-    } catch {
+    } catch (error) {
       setToast({ open: true, message: 'Failed to load documents', severity: 'error' });
     }
     setLoading(false);
@@ -58,7 +68,9 @@ const LibrarianDocumentManagementPage = () => {
     try {
       const res = await axios.get(`${API_BASE}/storages`);
       setLocations(res.data || []);
-    } catch { setLocations([]); }
+    } catch (error) {
+      setLocations([]);
+    }
   };
 
   const handleSearch = () => {
@@ -74,12 +86,13 @@ const LibrarianDocumentManagementPage = () => {
   };
 
   const handleOpenAdd = () => { setIsEdit(false); setEditDoc(null); setModalOpen(true); };
+
+  const showToast = (message, severity = 'success') => setToast({ open: true, message, severity });
   const handleOpenEdit = doc => { setIsEdit(true); setEditDoc(doc); setModalOpen(true); };
-  const showToast = (message, severity='success') => setToast({ open: true, message, severity });
 
   const handleSaveDocument = async (formData, inventoryList = [], deletedInventory = []) => {
     try {
-      let docId;
+      let docId = null;
       const titleField = formData.get ? (formData.get('Title') || formData.get('title')) : null;
       if (isEdit) {
         const payload = {};
@@ -87,7 +100,6 @@ const LibrarianDocumentManagementPage = () => {
         await axios.put(`${API_BASE}/documents/${editDoc.Document_ID}`, payload);
         docId = editDoc.Document_ID;
         showToast('Document updated');
-        // AUDIT: update
         logAudit('DOC_UPDATE', 'Document', docId, { title: payload.Title || editDoc.Title });
       } else {
         const res = await axios.post(`${API_BASE}/documents/upload`, formData, {
@@ -95,28 +107,37 @@ const LibrarianDocumentManagementPage = () => {
         });
         docId = res.data.documentId || res.data.id || res.data.Document_ID;
         showToast('Document uploaded');
-        // AUDIT: upload
         logAudit('DOC_UPLOAD', 'Document', docId, { title: titleField || 'Untitled' });
       }
+
       if (docId && Array.isArray(inventoryList)) {
         for (const inv of inventoryList) {
           const locId = parseInt(inv.location, 10);
-            if (!locId || isNaN(locId)) continue;
-          const payload = { availability: inv.availability, condition: inv.condition, location: locId };
-          if (inv.Storage_ID)
+          if (!locId || isNaN(locId)) continue;
+          const payload = {
+            availability: inv.availability,
+            condition: inv.condition,
+            location: locId
+          };
+          if (inv.Storage_ID) {
             await axios.put(`${API_BASE}/documents/inventory/${docId}/${inv.Storage_ID}`, payload);
-          else
+          } else {
             await axios.post(`${API_BASE}/documents/inventory/${docId}`, payload);
+          }
         }
       }
+
       if (docId && Array.isArray(deletedInventory)) {
         for (const inv of deletedInventory) {
-          if (inv.Storage_ID) await axios.delete(`${API_BASE}/documents/inventory/${docId}/${inv.Storage_ID}`);
+          if (inv.Storage_ID) {
+            await axios.delete(`${API_BASE}/documents/inventory/${docId}/${inv.Storage_ID}`);
+          }
         }
       }
+
       fetchDocuments();
       setModalOpen(false);
-    } catch {
+    } catch (error) {
       showToast('Failed to save document', 'error');
     }
   };
@@ -266,7 +287,7 @@ const LibrarianDocumentManagementPage = () => {
                             <Stack key={i} direction="row" spacing={0.5} sx={{ alignItems:'center' }}>
                               <Chip size="small" label={inv.availability || '—'} color={inv.availability === 'Available' ? 'success' : 'warning'} sx={{ height:20, fontSize:10, fontWeight:600 }} />
                               <Chip size="small" variant="outlined" label={inv.condition || 'Cond?'} sx={{ height:20, fontSize:10, fontWeight:600 }} />
-                              <Chip size="small" variant="outlined" label={inv.location || 'Loc?'} sx={{ height:20, fontSize:10, fontWeight:600 }} />
+                              <Chip size="small" variant="outlined" label={inv.locationName || inv.location || 'Loc?'} sx={{ height:20, fontSize:10, fontWeight:600 }} />
                             </Stack>
                           ))}
                           {copies.length > 4 && (

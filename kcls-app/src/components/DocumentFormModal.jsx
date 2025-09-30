@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useMemo } from "react";
+import React, { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Stack, MenuItem, Alert,
   Snackbar, Box, LinearProgress, useTheme, Table, TableHead, TableRow, TableCell, TableBody,
@@ -15,7 +15,7 @@ const initialForm = {
   title: "", author: "", category: "", department: "", classification: "",
   year: "", sensitivity: "", file: null, filePath: ""
 };
-const initialInventory = { availability: "", condition: "", location: "" };
+const initialInventory = { availability: "", condition: "", location: "", locationName: "", Storage_ID: null };
 const categories = ["Thesis", "Research", "Case Study", "Feasibility Study", "Capstone", "N/A"];
 const sensitivities = ["Public", "Restricted", "Confidential"];
 const availabilityOptions = ["Available", "Borrowed", "Reserved", "Lost"];
@@ -53,38 +53,66 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
   // Add: AI extraction loading state
   const [aiLoading, setAiLoading] = useState(false);
 
-  useEffect(() => {
-    if (open) {
-      if (isEdit && documentData) {
-        setForm({
-          title: documentData.Title || "",
-            author: documentData.Author || "",
-            category: documentData.Category || "",
-            department: documentData.Department || "",
-            classification: documentData.Classification || "",
-            year: documentData.Year || "",
-            sensitivity: documentData.Sensitivity || "",
-            file: null,
-            filePath: documentData.File_Path || ""
-        });
-        setInventoryList((documentData.inventory || []).map(inv => ({
+  const getLocationName = useCallback((id, fallback) => {
+    if (id === null || id === undefined || id === "") {
+      return fallback || "-";
+    }
+    const found = locations.find(loc => String(loc.ID) === String(id));
+    if (found) return found.Name;
+    if (fallback) return fallback;
+    return `Location #${id}`;
+  }, [locations]);
+
+  const initializeState = useCallback(() => {
+    if (!open) return;
+    if (isEdit && documentData) {
+      setForm({
+        title: documentData.Title || "",
+        author: documentData.Author || "",
+        category: documentData.Category || "",
+        department: documentData.Department || "",
+        classification: documentData.Classification || "",
+        year: documentData.Year || "",
+        sensitivity: documentData.Sensitivity || "",
+        file: null,
+        filePath: documentData.File_Path || ""
+      });
+
+      const normalizedInventory = (documentData.inventory || []).map(inv => {
+        const storageId =
+          inv.Storage_ID ?? inv.storage_id ?? inv.Location_ID ?? inv.location_id ??
+          inv.LocationID ?? inv.storageId ?? inv.StorageId ?? null;
+        const storageLocation =
+          inv.location ?? inv.Location ?? inv.StorageLocation ?? inv.storageLocation ?? storageId;
+        const locationId =
+          storageLocation != null && storageLocation !== "" ? String(storageLocation) : "";
+        const locationName = getLocationName(locationId, inv.locationName || inv.Location || inv.LocationName);
+
+        return {
           availability: inv.availability || inv.Availability || "",
           condition: inv.condition || inv.Condition || "",
-          location: inv.location || inv.Location || "",
-          Storage_ID: inv.Storage_ID
-        })));
-      } else {
-        setForm(initialForm);
-        setInventoryList([]);
-      }
-      setInventoryForm(initialInventory);
-      setEditInvIndex(null);
+          location: locationId,
+          locationName: locationName || "",
+          Storage_ID: storageId ?? null
+        };
+      });
+      setInventoryList(normalizedInventory);
       setDeletedInventory([]);
-      setUploadProgress(0);
-      setUnsaved(false);
-      setConfirmClose(false);
+    } else {
+      setForm(initialForm);
+      setInventoryList([]);
+      setDeletedInventory([]);
     }
-  }, [open, isEdit, documentData]);
+    setInventoryForm({ ...initialInventory });
+    setEditInvIndex(null);
+    setUploadProgress(0);
+    setUnsaved(false);
+    setConfirmClose(false);
+  }, [open, isEdit, documentData, getLocationName]);
+
+  useEffect(() => {
+    initializeState();
+  }, [initializeState]);
 
   const openToast = (message, severity = "success") =>
     setSnackbar({ open: true, message, severity });
@@ -103,7 +131,18 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
   };
 
   const handleInventoryChange = (e) => {
-    setInventoryForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    if (name === "location") {
+      const selected = locations.find(loc => String(loc.ID) === String(value));
+      setInventoryForm(prev => ({
+        ...prev,
+        location: value,
+        locationName: selected?.Name || "",
+        Storage_ID: prev.Storage_ID ?? null
+      }));
+      return;
+    }
+    setInventoryForm(prev => ({ ...prev, [name]: value }));
   };
 
   const handleAddOrUpdateInventory = () => {
@@ -111,27 +150,39 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
       openToast("Availability & Location required.", "error");
       return;
     }
+
+    const normalizedLocation = String(inventoryForm.location);
+    const locationName = inventoryForm.locationName || getLocationName(normalizedLocation);
+    const preparedEntry = {
+      availability: inventoryForm.availability,
+      condition: inventoryForm.condition,
+      location: normalizedLocation,
+      locationName,
+      Storage_ID: inventoryForm.Storage_ID ?? null
+    };
+
     if (editInvIndex !== null) {
-      const updated = [...inventoryList];
-      updated[editInvIndex] = { ...updated[editInvIndex], ...inventoryForm };
-      setInventoryList(updated);
+      setInventoryList(prev => prev.map((inv, idx) => (idx === editInvIndex ? { ...inv, ...preparedEntry } : inv)));
       setEditInvIndex(null);
       openToast("Inventory updated.");
     } else {
-      setInventoryList(prev => [...prev, { ...inventoryForm }]);
+      setInventoryList(prev => [...prev, preparedEntry]);
       openToast("Inventory added.");
     }
-    setInventoryForm(initialInventory);
+    setInventoryForm({ ...initialInventory });
     setUnsaved(true);
   };
 
   const handleEditInventory = (idx) => {
     const target = inventoryList[idx];
     setInventoryForm({
+      ...initialInventory,
       ...target,
-      availability: target.availability || "",
-      condition: target.condition || "",
-      location: target.location != null ? String(target.location) : ""
+      availability: target?.availability || "",
+      condition: target?.condition || "",
+      location: target?.location != null && target.location !== "" ? String(target.location) : "",
+      locationName: target?.locationName || target?.LocationName || getLocationName(target?.location),
+      Storage_ID: target?.Storage_ID ?? null
     });
     setEditInvIndex(idx);
   };
@@ -139,16 +190,16 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
   const handleDeleteInventory = (idx) => {
     const inv = inventoryList[idx];
     if (inv.Storage_ID) setDeletedInventory(prev => [...prev, inv]);
-    setInventoryList(inventoryList.filter((_, i) => i !== idx));
+  setInventoryList(prev => prev.filter((_, i) => i !== idx));
     if (editInvIndex === idx) {
-      setInventoryForm(initialInventory);
+      setInventoryForm({ ...initialInventory });
       setEditInvIndex(null);
     }
     setUnsaved(true);
   };
 
   const handleCancelInventoryEdit = () => {
-    setInventoryForm(initialInventory);
+    setInventoryForm({ ...initialInventory });
     setEditInvIndex(null);
   };
 
@@ -255,11 +306,6 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
     onClose();
   };
 
-  const getLocationName = (id) => {
-    const found = locations.find(loc => String(loc.ID) === String(id));
-    return found ? found.Name : id || "-";
-  };
-
   const resolveFileUrl = (path) => {
     if (!path) return "";
     if (typeof path !== "string") return "";
@@ -359,7 +405,7 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
         </Typography>
       );
     }
-    const label = getLocationName(value);
+    const label = getLocationName(value, inventoryForm.locationName);
     return label || `Location #${value}`;
   };
 
@@ -924,7 +970,7 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
                                 />
                               </TableCell>
                               <TableCell>{inv.condition || "-"}</TableCell>
-                              <TableCell>{getLocationName(inv.location)}</TableCell>
+                              <TableCell>{getLocationName(inv.location, inv.locationName)}</TableCell>
                               <TableCell align="center">
                                 <Tooltip title="Edit">
                                   <IconButton
