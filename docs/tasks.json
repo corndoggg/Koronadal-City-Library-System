@@ -1,0 +1,94 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Ensure Python Venv",
+      "type": "shell",
+      "command": "python -m venv venv; Write-Host 'Created virtualenv'",
+      "options": {
+        "cwd": "${workspaceFolder}/server",
+        "shell": {
+          "executable": "powershell.exe"
+        }
+      },
+      "problemMatcher": [],
+      "condition": "never",
+      "runOptions": {
+        "runOn": "folderOpen"
+      }
+    },
+    {
+      "label": "Install Python Dependencies",
+      "type": "shell",
+      "command": "./venv/Scripts/pip install -r requirements.txt",
+      "options": {
+        "cwd": "${workspaceFolder}/server",
+        "shell": true
+      },
+      "problemMatcher": [],
+      "dependsOn": ["Ensure Python Venv"]
+    },
+    {
+      "label": "Run Flask Server",
+      "type": "shell",
+      "command": "./venv/Scripts/flask run",
+      "options": {
+        "cwd": "${workspaceFolder}/server",
+        "env": {
+          "FLASK_APP": "main.py",
+          "FLASK_ENV": "development"
+        },
+        "shell": true
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [],
+      "isBackground": true,
+      "dependsOn": ["Install Python Dependencies"]
+    },
+    {
+      "label": "Install Frontend Dependencies",
+      "type": "shell",
+      "command": "if (!(Test-Path 'node_modules')) { npm install }",
+      "options": {
+        "cwd": "${workspaceFolder}/kcls-app",
+        "shell": {
+          "executable": "powershell.exe"
+        }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Run Vite React App",
+      "type": "shell",
+      "command": "npm run dev",
+      "options": {
+        "cwd": "${workspaceFolder}/kcls-app"
+      },
+      "group": "build",
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": [
+          {
+            "regexp": ".*",
+            "file": 1,
+            "location": 2,
+            "message": 3
+          }
+        ],
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".*vite v.* dev server running.*",
+          "endsPattern": ".*Local:.*http://localhost:5173.*"
+        }
+      }
+    },
+    {
+      "label": "Start Full Stack App",
+      "dependsOn": ["Run Flask Server", "Run Vite React App"],
+      "dependsOrder": "parallel"
+    }
+  ]
+}

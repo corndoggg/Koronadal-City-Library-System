@@ -1,0 +1,31 @@
+{
+  "version": "0.2.0",
+  "compounds": [
+    {
+      "name": "Full Stack: Flask + React",
+      "configurations": ["Flask Server", "React App"]
+    }
+  ],
+  "configurations": [
+    {
+      "name": "Flask Server",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/server/main.py",
+      "cwd": "${workspaceFolder}/server",
+      "env": {
+        "FLASK_ENV": "development",
+        "FLASK_DEBUG": "1"
+      },
+      "console": "internalConsole"
+    },
+    {
+      "name": "React App",
+      "type": "pwa-chrome",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/kcls-app/src",
+      "preLaunchTask": "Run Vite React App"
+    }
+  ]
+}

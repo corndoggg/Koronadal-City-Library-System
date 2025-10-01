@@ -1,7 +1,15 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
-  Drawer, List, ListItemIcon, ListItemText, Tooltip, Box, Typography, ListItemButton, Divider
+  Drawer,
+  List,
+  ListItemIcon,
+  ListItemText,
+  Tooltip,
+  Box,
+  Typography,
+  ListItemButton,
+  Stack,
 } from '@mui/material';
 import { useTheme, alpha } from '@mui/material/styles';
 import {
@@ -74,199 +82,263 @@ const navSectionsByRole = {
   ],
 };
 
+const NavigationItem = ({ collapsed, href, icon, label, onNavigate }) => {
+  const Icon = icon;
+  const theme = useTheme();
+
+  const listItem = (
+    <ListItemButton
+      component={NavLink}
+      to={href}
+      onClick={onNavigate}
+      sx={{
+        position: 'relative',
+  borderRadius: collapsed ? '50%' : 2,
+  px: collapsed ? 0 : 1.75,
+  py: collapsed ? 0 : 0.9,
+  width: collapsed ? 40 : '100%',
+  height: collapsed ? 40 : 'auto',
+  mx: collapsed ? 'auto' : 0,
+  minHeight: collapsed ? 40 : 44,
+        gap: collapsed ? 0 : 1.25,
+        justifyContent: collapsed ? 'center' : 'flex-start',
+        color: 'text.secondary',
+        transition: theme.transitions.create(['background-color', 'color'], {
+          duration: theme.transitions.duration.shorter,
+        }),
+        '& .MuiListItemIcon-root': {
+          minWidth: collapsed ? 0 : 24,
+          color: 'inherit',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          transition: theme.transitions.create('color', {
+            duration: theme.transitions.duration.shorter,
+          }),
+        },
+        '&.active': {
+          color: theme.palette.primary.main,
+          backgroundColor: alpha(theme.palette.primary.main, 0.08),
+          '&::before': {
+            opacity: collapsed ? 0 : 1,
+          },
+        },
+        '&::before': collapsed
+          ? { display: 'none' }
+          : {
+              content: '""',
+              position: 'absolute',
+              inset: '16% auto 16% 10px',
+              width: 3,
+              borderRadius: 2,
+              backgroundColor: theme.palette.primary.main,
+              opacity: 0,
+              transition: theme.transitions.create('opacity', {
+                duration: theme.transitions.duration.shorter,
+              }),
+            },
+        '&:hover': {
+          color: theme.palette.primary.main,
+          backgroundColor: alpha(
+            theme.palette.primary.main,
+            collapsed ? 0.18 : 0.12
+          ),
+        },
+      }}
+    >
+      <ListItemIcon>
+        <Icon size={18} strokeWidth={2} />
+      </ListItemIcon>
+      {!collapsed && (
+        <ListItemText
+          primary={label}
+          primaryTypographyProps={{
+            fontSize: 13,
+            fontWeight: 600,
+            letterSpacing: 0.2,
+          }}
+        />
+      )}
+    </ListItemButton>
+  );
+
+  if (collapsed) {
+    return (
+      <Tooltip title={label} placement="right">
+        <Box>{listItem}</Box>
+      </Tooltip>
+    );
+  }
+
+  return listItem;
+};
+
 const Sidebar = () => {
   const theme = useTheme();
   const { isMobile, mobileOpen, closeMobile, collapsed, drawerWidth } = useSidebar();
 
-  // Simplify role detection (borrower sidebar removed)
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
-  const role =
-    user.Role === 'Staff' && user.staff?.Position === 'Librarian'
-      ? 'librarian'
-      : 'admin';
+  const user = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem('user') || '{}');
+    } catch {
+      return {};
+    }
+  }, []);
 
-  const navSections = navSectionsByRole[role] || navSectionsByRole.admin;
+  const role = useMemo(() => {
+    if (user.Role === 'Staff' && user.staff?.Position === 'Librarian') {
+      return 'librarian';
+    }
+    return 'admin';
+  }, [user]);
+
+  const navSections = useMemo(
+    () => navSectionsByRole[role] || navSectionsByRole.admin,
+    [role]
+  );
+
+  const drawerPaperStyles = useMemo(
+    () => ({
+      width: isMobile ? DRAWER_WIDTH : drawerWidth,
+      boxSizing: 'border-box',
+      backgroundColor: theme.palette.background.paper,
+      borderRight: `1px solid ${alpha(theme.palette.divider, 0.85)}`,
+      display: 'flex',
+      flexDirection: 'column',
+      overflowX: 'hidden',
+      borderRadius: 0,
+    }),
+    [drawerWidth, isMobile, theme]
+  );
+
+  const handleNavigate = () => {
+    if (isMobile) {
+      closeMobile();
+    }
+  };
 
   return (
-    <>
-      <Drawer
+    <Drawer
+      sx={{
+        width: isMobile ? DRAWER_WIDTH : drawerWidth,
+        flexShrink: 0,
+        '& .MuiDrawer-paper': drawerPaperStyles,
+      }}
+      {...(isMobile
+        ? {
+            variant: 'temporary',
+            open: mobileOpen,
+            onClose: closeMobile,
+            ModalProps: { keepMounted: true },
+          }
+        : { variant: 'permanent', open: true })}
+    >
+      <Box
         sx={{
-          // On mobile, the context width is 0 (for content margin). Use a fixed paper width instead.
-          width: isMobile ? DRAWER_WIDTH : drawerWidth,
-          flexShrink: 0,
-          '& .MuiDrawer-paper': {
-            width: isMobile ? DRAWER_WIDTH : drawerWidth,
-            boxSizing: 'border-box',
-            bgcolor: theme.palette.background.paper,
-            borderRight: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
-            display: 'flex',
-            flexDirection: 'column',
-            overflowX: 'hidden',
-            borderRadius: 0,
-          },
+          display: 'flex',
+          alignItems: 'center',
+          height: TOPBAR_HEIGHT,
+          px: collapsed ? 1 : 1.5,
+          borderBottom: `1px solid ${alpha(theme.palette.divider, 0.85)}`,
         }}
-        {...(isMobile
-          ? { variant: 'temporary', open: mobileOpen, onClose: closeMobile, ModalProps: { keepMounted: true } }
-          : { variant: 'permanent', open: true })}
       >
-        {/* Header */}
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            height: TOPBAR_HEIGHT,
-            bgcolor: theme.palette.background.paper,
-            color: theme.palette.text.primary,
-            borderBottom: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
-            px: collapsed ? 1 : 1.25,
-          }}
-        >
-          <Tooltip title="Koronadal City Library" disableHoverListener={!collapsed}>
+        <Tooltip title="Koronadal City Library" disableHoverListener={!collapsed}>
+          <Stack
+            direction="row"
+            spacing={1}
+            alignItems="center"
+            sx={{
+              width: '100%',
+              justifyContent: collapsed ? 'center' : 'flex-start',
+              minWidth: 0,
+            }}
+          >
             <Box
+              component="img"
+              src="/logo.png"
+              alt="Logo"
               sx={{
-                width: '100%',
-                minWidth: 0,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-                justifyContent: collapsed ? 'center' : 'flex-start',
+                width: 32,
+                height: 32,
+                objectFit: 'contain',
+                borderRadius: 1.5,
+                border: `1px solid ${alpha(theme.palette.divider, 0.5)}`,
+                bgcolor: theme.palette.common.white,
+                p: 0.5,
               }}
-            >
-              <Box
-                component="img"
-                src="/logo.png"
-                alt="Logo"
-                sx={{
-                  width: 28,
-                  height: 28,
-                  objectFit: 'contain',
-                  border: `1px solid ${alpha(theme.palette.divider, 0.6)}`,
-                  bgcolor: '#fff',
-                  p: 0.25,
-                  borderRadius: 1,
-                  flexShrink: 0,
-                }}
-              />
+            />
+            {!collapsed && (
               <Typography
                 variant="subtitle2"
                 sx={{
-                  display: collapsed ? 'none' : 'block',
                   fontWeight: 800,
-                  fontSize: 12,
-                  letterSpacing: 0.3,
-                  lineHeight: 1,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  minWidth: 0,
+                  fontSize: 13,
+                  letterSpacing: 0.4,
+                  textTransform: 'uppercase',
+                  lineHeight: 1.1,
+                  whiteSpace: 'normal',
+                  overflowWrap: 'anywhere',
+                  color: theme.palette.text.primary,
                 }}
               >
                 Koronadal City Library
               </Typography>
-            </Box>
-          </Tooltip>
-        </Box>
+            )}
+          </Stack>
+        </Tooltip>
+      </Box>
 
-        {/* Navigation */}
-        <Box sx={{ flexGrow: 1, mt: 0.5, px: collapsed ? 0.5 : 1 }}>
-          {navSections.map((section, index) => (
-            <Box key={section.title} sx={{ mt: index === 0 ? 0 : 2 }}>
-              {collapsed ? (
-                index === 0 ? null : <Divider sx={{ my: 1.25, opacity: 0.35 }} />
-              ) : (
-                <Typography
-                  variant="overline"
-                  sx={{
-                    display: 'block',
-                    color: alpha(theme.palette.text.secondary, 0.8),
-                    fontWeight: 700,
-                    letterSpacing: 1,
-                    textTransform: 'uppercase',
-                    pl: 0.75,
-                    pb: 0.5
-                  }}
-                >
-                  {section.title}
-                </Typography>
-              )}
-              <List
+      <Box
+        sx={{
+          flexGrow: 1,
+          overflowY: 'auto',
+          px: collapsed ? 0.5 : 1.75,
+          py: 1.5,
+        }}
+      >
+        {navSections.map((section, index) => (
+          <Box
+            key={section.title}
+            sx={{ mt: index === 0 ? 0 : collapsed ? 1 : 2.5 }}
+          >
+            {collapsed ? null : (
+              <Typography
+                variant="overline"
                 sx={{
-                  pt: collapsed ? 0.25 : 0,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 0.25,
+                  display: 'block',
+                  color: alpha(theme.palette.text.secondary, 0.75),
+                  fontWeight: 700,
+                  letterSpacing: 1,
+                  pb: 1,
+                  pl: 0.5,
                 }}
               >
-                {section.items.map(({ href, icon: Icon, label }) => {
-                  const Item = (
-                    <NavLink key={href} to={href} style={{ textDecoration: 'none' }}>
-                      {({ isActive }) => {
-                        const activeBg = alpha(theme.palette.primary.main, 0.08);
-                        return (
-                          <ListItemButton
-                            selected={isActive}
-                            sx={{
-                              position: 'relative',
-                              borderRadius: 8,
-                              px: collapsed ? 1 : 1.25,
-                              py: 0.8,
-                              minHeight: 40,
-                              gap: collapsed ? 0 : 0.75,
-                              justifyContent: collapsed ? 'center' : 'flex-start',
-                              color: isActive ? theme.palette.primary.main : theme.palette.text.secondary,
-                              backgroundColor: isActive ? activeBg : 'transparent',
-                              transition: 'background-color .18s, color .18s',
-                              '&::before': {
-                                content: '""',
-                                position: 'absolute',
-                                left: 6,
-                                top: '15%',
-                                bottom: '15%',
-                                width: 3,
-                                borderRadius: 2,
-                                backgroundColor: theme.palette.primary.main,
-                                opacity: isActive ? 1 : 0,
-                                transition: 'opacity .2s'
-                              },
-                              '&:hover': {
-                                backgroundColor: isActive
-                                  ? alpha(theme.palette.primary.main, 0.12)
-                                  : alpha(theme.palette.primary.main, 0.06),
-                                color: isActive ? theme.palette.primary.main : theme.palette.text.primary,
-                              }
-                            }}
-                            onClick={() => { if (isMobile) closeMobile(); }}
-                          >
-                            <ListItemIcon sx={{ minWidth: 0, color: 'inherit' }}>
-                              <Icon size={18} />
-                            </ListItemIcon>
-                            {!collapsed && (
-                              <ListItemText
-                                primary={label}
-                                primaryTypographyProps={{
-                                  fontSize: 13,
-                                  fontWeight: isActive ? 700 : 500,
-                                  letterSpacing: 0.2,
-                                }}
-                              />
-                            )}
-                          </ListItemButton>
-                        );
-                      }}
-                    </NavLink>
-                  );
-                  return collapsed ? (
-                    <Tooltip key={href} title={label} placement="right">{Item}</Tooltip>
-                  ) : (
-                    <React.Fragment key={href}>{Item}</React.Fragment>
-                  );
-                })}
-              </List>
-            </Box>
-          ))}
-        </Box>
-      </Drawer>
-    </>
+                {section.title}
+              </Typography>
+            )}
+            <List
+              disablePadding
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: collapsed ? 0 : 0.75,
+              }}
+            >
+              {section.items.map((item) => (
+                <NavigationItem
+                  key={item.href}
+                  collapsed={collapsed}
+                  href={item.href}
+                  icon={item.icon}
+                  label={item.label}
+                  onNavigate={handleNavigate}
+                />
+              ))}
+            </List>
+          </Box>
+        ))}
+      </Box>
+    </Drawer>
   );
 };
 

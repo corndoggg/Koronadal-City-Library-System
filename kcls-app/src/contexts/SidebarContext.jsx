@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import React, { createContext, useContext, useMemo, useState, useCallback } from 'react';
 import { useMediaQuery } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { DRAWER_WIDTH, DRAWER_WIDTH_COLLAPSED } from '../constants/layout';
@@ -11,19 +11,28 @@ export const SidebarProvider = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const value = useMemo(() => {
-    const width = isMobile ? 0 : (collapsed ? DRAWER_WIDTH_COLLAPSED : DRAWER_WIDTH);
-    return {
+  const toggleCollapse = useCallback(() => setCollapsed((prev) => !prev), []);
+  const openMobile = useCallback(() => setMobileOpen(true), []);
+  const closeMobile = useCallback(() => setMobileOpen(false), []);
+
+  const drawerWidth = useMemo(
+    () => (isMobile ? 0 : collapsed ? DRAWER_WIDTH_COLLAPSED : DRAWER_WIDTH),
+    [collapsed, isMobile]
+  );
+
+  const value = useMemo(
+    () => ({
       collapsed,
+      toggleCollapse,
       setCollapsed,
-      toggleCollapse: () => setCollapsed(v => !v),
       mobileOpen,
-      openMobile: () => setMobileOpen(true),
-      closeMobile: () => setMobileOpen(false),
-      drawerWidth: width,
+      openMobile,
+      closeMobile,
+      drawerWidth,
       isMobile,
-    };
-  }, [collapsed, mobileOpen, isMobile]);
+    }),
+    [collapsed, toggleCollapse, mobileOpen, openMobile, closeMobile, drawerWidth, isMobile]
+  );
 
   return <SidebarCtx.Provider value={value}>{children}</SidebarCtx.Provider>;
 };

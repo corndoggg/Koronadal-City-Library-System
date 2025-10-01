@@ -1,19 +1,19 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+//layouts
 import LibrarianpageLayout from './layouts/LibrarianpageLayout.jsx';
 import AdminpageLayout from './layouts/AdminpageLayout.jsx';
 import BorrowerLayout from './layouts/BorrowerpageLayout.jsx';
+//Providers
 import { ThemeContextProvider } from './contexts/ThemeContext.jsx';
 import { SidebarProvider } from './contexts/SidebarContext';
 import { SystemSettingsProvider } from './contexts/SystemSettingsContext.jsx';
 import './global.css';
-
+//Pages
 import DashboardPage from './app/dashboard/page.jsx';
-import BookManagementPage from './app/librarian/books/page.jsx';
-import AdminBookManagementPage from './app/admin/books/page.jsx';
-import DocumentManagementPage from './app/librarian/documents/page.jsx';
-import AdminDocumentManagementPage from './app/admin/documents/page.jsx';
+import BookManagementPage from './app/common/books/page.jsx';
+import DocumentManagementPage from './app/common/documents/page.jsx'
 import StorageManagementPage from './app/librarian/storages/page.jsx';
 import UserManagementPage from './app/admin/users/page.jsx';
 import LoginPage from './app/login/page.jsx';
@@ -44,8 +44,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
                 <Route path="/admin" element={<AdminpageLayout />}>
                   <Route index element={<Navigate to="dashboard" replace />} />
                   <Route path="dashboard" element={<DashboardPage />} />
-                  <Route path="books" element={<AdminBookManagementPage />} />
-                  <Route path="documents" element={<AdminDocumentManagementPage />} />
+                  <Route path="books" element={<BookManagementPage />} />
+                  <Route path="documents" element={<DocumentManagementPage />} />
                   <Route path="borrows" element={<DocumentApprovalPage />} />
                   <Route path="users" element={<UserManagementPage />} />
                   <Route path="reports" element={<ReportsPage />} />

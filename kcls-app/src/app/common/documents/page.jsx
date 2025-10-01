@@ -2,22 +2,29 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import {
   Box, Typography, TextField, Snackbar, Alert, Pagination, Button, useTheme,
-  IconButton, Tooltip, Grid, Stack,
-  CircularProgress, Chip, Paper
+  IconButton, Tooltip, Grid, Stack, CircularProgress, Chip, Paper
 } from '@mui/material';
-import { Article, Visibility, Edit, Close, Add } from '@mui/icons-material';
+import { Article, Visibility, Edit, Add } from '@mui/icons-material';
 import { alpha } from '@mui/material/styles';
-import DocumentFormModal from '../../../components/DocumentFormModal';
-import DocumentPDFViewer from '../../../components/DocumentPDFViewer';
+import DocumentFormModal from '../../../components/DocumentFormModal.jsx';
+import DocumentPDFViewer from '../../../components/DocumentPDFViewer.jsx';
 import { logAudit } from '../../../utils/auditLogger.js'; // NEW
 
-const AdminDocumentManagementPage = () => {
+const DocumentManagementPage = () => {
   const theme = useTheme(), API_BASE = import.meta.env.VITE_API_BASE;
-  const [documents, setDocuments] = useState([]), [filteredDocs, setFilteredDocs] = useState([]), [search, setSearch] = useState(''),
-    [currentPage, setCurrentPage] = useState(1), rowsPerPage = 2, [toast, setToast] = useState({ open: false, message: '', severity: 'success' }),
-    [modalOpen, setModalOpen] = useState(false), [isEdit, setIsEdit] = useState(false), [editDoc, setEditDoc] = useState(null),
-    [pdfDialogOpen, setPdfDialogOpen] = useState(false), [pdfUrl, setPdfUrl] = useState(''), [loading, setLoading] = useState(false),
-    [locations, setLocations] = useState([]);
+  const [documents, setDocuments] = useState([]);
+  const [filteredDocs, setFilteredDocs] = useState([]);
+  const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const rowsPerPage = 8;
+  const [toast, setToast] = useState({ open: false, message: '', severity: 'success' });
+  const [modalOpen, setModalOpen] = useState(false);
+  const [isEdit, setIsEdit] = useState(false);
+  const [editDoc, setEditDoc] = useState(null);
+  const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState(''); 
+  const [loading, setLoading] = useState(false);
+  const [locations, setLocations] = useState([]);
 
   useEffect(() => { fetchDocuments(); fetchLocations(); }, []);
   useEffect(() => { handleSearch(); }, [search, documents]);
@@ -27,7 +34,7 @@ const AdminDocumentManagementPage = () => {
     try {
       const res = await axios.get(`${API_BASE}/documents`);
       const docsWithInventory = await Promise.all(
-        res.data.map(async (doc) => {
+        (res.data || []).map(async doc => {
           try {
             const invRes = await axios.get(`${API_BASE}/documents/inventory/${doc.Document_ID}`);
             const normalizedInventory = (invRes.data || []).map(inv => {
@@ -45,11 +52,15 @@ const AdminDocumentManagementPage = () => {
               };
             });
             return { ...doc, inventory: normalizedInventory };
-          } catch { return { ...doc, inventory: [] }; }
+          } catch (error) {
+            return { ...doc, inventory: [] };
+          }
         })
       );
       setDocuments(docsWithInventory);
-    } catch { setToast({ open: true, message: 'Failed to load documents', severity: 'error' }); }
+    } catch (error) {
+      setToast({ open: true, message: 'Failed to load documents', severity: 'error' });
+    }
     setLoading(false);
   };
 
@@ -57,24 +68,27 @@ const AdminDocumentManagementPage = () => {
     try {
       const res = await axios.get(`${API_BASE}/storages`);
       setLocations(res.data || []);
-    } catch { setLocations([]); }
+    } catch (error) {
+      setLocations([]);
+    }
   };
 
   const handleSearch = () => {
-    const lower = search.toLowerCase();
+    const q = search.toLowerCase();
     setFilteredDocs(
-      documents.filter(
-        (doc) =>
-          doc.Title?.toLowerCase().includes(lower) ||
-          doc.Author?.toLowerCase().includes(lower) ||
-          doc.Category?.toLowerCase().includes(lower)
+      documents.filter(d =>
+        d.Title?.toLowerCase().includes(q) ||
+        d.Author?.toLowerCase().includes(q) ||
+        d.Category?.toLowerCase().includes(q)
       )
     );
     setCurrentPage(1);
   };
 
+  const handleOpenAdd = () => { setIsEdit(false); setEditDoc(null); setModalOpen(true); };
+
   const showToast = (message, severity = 'success') => setToast({ open: true, message, severity });
-  const handleOpenEdit = (doc) => { setIsEdit(true); setEditDoc(doc); setModalOpen(true); };
+  const handleOpenEdit = doc => { setIsEdit(true); setEditDoc(doc); setModalOpen(true); };
 
   const handleSaveDocument = async (formData, inventoryList = [], deletedInventory = []) => {
     try {
@@ -86,14 +100,14 @@ const AdminDocumentManagementPage = () => {
         await axios.put(`${API_BASE}/documents/${editDoc.Document_ID}`, payload);
         docId = editDoc.Document_ID;
         showToast('Document updated');
-        logAudit('DOC_UPDATE', 'Document', docId, { title: payload.Title || editDoc.Title }); // AUDIT
+        logAudit('DOC_UPDATE', 'Document', docId, { title: payload.Title || editDoc.Title });
       } else {
         const res = await axios.post(`${API_BASE}/documents/upload`, formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
         docId = res.data.documentId || res.data.id || res.data.Document_ID;
         showToast('Document uploaded');
-        logAudit('DOC_UPLOAD', 'Document', docId, { title: titleField || 'Untitled' }); // AUDIT
+        logAudit('DOC_UPLOAD', 'Document', docId, { title: titleField || 'Untitled' });
       }
 
       if (docId && Array.isArray(inventoryList)) {
@@ -105,22 +119,36 @@ const AdminDocumentManagementPage = () => {
             condition: inv.condition,
             location: locId
           };
-          if (inv.Storage_ID) await axios.put(`${API_BASE}/documents/inventory/${docId}/${inv.Storage_ID}`, payload);
-          else await axios.post(`${API_BASE}/documents/inventory/${docId}`, payload);
+          if (inv.Storage_ID) {
+            await axios.put(`${API_BASE}/documents/inventory/${docId}/${inv.Storage_ID}`, payload);
+          } else {
+            await axios.post(`${API_BASE}/documents/inventory/${docId}`, payload);
+          }
         }
       }
+
       if (docId && Array.isArray(deletedInventory)) {
         for (const inv of deletedInventory) {
-          if (inv.Storage_ID) await axios.delete(`${API_BASE}/documents/inventory/${docId}/${inv.Storage_ID}`);
+          if (inv.Storage_ID) {
+            await axios.delete(`${API_BASE}/documents/inventory/${docId}/${inv.Storage_ID}`);
+          }
         }
       }
-      fetchDocuments(); setModalOpen(false);
-    } catch { showToast('Failed to save document', 'error'); }
+
+      fetchDocuments();
+      setModalOpen(false);
+    } catch (error) {
+      showToast('Failed to save document', 'error');
+    }
   };
 
-  const handleViewPdf = (filePath) => { setPdfUrl(`${API_BASE}${filePath}`); setPdfDialogOpen(true); };
+  const handleViewPdf = filePath => {
+    if (!filePath) return showToast('No file path', 'error');
+    setPdfUrl(`${API_BASE}${filePath}`);
+    setPdfDialogOpen(true);
+  };
 
-  // New: close viewer and cleanup blob URL
+  // New: close viewer and cleanup
   const handleClosePdf = () => {
     try {
       if (pdfUrl && pdfUrl.startsWith('blob:')) URL.revokeObjectURL(pdfUrl);
@@ -129,8 +157,9 @@ const AdminDocumentManagementPage = () => {
     setPdfDialogOpen(false);
   };
 
-  const indexOfLast = currentPage * rowsPerPage, indexOfFirst = indexOfLast - rowsPerPage, currentDocs = filteredDocs.slice(indexOfFirst, indexOfLast);
-  const placeholderImg = 'https://placehold.co/400x180?text=PDF+Document';
+  const indexLast = currentPage * rowsPerPage;
+  const indexFirst = indexLast - rowsPerPage;
+  const currentDocs = filteredDocs.slice(indexFirst, indexLast);
 
   return (
     <Box p={3} sx={{ position: 'relative', minHeight: '100vh', bgcolor: 'background.default' }}>
@@ -138,16 +167,16 @@ const AdminDocumentManagementPage = () => {
       <Paper
         elevation={0}
         sx={{
-            p: 2,
-            mb: 4,
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 2,
-            alignItems: 'center',
-            width: '100%',
-            border: theme => `2px solid ${theme.palette.divider}`,
-            borderRadius: 1,
-            bgcolor: 'background.paper'
+          p: 2,
+          mb: 4,
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 2,
+          alignItems: 'center',
+          width: '100%',
+          border: theme => `2px solid ${theme.palette.divider}`,
+          borderRadius: 1,
+          bgcolor: 'background.paper'
         }}
       >
         <Box display="flex" alignItems="center" gap={1}>
@@ -167,7 +196,7 @@ const AdminDocumentManagementPage = () => {
           variant="contained"
           size="small"
           startIcon={<Add />}
-          onClick={() => { setIsEdit(false); setEditDoc(null); setModalOpen(true); }}
+          onClick={handleOpenAdd}
           sx={{ fontWeight: 700, borderRadius: 1 }}
         >
           Add Document
@@ -216,6 +245,7 @@ const AdminDocumentManagementPage = () => {
                       }}
                     />
 
+                    {/* Content */}
                     <Box sx={{ p: 1.5, display: 'flex', flexDirection: 'column', gap: 0.75, flexGrow: 1 }}>
                       <Typography
                         variant="subtitle1"
@@ -239,21 +269,18 @@ const AdminDocumentManagementPage = () => {
                           <strong>Department:</strong> {doc.Department || '—'}
                         </Typography>
                       </Stack>
-
-                      {/* Tags */}
                       <Stack direction="row" spacing={0.5} flexWrap="wrap" mt={0.5}>
                         <Chip size="small" variant="outlined" label={`Class: ${doc.Classification || '—'}`} sx={{ fontSize: 10, fontWeight: 600, borderRadius: 0.5 }} />
                         <Chip size="small" color={doc.Sensitivity === 'Public' ? 'success' : 'warning'} label={doc.Sensitivity || 'Sensitivity'} sx={{ fontSize: 10, fontWeight: 600, borderRadius: 0.5 }} />
                         <Chip size="small" color="primary" label={`Copies ${copies.length}`} sx={{ fontSize: 10, fontWeight: 700, borderRadius: 0.5 }} />
                       </Stack>
-
-                      {/* Section label */}
                       {copies.length > 0 && (
                         <Typography variant="overline" sx={{ mt: 1, fontSize: 10, letterSpacing: 0.5, opacity: 0.75 }}>
                           Inventory (first 4)
                         </Typography>
                       )}
 
+                      {/* Inventory */}
                       {copies.length > 0 && (
                         <Stack mt={0.5} spacing={0.5} sx={{ maxHeight: 120, overflowY: 'auto', pr: 0.5 }}>
                           {copies.slice(0,4).map((inv,i)=>(
@@ -272,6 +299,7 @@ const AdminDocumentManagementPage = () => {
                       )}
                     </Box>
 
+                    {/* Actions */}
                     <Box
                       sx={{
                         px: 1,
@@ -377,9 +405,9 @@ const AdminDocumentManagementPage = () => {
       >
         <Alert
           onClose={() => setToast({ ...toast, open: false })}
-          severity={toast.severity}
-          variant="filled"
-          sx={{ borderRadius: 1, fontWeight: 600 }}
+            severity={toast.severity}
+            variant="filled"
+            sx={{ borderRadius: 1, fontWeight: 600 }}
         >
           {toast.message}
         </Alert>
@@ -388,4 +416,4 @@ const AdminDocumentManagementPage = () => {
   );
 };
 
-export default AdminDocumentManagementPage;
+export default DocumentManagementPage;

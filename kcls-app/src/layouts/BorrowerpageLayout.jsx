@@ -1,8 +1,7 @@
 import React from 'react';
 import { Outlet } from 'react-router-dom';
 import BorrowerTopbar from '../components/BorrowerTopbar';
-import { Box, CssBaseline, useTheme } from '@mui/material';
-import { motion } from 'framer-motion';
+import { Box, Container, CssBaseline, useTheme } from '@mui/material';
 
 const BorrowerpageLayout = () => {
   const theme = useTheme();
@@ -10,22 +9,27 @@ const BorrowerpageLayout = () => {
   return (
     <>
       <CssBaseline />
-      <Box>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: '100vh',
+          bgcolor: theme.palette.background.default,
+        }}
+      >
         <BorrowerTopbar />
         <Box
           component="main"
           sx={{
-            minHeight: '100vh',
+            flexGrow: 1,
+            py: { xs: 2, md: 3 },
+            px: { xs: 2, md: 4 },
             bgcolor: theme.palette.background.default,
           }}
         >
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-          >
+          <Container maxWidth="xl">
             <Outlet />
-          </motion.div>
+          </Container>
         </Box>
       </Box>
     </>

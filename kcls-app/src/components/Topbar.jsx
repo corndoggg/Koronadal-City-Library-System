@@ -1,6 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
-  Box, IconButton, Tooltip, Badge, Dialog, DialogTitle, DialogContent, DialogActions, Button, Avatar
+  IconButton,
+  Tooltip,
+  Badge,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  Avatar,
+  Stack,
+  Paper,
+  Container,
 } from '@mui/material';
 import { useTheme, alpha } from '@mui/material/styles';
 import { LightMode, DarkMode, Logout, Notifications as NotificationsIcon } from '@mui/icons-material';
@@ -21,7 +32,13 @@ const Topbar = () => {
   const { isMobile, collapsed, toggleCollapse, openMobile } = useSidebar();
   const navigate = useNavigate();
 
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const user = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem('user') || '{}');
+    } catch {
+      return {};
+    }
+  }, []);
   const isDark = theme.palette.mode === 'dark';
 
   // Notifications state
@@ -39,7 +56,7 @@ const Topbar = () => {
     navigate('/login', { replace: true });
   };
 
-  const fetchUnread = async () => {
+  const fetchUnread = useCallback(async () => {
     try {
       if (!user?.UserID) return;
       const res = await axios.get(`${API_BASE}/users/${user.UserID}/notifications/unread-count`);
@@ -47,19 +64,17 @@ const Topbar = () => {
     } catch {
       setUnreadCount(0);
     }
-  };
+  }, [user?.UserID]);
 
   useEffect(() => {
     fetchUnread();
     const id = setInterval(fetchUnread, 30000);
     return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.UserID]);
+  }, [fetchUnread]);
 
   useEffect(() => {
     if (!notifOpen) fetchUnread();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [notifOpen]);
+  }, [notifOpen, fetchUnread]);
 
   const handleNotifNavigate = (type, id) => {
     const role =
@@ -89,86 +104,103 @@ const Topbar = () => {
 
   return (
     <>
-      <Box
+      <Paper
+        elevation={0}
+        square
         sx={{
           position: 'sticky',
           top: 0,
-          zIndex: 1100,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between', // left controls + right actions
-          gap: 1,
-          px: 1,
+          zIndex: 1200,
           height: TOPBAR_HEIGHT,
-          py: 0,
-          bgcolor: theme.palette.background.paper,
-          borderBottom: `2px solid ${alpha(theme.palette.divider, 0.9)}`,
-          width: '100%',
+          backdropFilter: 'blur(12px)',
+          backgroundColor: alpha(theme.palette.background.paper, 0.95),
+          borderBottom: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
         }}
       >
-        {/* Left: sidebar toggle */}
-        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-          {isMobile ? (
-            <Tooltip title="Open menu">
-              <IconButton size="small" onClick={openMobile}>
-                <MenuIcon fontSize="small" />
+        <Container
+          maxWidth="xl"
+          disableGutters={isMobile}
+          sx={{
+            height: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            px: { xs: 1.25, md: 2 },
+            gap: 2,
+          }}
+        >
+          <Stack direction="row" spacing={1} alignItems="center">
+            {isMobile ? (
+              <Tooltip title="Open menu">
+                <IconButton size="small" onClick={openMobile}>
+                  <MenuIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            ) : (
+              <Tooltip title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+                <IconButton size="small" onClick={toggleCollapse}>
+                  {collapsed ? (
+                    <KeyboardDoubleArrowRight fontSize="small" />
+                  ) : (
+                    <KeyboardDoubleArrowLeft fontSize="small" />
+                  )}
+                </IconButton>
+              </Tooltip>
+            )}
+          </Stack>
+
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            <Tooltip title="Notifications">
+              <IconButton size="small" onClick={() => setNotifOpen(true)}>
+                <Badge color="error" badgeContent={unreadCount} max={99}>
+                  <NotificationsIcon fontSize="small" />
+                </Badge>
               </IconButton>
             </Tooltip>
-          ) : (
-            <Tooltip title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
-              <IconButton size="small" onClick={toggleCollapse}>
-                {collapsed ? <KeyboardDoubleArrowRight fontSize="small" /> : <KeyboardDoubleArrowLeft fontSize="small" />}
+
+            <Tooltip title={`Switch to ${isDark ? 'light' : 'dark'} mode`}>
+              <IconButton size="small" onClick={toggleColorMode}>
+                {isDark ? <LightMode fontSize="small" /> : <DarkMode fontSize="small" />}
               </IconButton>
             </Tooltip>
-          )}
-        </Box>
 
-        {/* Right: actions */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          {/* Notifications */}
-          <Tooltip title="Notifications">
-            <IconButton size="small" onClick={() => setNotifOpen(true)}>
-              <Badge color="error" badgeContent={unreadCount} max={99}>
-                <NotificationsIcon fontSize="small" />
-              </Badge>
-            </IconButton>
-          </Tooltip>
+            <Tooltip title="Account">
+              <IconButton size="small" onClick={() => setAccountModalOpen(true)}>
+                <Avatar
+                  variant="rounded"
+                  sx={{
+                    width: 30,
+                    height: 30,
+                    bgcolor: theme.palette.primary.main,
+                    color: theme.palette.common.white,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    borderRadius: 1.25,
+                  }}
+                >
+                  {(user.Firstname?.[0] || '').toUpperCase() + (user.Lastname?.[0] || '').toUpperCase()}
+                </Avatar>
+              </IconButton>
+            </Tooltip>
 
-          {/* Theme toggle */}
-          <Tooltip title={`Switch to ${isDark ? 'light' : 'dark'} mode`}>
-            <IconButton size="small" onClick={toggleColorMode}>
-              {isDark ? <LightMode fontSize="small" /> : <DarkMode fontSize="small" />}
-            </IconButton>
-          </Tooltip>
-
-          {/* Account */}
-          <Tooltip title="Account">
-            <IconButton size="small" onClick={() => setAccountModalOpen(true)}>
-              <Avatar
-                variant="rounded"
+            <Tooltip title="Logout">
+              <IconButton
+                size="small"
+                color="error"
+                onClick={() => setLogoutOpen(true)}
                 sx={{
-                  width: 28, height: 28, bgcolor: theme.palette.primary.main, color: '#fff',
-                  fontSize: 12, fontWeight: 700, borderRadius: 1
+                  color: theme.palette.error.main,
+                  '&:hover': {
+                    backgroundColor: alpha(theme.palette.error.main, 0.12),
+                  },
                 }}
               >
-                {(user.Firstname?.[0] || '') + (user.Lastname?.[0] || '')}
-              </Avatar>
-            </IconButton>
-          </Tooltip>
-
-          {/* Logout */}
-          <Tooltip title="Logout">
-            <IconButton
-              size="small"
-              color="error"
-              onClick={() => setLogoutOpen(true)}
-              sx={{ '&:hover': { background: alpha(theme.palette.error.main, 0.12) } }}
-            >
-              <Logout fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        </Box>
-      </Box>
+                <Logout fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+        </Container>
+      </Paper>
 
       {/* Logout Confirm Dialog */}
       <Dialog open={logoutOpen} onClose={() => setLogoutOpen(false)} maxWidth="xs" fullWidth>
