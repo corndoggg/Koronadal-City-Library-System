@@ -9,27 +9,23 @@ import { Download, RefreshCw, FileText, Printer, Filter, Eye } from 'lucide-reac
 import axios from 'axios';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Bar, Doughnut } from 'react-chartjs-2';
+import { Bar } from 'react-chartjs-2';
 import {
-  Chart as ChartJS, CategoryScale, LinearScale, BarElement, ArcElement, Tooltip as ChartTooltip, Legend
+  Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip as ChartTooltip, Legend
 } from 'chart.js';
-ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, ChartTooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, BarElement, ChartTooltip, Legend);
 import { nowDateTime } from '../../../utils/date';
 
 const REPORT_TYPES = [
-  { key:'inventory_summary', label:'Inventory Summary' },
   { key:'borrow_activity', label:'Borrow Activity & Fines' },
   { key:'top_borrowed_books', label:'Top Borrowed Books' },
   { key:'top_borrowed_documents', label:'Top Borrowed Documents' },
-  { key:'top_borrowers', label:'Top Borrowers' },
-  { key:'book_conditions', label:'Book Conditions' },
-  { key:'document_conditions', label:'Document Conditions' },
   { key:'general_storage', label:'General Storage' },
-  { key:'storage_capacity', label:'Storage Capacity' }
+  { key:'storage_capacity', label:'Storage Capacity' },
+  { key:'books_with_copies', label:'List of Books & Copies' },
+  { key:'documents_with_copies', label:'List of Documents & Copies' },
+  { key:'borrowings_full', label:'Borrowing Transactions' }
 ];
-
-// Centralized date formatting
-const dateISO = d => d ? formatDate(d) : '';
 
 const fullName = (u) => {
   const f = (u.Firstname || '').trim();
@@ -57,7 +53,7 @@ const ReportsPage = () => {
   // NEW: maps for accurate lookups
   const [copyToBookMap, setCopyToBookMap] = useState({});
   const [borrowerNameMap, setBorrowerNameMap] = useState({});
-  const [borrowedItemIndex, setBorrowedItemIndex] = useState({}); // BorrowedItemID -> { type, bookCopyId, docStorageId }
+  const [storageToDocumentMap, setStorageToDocumentMap] = useState({});
 
   // Filters
   const [fromDate, setFromDate] = useState('');
@@ -67,11 +63,10 @@ const ReportsPage = () => {
 
   // Pagination
   const [page, setPage] = useState(1);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
-  const rowsPerPageOptions = [10, 25, 50, 100];
+  const rowsPerPage = 10;
 
   // Export scope (all rows or current page)
-  const [exportScope, setExportScope] = useState('all'); // 'all' | 'page'
+  const exportScope = 'all'; // 'all' | 'page'
 
   // PDF preview
   const [pdfOpen, setPdfOpen] = useState(false);
@@ -131,11 +126,16 @@ const ReportsPage = () => {
       );
 
       const docInventories = {};
+      const storageMap = {};
       await Promise.all(
         docs.map(async d => {
           try {
             const inv = (await axios.get(`${API_BASE}/documents/inventory/${d.Document_ID}`)).data || [];
             docInventories[d.Document_ID] = inv;
+            inv.forEach(row => {
+              const storageId = row.Storage_ID ?? row.StorageID ?? row.storage_id ?? row.storageId;
+              if (storageId != null) storageMap[String(storageId)] = d.Document_ID;
+            });
           } catch { docInventories[d.Document_ID] = []; }
         })
       );
@@ -145,16 +145,6 @@ const ReportsPage = () => {
       for (const tx of brs) {
         dueTemp[tx.BorrowID] = tx.ReturnDate || null;
       }
-
-      // Build quick index for borrowed items (by id -> type/ids)
-      const bItemIdx = {};
-      brs.forEach(tx => (tx.items || []).forEach(it => {
-        bItemIdx[it.BorrowedItemID] = {
-          type: it.ItemType,
-          bookCopyId: it.BookCopyID ?? null,
-          docStorageId: it.DocumentStorageID ?? null
-        };
-      }));
 
       setBooks(bks);
       setDocuments(docs);
@@ -166,7 +156,7 @@ const ReportsPage = () => {
       setDueMap(dueTemp);
       setCopyToBookMap(copyMap);
       setBorrowerNameMap(borrowerNames);
-      setBorrowedItemIndex(bItemIdx);
+      setStorageToDocumentMap(storageMap);
     } catch (e) {
       setErr(e.message || 'Failed loading');
     } finally {
@@ -204,31 +194,6 @@ const ReportsPage = () => {
   }, [returnsTx, fromDate, toDate]);
 
   const dataBuilders = {
-    inventory_summary: () => {
-      const bookCopies = Object.values(bookInvMap).reduce((a,v)=>a+v.length,0);
-      const bookAvail = Object.values(bookInvMap).reduce((a,v)=>a+v.filter(i=>(i.availability||i.Availability)==='Available').length,0);
-      const bookLost = Object.values(bookInvMap).reduce((a,v)=>a+v.filter(i=>(i.availability||i.Availability)==='Lost').length,0);
-      const docCopies = Object.values(docInvMap).reduce((a,v)=>a+v.length,0);
-      const docAvail = Object.values(docInvMap).reduce((a,v)=>a+v.filter(i=>(i.availability||i.Availability)==='Available').length,0);
-      const docLost = Object.values(docInvMap).reduce((a,v)=>a+v.filter(i=>(i.availability||i.Availability)==='Lost').length,0);
-      const digital = documents.filter(d=>d.File_Path||d.file_path).length;
-      return {
-        title:'Inventory Summary',
-        headers:['Metric','Value'],
-        rows:[
-          ['Book Titles', books.length],
-            ['Book Copies', bookCopies],
-            ['Book Copies Available', bookAvail],
-            ['Book Copies Lost', bookLost],
-            ['Document Titles', documents.length],
-            ['Document Physical Copies', docCopies],
-            ['Document Physical Available', docAvail],
-            ['Document Physical Lost', docLost],
-            ['Digital Documents', digital],
-            ['Total Storage Items', bookCopies + docCopies]
-        ]
-      };
-    },
     borrow_activity: () => {
       const now = new Date();
       let pending=0, awaiting=0, active=0, returned=0, rejected=0, overdue=0;
@@ -310,71 +275,19 @@ const ReportsPage = () => {
       }));
       const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0, limit);
       const rows = sorted.map(([storageId, c]) => {
-        // Find document title from inventories
-        const docEntry = Object.entries(docInvMap).find(([,inv]) => inv.some(i => String(i.Storage_ID ?? i.StorageID) === String(storageId)));
-        const docId = docEntry ? Number(docEntry[0]) : null;
+        const docId = storageToDocumentMap[String(storageId)]
+          || (() => {
+            const docEntry = Object.entries(docInvMap).find(([,inv]) =>
+              inv.some(i => String(i.Storage_ID ?? i.StorageID ?? i.storage_id ?? i.storageId) === String(storageId))
+            );
+            return docEntry ? Number(docEntry[0]) : null;
+          })();
         const title = documents.find(d => d.Document_ID === docId)?.Title || 'Unknown';
         return [storageId, title, c];
       });
       return {
         title:`Top Borrowed Documents (limit ${limit})`,
         headers:['Storage ID','Document Title','Borrow Count'],
-        rows
-      };
-    },
-    top_borrowers: () => {
-      const byBorrower = {};
-      filteredBorrows.forEach(tx => {
-        const borrowerId = tx.BorrowerID || tx.UserID || 'Unknown';
-        if (!byBorrower[borrowerId]) byBorrower[borrowerId] = { total:0, returned:0, overdue:0 };
-        byBorrower[borrowerId].total++;
-        if (tx.ReturnStatus === 'Returned') byBorrower[borrowerId].returned++;
-        const due = dueMap[tx.BorrowID] ? new Date(dueMap[tx.BorrowID]) : null;
-        if (due && tx.ReturnStatus !== 'Returned' && due < new Date()) byBorrower[borrowerId].overdue++;
-      });
-      const rows = Object.entries(byBorrower)
-        .map(([borrowerId, v])=>[
-          borrowerNameMap[Number(borrowerId)] || `Borrower #${borrowerId}`,
-          v.total, v.returned, v.overdue
-        ])
-        .sort((a,b)=>b[1]-a[1])
-        .slice(0, limit);
-      return {
-        title:`Top Borrowers (top ${limit})`,
-        headers:['Borrower','Total','Returned','Overdue'],
-        rows
-      };
-    },
-    document_conditions: () => {
-      // Count current condition distribution from physical document inventory
-      const counts = {};
-      Object.values(docInvMap).forEach(list => {
-        (list || []).forEach(i => {
-          const cond = i.Condition || i.condition || 'Unknown';
-          counts[cond] = (counts[cond] || 0) + 1;
-        });
-      });
-      const rows = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
-      return {
-        title:'Document Conditions (Current Inventory)',
-        headers:['Condition','Count'],
-        rows
-      };
-    },
-
-    book_conditions: () => {
-      // Count current condition distribution from book inventory
-      const counts = {};
-      Object.values(bookInvMap).forEach(list => {
-        (list || []).forEach(i => {
-          const cond = i.condition || i.BookCondition || 'Unknown';
-          counts[cond] = (counts[cond] || 0) + 1;
-        });
-      });
-      const rows = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
-      return {
-        title:'Book Conditions (Current Inventory)',
-        headers:['Condition','Count'],
         rows
       };
     },
@@ -435,6 +348,125 @@ const ReportsPage = () => {
         headers:['Storage','Capacity','Used (copies)','Free','Utilization'],
         rows
       };
+    },
+    books_with_copies: () => {
+      const sortedBooks = [...books].sort((a, b) => (a.Title || '').localeCompare(b.Title || ''));
+      const rows = sortedBooks.map(book => {
+        const copies = bookInvMap[book.Book_ID] || [];
+        const copyDetails = copies.length
+          ? copies.map(copy => {
+              const copyId = copy.Copy_ID ?? copy.CopyID ?? copy.copy_id ?? copy.copyId ?? '—';
+              const availability = copy.availability || copy.Availability || 'Unknown';
+              const condition = copy.condition || copy.BookCondition || 'Unknown';
+              const location = copy.location || copy.StorageLocation || copy.Location || '—';
+              return `• Copy #${copyId} • ${availability}${condition ? ` • ${condition}` : ''}${location ? ` • ${location}` : ''}`;
+            }).join('\n')
+          : 'No copies recorded';
+        return [
+          book.Title || 'Untitled',
+          book.Author || book.Author_Name || '—',
+          book.Subject || book.Genre || '—',
+          copies.length,
+          copyDetails
+        ];
+      });
+      return {
+        title:'Books & Copy Details',
+        headers:['Title','Author','Subject','Total Copies','Copy Details'],
+        rows
+      };
+    },
+    documents_with_copies: () => {
+      const sortedDocs = [...documents].sort((a, b) => (a.Title || '').localeCompare(b.Title || ''));
+      const rows = sortedDocs.map(doc => {
+        const copies = docInvMap[doc.Document_ID] || [];
+        const copyDetails = copies.length
+          ? copies.map(copy => {
+              const storageId = copy.Storage_ID ?? copy.StorageID ?? copy.storage_id ?? copy.storageId ?? '—';
+              const availability = copy.availability || copy.Availability || 'Unknown';
+              const condition = copy.Condition || copy.condition || 'Unknown';
+              const location = copy.StorageLocation || copy.location || '—';
+              return `• Storage #${storageId} • ${availability}${condition ? ` • ${condition}` : ''}${location ? ` • ${location}` : ''}`;
+            }).join('\n')
+          : 'No copies recorded';
+        return [
+          doc.Title || 'Untitled',
+          doc.Classification || '—',
+          doc.Category || doc.CategoryName || '—',
+          copies.length,
+          copyDetails
+        ];
+      });
+      return {
+        title:'Documents & Copy Details',
+        headers:['Title','Type','Category','Total Copies','Copy Details'],
+        rows
+      };
+    },
+    borrowings_full: () => {
+      const sortedBorrows = [...filteredBorrows].sort((a, b) => {
+        const aDate = a.BorrowDate ? new Date(a.BorrowDate) : new Date(0);
+        const bDate = b.BorrowDate ? new Date(b.BorrowDate) : new Date(0);
+        return bDate - aDate;
+      });
+      const rows = sortedBorrows.map(tx => {
+        const borrowerId = tx.BorrowerID ?? tx.UserID;
+        const borrower = borrowerNameMap[Number(borrowerId)] || tx.BorrowerName || `Borrower #${borrowerId || '—'}`;
+        const borrowDate = tx.BorrowDate ? formatDate(tx.BorrowDate) : '—';
+        const dueDate = dueMap[tx.BorrowID] ? formatDate(dueMap[tx.BorrowID]) : '—';
+        const returnDate = tx.ReturnDate ? formatDate(tx.ReturnDate) : '—';
+        const statuses = [
+          `Approval: ${tx.ApprovalStatus || '—'}`,
+          `Retrieval: ${tx.RetrievalStatus || '—'}`,
+          `Return: ${tx.ReturnStatus || '—'}`
+        ];
+        if (tx.FineStatus) statuses.push(`Fine: ${tx.FineStatus}`);
+        const items = (tx.items || []).map(item => {
+          if (item.ItemType === 'Book') {
+            const copyId = item.BookCopyID ?? item.CopyID;
+            const bookId = copyToBookMap[String(copyId)] || null;
+            const bookTitle = books.find(b => b.Book_ID === Number(bookId))?.Title || 'Unknown Book';
+            const invList = bookId ? (bookInvMap[bookId] || []) : [];
+            const copyRow = invList.find(row => String(row.Copy_ID ?? row.CopyID ?? row.copy_id ?? row.copyId) === String(copyId));
+            const availability = copyRow ? (copyRow.availability || copyRow.Availability || 'Unknown') : null;
+            const condition = copyRow ? (copyRow.condition || copyRow.BookCondition || 'Unknown') : item.ReturnCondition || null;
+            const fineValue = parseFloat(item.Fine ?? 0);
+            const fineText = !isNaN(fineValue) && fineValue > 0
+              ? ` • Fine: ₱${fineValue.toFixed(2)} (${item.FinePaid === 'Yes' ? 'Paid' : 'Unpaid'})`
+              : '';
+            const conditionText = condition ? ` • Condition: ${condition}` : '';
+            const availabilityText = availability ? ` • Status: ${availability}` : '';
+            return `• Book: ${bookTitle} (Copy #${copyId || '—'})${availabilityText}${conditionText}${fineText}`;
+          }
+          if (item.ItemType === 'Document') {
+            const storageId = item.DocumentStorageID ?? item.StorageID;
+            const docId = storageToDocumentMap[String(storageId)] || null;
+            const docTitle = documents.find(d => d.Document_ID === Number(docId))?.Title || 'Unknown Document';
+            const fineValue = parseFloat(item.Fine ?? 0);
+            const fineText = !isNaN(fineValue) && fineValue > 0
+              ? ` • Fine: ₱${fineValue.toFixed(2)} (${item.FinePaid === 'Yes' ? 'Paid' : 'Unpaid'})`
+              : '';
+            const conditionText = item.ReturnCondition ? ` • Condition: ${item.ReturnCondition}` : '';
+            return `• Document: ${docTitle} (Storage #${storageId || '—'})${conditionText}${fineText}`;
+          }
+          return `• Item: ${item.ItemType || 'Unknown'} (ID ${item.BorrowedItemID || '—'})`;
+        }).join('\n') || '• No items recorded';
+
+        return [
+          `#${tx.BorrowID}`,
+          borrower,
+          borrowDate,
+          dueDate,
+          returnDate,
+          statuses.join('\n'),
+          items
+        ];
+      });
+      return {
+        title:'Borrowing Transactions (Full Details)',
+        headers:['Borrow ID','Borrower','Borrow Date','Due Date','Return Date','Statuses','Items & Notes'],
+        rows
+      };
     }
   };
 
@@ -454,50 +486,24 @@ const ReportsPage = () => {
 
   // Chart (for selected report types)
   const chartData = useMemo(() => {
-    switch(reportType){
-      case 'borrow_activity':
-        return {
-          type:'bar',
-          data:{
-            labels: currentReport.rows
-              .filter(r=>!String(r[0]).toLowerCase().includes('fine') && !String(r[0]).toLowerCase().includes('total'))
-              .map(r=>r[0]),
-            datasets:[{
-              label:'Count',
-              data: currentReport.rows
-                .filter(r=>!String(r[0]).toLowerCase().includes('fine') && !String(r[0]).toLowerCase().includes('total'))
-                .map(r=>r[1]),
-              backgroundColor:['#ffb300','#0288d1','#7b1fa2','#d32f2f','#2e7d32','#757575'],
-              borderRadius:6,
-              maxBarThickness:40
-            }]
-          }
-        };
-      case 'book_conditions':
-        return {
-          type:'doughnut',
-          data:{
-            labels: currentReport.rows.map(r=>r[0]),
-            datasets:[{
-              data: currentReport.rows.map(r=>r[1]),
-              backgroundColor:['#43a047','#8bc34a','#fdd835','#fb8c00','#e53935','#6d4c41','#757575']
-            }]
-          }
-        };
-      case 'document_conditions':
-        return {
-          type:'doughnut',
-          data:{
-            labels: currentReport.rows.map(r=>r[0]),
-            datasets:[{
-              data: currentReport.rows.map(r=>r[1]),
-              backgroundColor:['#43a047','#8bc34a','#fdd835','#fb8c00','#e53935','#6d4c41','#757575']
-            }]
-          }
-        };
-      default:
-        return null;
-    }
+    if (reportType !== 'borrow_activity') return null;
+    return {
+      type:'bar',
+      data:{
+        labels: currentReport.rows
+          .filter(r=>!String(r[0]).toLowerCase().includes('fine') && !String(r[0]).toLowerCase().includes('total'))
+          .map(r=>r[0]),
+        datasets:[{
+          label:'Count',
+          data: currentReport.rows
+            .filter(r=>!String(r[0]).toLowerCase().includes('fine') && !String(r[0]).toLowerCase().includes('total'))
+            .map(r=>r[1]),
+          backgroundColor:['#ffb300','#0288d1','#7b1fa2','#d32f2f','#2e7d32','#757575'],
+          borderRadius:6,
+          maxBarThickness:40
+        }]
+      }
+    };
   }, [reportType, currentReport]);
 
   const exportCSV = () => {
@@ -553,7 +559,7 @@ const ReportsPage = () => {
           headStyles: { fillColor: [25,118,210] },
           alternateRowStyles: { fillColor: [245,245,245] },
           margin: { left: marginX, right: marginX },
-          didDrawPage: (data) => {
+          didDrawPage: () => {
             const pageSize = doc.internal.pageSize;
             const pageWidth = pageSize.getWidth();
             const pageHeight = pageSize.getHeight();
@@ -654,7 +660,7 @@ const ReportsPage = () => {
             }
           }}
         >
-          {REPORT_TYPES.map((r,i)=>(
+          {REPORT_TYPES.map(r=>(
             <Tab key={r.key} label={r.label} onClick={()=>setReportType(r.key)} />
           ))}
         </Tabs>
@@ -695,7 +701,7 @@ const ReportsPage = () => {
           onChange={e=>setToDate(e.target.value)}
           InputLabelProps={{ shrink:true }}
         />
-        {(reportType==='top_borrowed_books' || reportType==='top_borrowed_documents' || reportType==='top_borrowers') && (
+  {(reportType==='top_borrowed_books' || reportType==='top_borrowed_documents') && (
           <TextField
             label="Limit"
             size="small"
@@ -706,13 +712,6 @@ const ReportsPage = () => {
             InputLabelProps={{ shrink:true }}
           />
         )}
-        <Chip
-          icon={<Filter size={14} />}
-          label="Apply"
-          size="small"
-          sx={{ fontWeight:600 }}
-          color="primary"
-        />
         <Box ml="auto" display="flex" gap={1}>
           <Button
             size="small"
@@ -803,8 +802,11 @@ const ReportsPage = () => {
                             <td
                               key={i}
                               style={{
-                                padding:'6px 8px', borderBottom:'1px solid #eee',
-                                fontWeight: i===0 ? 600 : 500
+                                padding:'6px 8px',
+                                borderBottom:'1px solid #eee',
+                                fontWeight: i===0 ? 600 : 500,
+                                whiteSpace:'pre-wrap',
+                                lineHeight:1.35
                               }}
                             >
                               {c}

@@ -22,8 +22,6 @@ def get_book(book_id):
     cursor.close()
     conn.close()
     return jsonify(book) if book else (jsonify({'error': 'Book not found'}), 404)
-
-@books_bp.route('/books', methods=['POST'])
 def add_book():
     data = request.json
     conn = get_db_connection()

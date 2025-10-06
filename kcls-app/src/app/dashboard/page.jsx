@@ -1,20 +1,20 @@
 // Enhanced dashboard with charts (requires: npm i chart.js react-chartjs-2)
-import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
-  Box, Grid, Paper, Typography, Divider, IconButton, Tooltip, Chip,
-  Stack, Skeleton, Button, FormControl, Select, MenuItem, InputLabel,
+  Box, Grid, Paper, Typography, Divider, Chip,
+  Stack, Skeleton, Button,
   List, ListItem, ListItemText, ListItemAvatar, Avatar
 } from '@mui/material';
 import { alpha, useTheme } from '@mui/material/styles';
-import { RefreshCw, X } from 'lucide-react';
-import { Bar, Doughnut, Line } from 'react-chartjs-2';
+import { RefreshCw } from 'lucide-react';
+import { Bar, Doughnut } from 'react-chartjs-2';
 import {
   Chart as ChartJS, CategoryScale, LinearScale, BarElement, ArcElement,
-  PointElement, LineElement, Tooltip as ChartTooltip, Legend, TimeScale
+  Tooltip as ChartTooltip, Legend
 } from 'chart.js';
 import axios from 'axios';
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, PointElement, LineElement, ChartTooltip, Legend, TimeScale);
+ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, ChartTooltip, Legend);
 
 const number = v => Intl.NumberFormat().format(v || 0);
 
@@ -28,11 +28,15 @@ const surfacePaper = (extra = {}) => (theme) => ({
   ...extra
 });
 
-const softBadge = (theme) => ({
-  backgroundColor: alpha(theme.palette.primary.main, 0.12),
-  color: theme.palette.primary.main,
-  fontWeight: 700
-});
+const BORROW_STATUS_LABELS = ['Pending', 'Awaiting Pickup', 'Active', 'Overdue', 'Returned', 'Rejected'];
+const BORROW_STATUS_VALUE_KEYS = {
+  Pending: 'pending',
+  'Awaiting Pickup': 'awaiting',
+  Active: 'active',
+  Overdue: 'overdue',
+  Returned: 'returned',
+  Rejected: 'rejected'
+};
 
 // Dummy minimal lucide icons fallback (if not imported) — replace or ensure imports exist
 const IconBook = props => <span {...props}>📘</span>;
@@ -61,18 +65,6 @@ const DashboardPage = () => {
   const [bookInvMap, setBookInvMap] = useState({});
   const [docInvMap, setDocInvMap] = useState({});
   const [dueMap, setDueMap] = useState({});
-
-  // UI controls
-  const [rangeMonths, setRangeMonths] = useState(12);
-  const [autoMs, setAutoMs] = useState(0); // 0=manual, 30000=30s, 60000=60s
-  const [statusFilter, setStatusFilter] = useState(''); // 'Pending' | 'Awaiting Pickup' | 'Active' | 'Overdue' | 'Returned' | 'Rejected'
-
-  const statusBarRef = useRef(null);
-
-  const monthFormatter = useMemo(
-    () => new Intl.DateTimeFormat(undefined, { month: 'short', year: 'numeric' }),
-    []
-  );
 
   const statusChipStyle = useCallback((status) => {
     const palette = theme.palette;
@@ -201,7 +193,9 @@ const DashboardPage = () => {
           const mi = m ? ` ${m[0]}.` : '';
           const name = `${f}${mi} ${l}`.trim() || u.Username || '';
           if (name) { updates[id] = name; continue; }
-        } catch {}
+        } catch {
+          // Ignore: fallback lookup handled below
+        }
 
         try {
           const r2 = await axios.get(`${API_BASE}/users/${id}`);
@@ -219,14 +213,7 @@ const DashboardPage = () => {
     return () => { cancelled = true; };
   }, [borrows, borrowerNameOverride, borrowerNameById, API_BASE, formatUserName]);
 
-  useEffect(() => { fetchAll(); }, [fetchAll]);
-
-  // Auto refresh
-  useEffect(() => {
-    if (!autoMs) return;
-    const id = setInterval(fetchAll, autoMs);
-    return () => clearInterval(id);
-  }, [autoMs, fetchAll]);
+  useEffect(() => { fetchAll(); }, [fetchAll]);;
 
   // Derive borrow status label for charts/cards
   const deriveStatusLabel = useCallback((tx) => {
@@ -300,62 +287,11 @@ const DashboardPage = () => {
     };
   }, [books, documents, borrows, bookInvMap, docInvMap, deriveStatusLabel]);
 
-  // FIX: trend filter and month mapping to ensure data shows
-  const parseBorrowDate = (tx) => {
-    const raw = tx.BorrowDate || tx.borrowDate;
+  const parseBorrowDate = useCallback((tx) => {
+    const raw = tx?.BorrowDate || tx?.borrowDate;
     if (!raw) return null;
-    // Accept both ISO string and Date
     return raw instanceof Date ? raw : new Date(raw);
-  };
-
-  // Filtered borrows for trend (by status + time range)
-  const filteredTrendBorrows = useMemo(() => {
-    const cutoff = new Date();
-    cutoff.setDate(1);
-    cutoff.setHours(0, 0, 0, 0);
-    cutoff.setMonth(cutoff.getMonth() - (rangeMonths - 1));
-    return (borrows || []).filter(tx => {
-      const d = parseBorrowDate(tx);
-      if (!d || isNaN(d.getTime())) return false;
-      if (d < cutoff) return false;
-      if (statusFilter) return deriveStatusLabel(tx) === statusFilter;
-      return true;
-    });
-  }, [borrows, rangeMonths, statusFilter, deriveStatusLabel]);
-
-  // Monthly Borrow Trend dataset
-  const borrowTrend = useMemo(() => {
-    const now = new Date();
-    const labels = [];
-    const keys = [];
-    const map = {};
-    for (let i = rangeMonths - 1; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = `${d.getFullYear()}-${d.getMonth()}`;
-      keys.push(key);
-      labels.push(monthFormatter.format(d));
-      map[key] = 0;
-    }
-    filteredTrendBorrows.forEach(tx => {
-      const d = parseBorrowDate(tx);
-      if (!d) return;
-      const key = `${d.getFullYear()}-${d.getMonth()}`;
-      if (key in map) map[key] += 1; // count
-    });
-    return {
-      labels,
-      datasets: [{
-        label: 'Borrows',
-        data: keys.map(k => map[k]),
-        borderColor: '#1976d2',
-        backgroundColor: alpha('#1976d2', .22),
-        tension: .25,
-        fill: true,
-        pointRadius: 4,
-        pointHoverRadius: 6
-      }]
-    };
-  }, [filteredTrendBorrows, rangeMonths, monthFormatter]);
+  }, []);
 
   // NEW: Borrow Mix (Books vs Docs Physical vs Docs Digital)
   const borrowMixDoughnut = useMemo(() => {
@@ -367,15 +303,23 @@ const DashboardPage = () => {
         else if (it.ItemType === 'Document' && !it.DocumentStorageID) digiCnt++;
       });
     });
+    const palette = theme.palette;
     return {
       labels: ['Books', 'Docs Physical', 'Docs Digital'],
       datasets: [{
         data: [booksCnt, physCnt, digiCnt],
-        backgroundColor: ['#1976d2', '#7b1fa2', '#9c27b0'],
-        borderWidth: 1
+        backgroundColor: [
+          alpha(palette.primary.main, 0.85),
+          alpha(palette.secondary ? palette.secondary.main : palette.info.main, 0.8),
+          alpha(palette.info.main, 0.75)
+        ],
+        borderColor: alpha(palette.background.paper, 0.96),
+        hoverBorderColor: palette.background.paper,
+        borderWidth: 2,
+        cutout: '68%'
       }]
     };
-  }, [borrows]);
+  }, [borrows, theme]);
 
   // ADD: helpers to resolve item titles for activity lists
   const getDocumentId = (obj) => obj?.Document_ID ?? obj?.DocumentID ?? obj?.documentId ?? obj?.DocumentId;
@@ -433,48 +377,87 @@ const DashboardPage = () => {
     return meta?.Title || `Doc #${did || '—'}`;
   }, [bookCopyToMeta, docStorageToMeta, docById]);
 
-  // NEW: Top Borrowers (by total transactions and active count)
-  const topBorrowers = useMemo(() => {
-    const counts = new Map();
-    for (const tx of borrows || []) {
-      const id = tx.BorrowerID;
-      if (!id) continue;
-      const s = deriveStatusLabel(tx);
-      const row = counts.get(id) || { id, total: 0, active: 0 };
-      row.total += 1;
-      if (s === "Active" || s === "Awaiting Pickup") row.active += 1;
-      counts.set(id, row);
-    }
-    // Attach names using the latest resolver (uses override -> users map)
-    return Array.from(counts.values())
-      .map(r => ({ ...r, name: getBorrowerName(r.id) }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 8);
-  }, [borrows, deriveStatusLabel, getBorrowerName]);
-
-  // NEW: Recent Borrow Activity (latest 10) with borrower name and item titles
   const recentActivity = useMemo(() => {
     return [...(borrows || [])]
-      .sort((a,b) => {
-        const da = (a.BorrowDate ? new Date(a.BorrowDate) : 0)?.getTime?.() || 0;
-        const db = (b.BorrowDate ? new Date(b.BorrowDate) : 0)?.getTime?.() || 0;
-        return db - da;
-      })
-      .slice(0, 10)
       .map(tx => {
+        const borrowDate = parseBorrowDate(tx);
         const items = tx.items || [];
         const titles = items.map(itemTitle).filter(Boolean);
         const shown = titles.slice(0, 2);
         const more = titles.length > 2 ? ` +${titles.length - 2} more` : '';
+        const diffMs = borrowDate ? Date.now() - borrowDate.getTime() : null;
+        let relative = '';
+        if (diffMs !== null) {
+          const minute = 60 * 1000;
+          const hour = 60 * minute;
+          const day = 24 * hour;
+          if (diffMs < minute) relative = 'just now';
+          else if (diffMs < hour) relative = `${Math.floor(diffMs / minute)}m ago`;
+          else if (diffMs < day) relative = `${Math.floor(diffMs / hour)}h ago`;
+          else relative = `${Math.floor(diffMs / day)}d ago`;
+        }
         return {
           id: tx.BorrowID,
-          date: tx.BorrowDate?.slice(0, 10) || '',
+          date: borrowDate,
+          dateLabel: borrowDate ? borrowDate.toLocaleDateString() : '',
+          when: relative,
           who: getBorrowerName(tx.BorrowerID),
           status: deriveStatusLabel(tx),
-          itemsSummary: shown.join(' • ') + more
+          itemsSummary: shown.join(' • ') + more,
+          itemCount: items.length
         };
-      });
-  }, [borrows, getBorrowerName, deriveStatusLabel, itemTitle]);
+      })
+      .sort((a,b) => {
+        const da = a.date?.getTime?.() || 0;
+        const db = b.date?.getTime?.() || 0;
+        return db - da;
+      })
+      .slice(0, 4);
+  }, [borrows, getBorrowerName, deriveStatusLabel, itemTitle, parseBorrowDate]);
+
+  const dueSoon = useMemo(() => {
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+    return (borrows || [])
+      .map(tx => {
+        const rawDue = dueMap[tx.BorrowID];
+        if (!rawDue) return null;
+        const dueDate = rawDue instanceof Date ? rawDue : new Date(rawDue);
+        if (!dueDate || Number.isNaN(dueDate.getTime())) return null;
+        const status = deriveStatusLabel(tx);
+        if (!['Awaiting Pickup', 'Active', 'Overdue'].includes(status)) return null;
+        const diffDays = Math.ceil((dueDate.getTime() - now) / dayMs);
+        let deltaLabel = '';
+        if (diffDays < 0) {
+          const overdueDays = Math.abs(diffDays);
+          deltaLabel = overdueDays ? `Overdue by ${overdueDays} day${overdueDays === 1 ? '' : 's'}` : 'Overdue';
+        } else if (diffDays === 0) {
+          deltaLabel = 'Due today';
+        } else {
+          deltaLabel = `Due in ${diffDays} day${diffDays === 1 ? '' : 's'}`;
+        }
+
+        const items = tx.items || [];
+        const titles = items.map(itemTitle).filter(Boolean);
+        const primaryTitle = titles[0] || 'Borrow request';
+        const extraCount = Math.max(0, items.length - 1);
+
+        return {
+          id: tx.BorrowID,
+          borrower: getBorrowerName(tx.BorrowerID),
+          status,
+          dueDate,
+          dueLabel: dueDate.toLocaleDateString(),
+          deltaLabel,
+          isOverdue: diffDays < 0,
+          primaryTitle,
+          extraCount
+        };
+      })
+  .filter(Boolean)
+  .sort((a, b) => a.dueDate - b.dueDate)
+  .slice(0, 4);
+  }, [borrows, dueMap, deriveStatusLabel, getBorrowerName, itemTitle]);
 
   // Chart Data
   // 1. Availability Distribution (Books + Documents)
@@ -486,49 +469,80 @@ const DashboardPage = () => {
       Math.max(0, metrics.docPhysCopies - metrics.docPhysAvailable),
       metrics.digitalDocs
     ];
+    const palette = theme.palette;
+    const colors = [
+      alpha(palette.success.main, 0.88),
+      alpha(palette.success.light || palette.success.main, 0.42),
+      alpha(palette.primary.main, 0.86),
+      alpha(palette.primary.light || palette.primary.main, 0.45),
+      alpha(palette.info.main, 0.8)
+    ];
     return {
       labels: ['Book Available', 'Book Unavailable', 'Doc Phys Available', 'Doc Phys Unavailable', 'Digital Docs'],
       datasets: [{
         data: vals,
-        backgroundColor: ['#2e7d32', '#81c784', '#1976d2', '#90caf9', '#9c27b0'],
-        borderWidth: 1
+        backgroundColor: colors,
+        borderColor: alpha(palette.background.paper, 0.96),
+        hoverBorderColor: palette.background.paper,
+        borderWidth: 2,
+        cutout: '68%'
       }]
     };
-  }, [metrics]);
+  }, [metrics, theme]);
 
   // 2. Borrow Status Bar
-  const borrowStatusBar = useMemo(() => ({
-    labels: ['Pending', 'Awaiting Pickup', 'Active', 'Overdue', 'Returned', 'Rejected'],
-    datasets: [{
-      label: 'Borrows',
-      backgroundColor: ['#ffb300','#0288d1','#7b1fa2','#d32f2f','#2e7d32','#757575'],
-      data: [
-        metrics.pending,
-        metrics.awaiting,
-        metrics.active,
-        metrics.overdue,
-        metrics.returned,
-        metrics.rejected
-      ],
-      borderRadius: 6,
-      maxBarThickness: 42
-    }]
-  }), [metrics]);
+  const borrowStatusBar = useMemo(() => {
+    const palette = theme.palette;
+    const baseColors = [
+      palette.warning.main,
+      palette.info.main,
+      palette.primary.main,
+      palette.error.main,
+      palette.success.main,
+      palette.grey[500]
+    ];
+    const backgrounds = baseColors.map((color, idx) =>
+      alpha(color, idx === 4 ? 0.85 : 0.78)
+    );
+    const borders = baseColors.map(color => alpha(color, 0.6));
+    return {
+      labels: BORROW_STATUS_LABELS,
+      datasets: [{
+        label: 'Borrows',
+        backgroundColor: backgrounds,
+        borderColor: borders,
+        borderWidth: 2,
+        borderRadius: 16,
+        borderSkipped: false,
+  data: BORROW_STATUS_LABELS.map(label => metrics[BORROW_STATUS_VALUE_KEYS[label]] ?? 0),
+        maxBarThickness: 48
+      }]
+    };
+  }, [metrics, theme]);
 
-  const chartOptions = {
+  const chartOptions = useMemo(() => ({
     responsive: true,
     maintainAspectRatio: false,
-    layout: { padding: 6 },
+    layout: { padding: 12 },
+    cutout: '68%',
     plugins: {
       legend: {
         position: 'bottom',
         labels: {
           usePointStyle: true,
-          padding: 12,
-          font: { size: 11, weight: 600 }
+          padding: 16,
+          boxWidth: 10,
+          font: { size: 11, weight: 600 },
+          color: theme.palette.text.secondary
         }
       },
       tooltip: {
+        backgroundColor: alpha(theme.palette.background.paper, 0.98),
+        titleColor: theme.palette.text.primary,
+        bodyColor: theme.palette.text.primary,
+        borderColor: alpha(theme.palette.divider, 0.4),
+        borderWidth: 1,
+        displayColors: false,
         callbacks: {
           label: (ctx) => {
             const raw = ctx.parsed;
@@ -539,15 +553,21 @@ const DashboardPage = () => {
         }
       }
     }
-  };
+  }), [theme]);
 
-  const barOptions = {
+  const barOptions = useMemo(() => ({
     responsive: true,
     maintainAspectRatio: false,
-    layout: { padding: { top: 8, right: 8, left: 4, bottom: 0 } },
+    layout: { padding: { top: 12, right: 16, left: 8, bottom: 8 } },
     plugins: {
       legend: { display: false },
       tooltip: {
+        backgroundColor: alpha(theme.palette.background.paper, 0.98),
+        titleColor: theme.palette.text.primary,
+        bodyColor: theme.palette.text.primary,
+        borderColor: alpha(theme.palette.divider, 0.4),
+        borderWidth: 1,
+        displayColors: false,
         callbacks: {
           label: (ctx) => `${ctx.label}: ${number(ctx.parsed.y ?? ctx.parsed)}`,
         }
@@ -557,34 +577,26 @@ const DashboardPage = () => {
       x: {
         grid: { display: false },
         ticks: {
-          autoSkip: false,
-          maxRotation: 18,
-          minRotation: 18,
+          autoSkip: true,
+          autoSkipPadding: 12,
+          maxRotation: 0,
           font: { size: 11, weight: 600 },
-          color: '#4f4f4f'
+          color: theme.palette.text.secondary,
+          callback(value) {
+            const raw = typeof value === 'string' ? value : BORROW_STATUS_LABELS[value] || value;
+            const label = String(raw);
+            if (!label.includes(' ')) return label;
+            return label.split(' ').join('\n');
+          }
         }
       },
       y:{
         beginAtZero:true,
-        ticks:{ precision:0 },
-        grid: { color: 'rgba(0,0,0,0.08)' }
+        ticks:{ precision:0, color: theme.palette.text.secondary },
+        grid: { color: alpha(theme.palette.divider, 0.28), drawBorder: false }
       }
     }
-  };
-
-  const lineOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    layout: { padding: { top: 8, right: 8, left: 4, bottom: 0 } },
-    plugins: { legend: { display: false } },
-    scales: {
-      x: {
-        grid: { display: false },
-        ticks: { font: { size: 11, weight: 500 }, color: '#4f4f4f' }
-      },
-      y: { beginAtZero: true, ticks: { precision: 0 } }
-    }
-  };
+  }), [theme]);
 
   const summaryCards = [
     {
@@ -619,7 +631,6 @@ const DashboardPage = () => {
 
   const borrowTotals = borrowStatusBar.datasets[0].data.reduce((a,b)=>a+(b||0),0);
   const availTotals = availabilityDoughnut.datasets[0].data.reduce((a,b)=>a+(b||0),0);
-  const trendTotals = borrowTrend.datasets[0].data.reduce((a,b)=>a+(b||0),0);
 
   return (
     <Box p={{ xs: 2, md: 3 }} sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
@@ -634,11 +645,31 @@ const DashboardPage = () => {
           alignItems: { xs: 'flex-start', xl: 'center' }
         })}
       >
-        <Stack spacing={0.75} flexGrow={1} pr={{ xs: 0, xl: 3 }}>
+        <Stack spacing={1} flexGrow={1} pr={{ xs: 0, xl: 3 }}>
           <Typography fontWeight={800} fontSize={22}>Dashboard Overview</Typography>
           <Typography variant="body2" color="text.secondary">
-            Visual metrics that track library usage, inventory health, and borrower activity.
+            Visual metrics designed with Devias polish and shadcn-inspired charts to keep tabs on the library pulse.
           </Typography>
+          <Stack direction="row" spacing={1} flexWrap="wrap">
+            <Chip
+              size="small"
+              label={`${number(metrics.active)} active loans`}
+              sx={theme => ({
+                fontWeight: 600,
+                backgroundColor: alpha(theme.palette.info.main, 0.12),
+                color: theme.palette.info.main
+              })}
+            />
+            <Chip
+              size="small"
+              label={`${number(metrics.overdue)} overdue cases`}
+              sx={theme => ({
+                fontWeight: 600,
+                backgroundColor: alpha(theme.palette.error.main, 0.14),
+                color: theme.palette.error.main
+              })}
+            />
+          </Stack>
         </Stack>
 
         <Stack
@@ -649,48 +680,28 @@ const DashboardPage = () => {
           sx={{ width: { xs: '100%', xl: 'auto' } }}
           flexWrap="wrap"
         >
-          <FormControl size="small" sx={{ minWidth: 150 }}>
-            <InputLabel>Trend Range</InputLabel>
-            <Select
-              label="Trend Range"
-              value={rangeMonths}
-              onChange={e => setRangeMonths(Number(e.target.value))}
-            >
-              <MenuItem value={3}>Last 3 months</MenuItem>
-              <MenuItem value={6}>Last 6 months</MenuItem>
-              <MenuItem value={12}>Last 12 months</MenuItem>
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={{ minWidth: 160 }}>
-            <InputLabel>Auto Refresh</InputLabel>
-            <Select
-              label="Auto Refresh"
-              value={autoMs}
-              onChange={e => setAutoMs(Number(e.target.value))}
-            >
-              <MenuItem value={0}>Manual</MenuItem>
-              <MenuItem value={30000}>Every 30s</MenuItem>
-              <MenuItem value={60000}>Every 1m</MenuItem>
-            </Select>
-          </FormControl>
-
           {lastUpdated && (
             <Chip
               size="small"
               label={`Updated ${lastUpdated.toLocaleTimeString()}`}
-              sx={theme => ({ fontWeight: 600, backgroundColor: alpha(theme.palette.success.main, 0.12), color: theme.palette.success.main })}
+              sx={theme => ({
+                fontWeight: 600,
+                backgroundColor: alpha(theme.palette.success.main, 0.12),
+                color: theme.palette.success.main
+              })}
             />
           )}
-          <Tooltip title="Refresh">
-            <IconButton
-              size="small"
-              onClick={fetchAll}
-              disabled={loading}
-              sx={theme => ({ border: `1.5px solid ${alpha(theme.palette.primary.main, 0.4)}`, borderRadius: 1, color: theme.palette.primary.main })}
-            >
-              <RefreshCw size={16} />
-            </IconButton>
-          </Tooltip>
+
+          <Button
+            variant="contained"
+            size="small"
+            onClick={fetchAll}
+            disabled={loading}
+            startIcon={<RefreshCw size={16} />}
+            sx={{ borderRadius: 1.5, textTransform: 'none', fontWeight: 700 }}
+          >
+            Refresh
+          </Button>
         </Stack>
       </Paper>
 
@@ -716,7 +727,7 @@ const DashboardPage = () => {
       )}
 
       {/* Summary cards */}
-      <Grid container spacing={2.25}>
+      <Grid container spacing={2}>
         {summaryCards.map(c => (
           <Grid item xs={12} sm={6} md={3} key={c.title}>
             <SummaryCard {...c} loading={loading} />
@@ -724,10 +735,9 @@ const DashboardPage = () => {
         ))}
       </Grid>
 
-      <Grid container spacing={2.25} mt={0.5}>
-        {/* Availability */}
+      <Grid container spacing={2} mt={0.5}>
         <Grid item xs={12} md={4}>
-          <Paper sx={surfacePaper({ p: 2.5, height: { xs: 320, md: 360 }, display: 'flex', flexDirection: 'column' })}>
+          <Paper sx={surfacePaper({ p: 2.25, height: { xs: 280, md: 300 }, display: 'flex', flexDirection: 'column' })}>
             <Typography fontWeight={800} fontSize={14}>Availability Distribution</Typography>
             <Divider sx={{ my:1 }} />
             {loading ? <Skeleton variant="rounded" height={240} /> : availTotals ? (
@@ -740,33 +750,13 @@ const DashboardPage = () => {
           </Paper>
         </Grid>
 
-        {/* Borrow Status */}
         <Grid item xs={12} md={4}>
-          <Paper sx={surfacePaper({ p: 2.5, height: { xs: 320, md: 360 }, display: 'flex', flexDirection: 'column' })}>
-            <Stack direction="row" alignItems="center" gap={1}>
-              <Typography fontWeight={800} fontSize={14}>Borrow Status</Typography>
-              {!!statusFilter && (
-                <Chip size="small" color="primary" variant="outlined" onDelete={()=>setStatusFilter('')} deleteIcon={<X size={14} />} label={`Filter: ${statusFilter}`} sx={{ ml: 'auto', fontWeight:700 }} />
-              )}
-            </Stack>
+          <Paper sx={surfacePaper({ p: 2.25, height: { xs: 280, md: 300 }, display: 'flex', flexDirection: 'column' })}>
+            <Typography fontWeight={800} fontSize={14}>Loan Status Spread</Typography>
             <Divider sx={{ my:1 }} />
             {loading ? <Skeleton variant="rounded" height={240} /> : borrowTotals ? (
               <Box flexGrow={1}>
-                <Bar
-                  ref={statusBarRef}
-                  data={borrowStatusBar}
-                  options={barOptions}
-                  onClick={(evt) => {
-                    const chart = statusBarRef.current;
-                    if (!chart) return;
-                    const points = chart.getElementsAtEventForMode(evt.native || evt, 'nearest', { intersect: true }, false);
-                    if (points.length) {
-                      const idx = points[0].index;
-                      const label = borrowStatusBar.labels[idx];
-                      setStatusFilter(label === statusFilter ? '' : label);
-                    }
-                  }}
-                />
+                <Bar data={borrowStatusBar} options={barOptions} />
               </Box>
             ) : (
               <Box sx={{ flexGrow:1, display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -776,9 +766,8 @@ const DashboardPage = () => {
           </Paper>
         </Grid>
 
-        {/* REPLACED: Borrow Mix instead of Top Book Categories */}
         <Grid item xs={12} md={4}>
-          <Paper sx={surfacePaper({ p: 2.5, height: { xs: 320, md: 360 }, display: 'flex', flexDirection: 'column' })}>
+          <Paper sx={surfacePaper({ p: 2.25, height: { xs: 280, md: 300 }, display: 'flex', flexDirection: 'column' })}>
             <Typography fontWeight={800} fontSize={14}>Borrow Mix</Typography>
             <Divider sx={{ my:1 }} />
             {loading ? <Skeleton variant="rounded" height={240} /> : (
@@ -787,133 +776,112 @@ const DashboardPage = () => {
           </Paper>
         </Grid>
 
-        {/* Monthly Trend */}
-        <Grid item xs={12}>
-          <Paper sx={surfacePaper({ p: 2.5, height: { xs: 320, md: 360 }, display: 'flex', flexDirection: 'column' })}>
-            <Stack direction="row" alignItems="center" gap={1}>
-              <Typography fontWeight={800} fontSize={14}>Monthly Borrow Trend ({rangeMonths} mo)</Typography>
-              {!!statusFilter && <Chip size="small" label={`Filtered: ${statusFilter}`} sx={{ fontWeight:700 }} />}
-            </Stack>
+        <Grid item xs={12} lg={5}>
+          <Paper sx={surfacePaper({ p: 2.25, minHeight: 300, display: 'flex', flexDirection: 'column' })}>
+            <Typography fontWeight={800} fontSize={14}>Upcoming Due Items</Typography>
             <Divider sx={{ my:1 }} />
-            {loading ? (
-              <Skeleton variant="rounded" height={240} />
-            ) : trendTotals ? (
-              <Box flexGrow={1}><Line data={borrowTrend} options={lineOptions} /></Box>
-            ) : (
-              <Box sx={{ flexGrow:1, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                <Typography variant="caption" color="text.secondary">No trend data in selected range.</Typography>
-              </Box>
+            {loading ? <Skeleton variant="rounded" height={220} /> : (
+              dueSoon.length ? (
+                <List dense disablePadding sx={{ py: 0, maxHeight: { xs: 280, md: 256 }, overflowY: 'auto' }}>
+                  {dueSoon.map(item => {
+                    const style = statusChipStyle(item.status);
+                    return (
+                      <ListItem key={item.id} divider alignItems="flex-start" sx={{ gap: 1, py: 1.1 }}>
+                        <ListItemAvatar>
+                          <Avatar sx={{
+                            bgcolor: alpha(item.isOverdue ? theme.palette.error.main : theme.palette.warning.main, 0.16),
+                            color: item.isOverdue ? theme.palette.error.main : theme.palette.warning.dark,
+                            fontSize: 18,
+                            width: 36,
+                            height: 36
+                          }}>
+                            {item.isOverdue ? '⚠️' : '⏰'}
+                          </Avatar>
+                        </ListItemAvatar>
+                        <ListItemText
+                          primaryTypographyProps={{ fontWeight: 700, fontSize: 13 }}
+                          primary={item.borrower || `Borrow #${item.id}`}
+                          secondaryTypographyProps={{ component: 'div' }}
+                          secondary={(
+                            <Stack spacing={0.5} mt={0.3} alignItems="flex-start">
+                              <Typography variant="caption" color="text.secondary">
+                                {item.primaryTitle}{item.extraCount ? ` +${item.extraCount} more` : ''} • Due {item.dueLabel}
+                              </Typography>
+                              <Typography variant="caption" color={item.isOverdue ? 'error.main' : 'text.secondary'}>
+                                {item.deltaLabel}
+                              </Typography>
+                              <Stack direction="row" spacing={0.75} flexWrap="wrap">
+                                <Chip size="small" label={item.status} sx={{ fontWeight: 600, bgcolor: style.bg, color: style.color }} />
+                                <Chip size="small" variant="outlined" label={`Txn #${item.id}`} sx={{ fontWeight: 600 }} />
+                              </Stack>
+                            </Stack>
+                          )}
+                        />
+                      </ListItem>
+                    );
+                  })}
+                </List>
+              ) : (
+                <Box sx={{ flexGrow:1, display:'flex', alignItems:'center', justifyContent:'center', textAlign: 'center', py: 4 }}>
+                  <Typography variant="caption" color="text.secondary">No active borrows are due soon.</Typography>
+                </Box>
+              )
             )}
           </Paper>
         </Grid>
 
-        {/* NEW: Top Borrowers */}
-        <Grid item xs={12} md={6}>
-          <Paper sx={surfacePaper({ p: 2.5, minHeight: 320, display: 'flex', flexDirection: 'column' })}>
-            <Typography fontWeight={800} fontSize={14}>Top Borrowers</Typography>
-            <Divider sx={{ my:1 }} />
-              {loading ? <Skeleton variant="rounded" height={220} /> : (
-              <List dense>
-                {topBorrowers.length ? topBorrowers.map(b => (
-                  <ListItem
-                    key={b.id}
-                    divider
-                    alignItems="flex-start"
-                    sx={{ gap: 1 }}
-                  >
-                    <ListItemAvatar>
-                      <Avatar sx={{ fontWeight: 700 }}>{String(b.name || '').slice(0,1).toUpperCase()}</Avatar>
-                    </ListItemAvatar>
-                    <ListItemText
-                      primaryTypographyProps={{ fontWeight: 700, fontSize: 13 }}
-                      secondaryTypographyProps={{ fontSize: 12 }}
-                      primary={b.name}
-                      secondary={(
-                        <Stack spacing={0.5} mt={0.5} alignItems="flex-start">
-                          <Typography variant="caption" color="text.secondary">ID: {b.id}</Typography>
-                          <Stack direction="row" spacing={0.75} flexWrap="wrap">
-                            <Chip
-                              size="small"
-                              label={`Total ${number(b.total)}`}
-                              sx={{
-                                fontWeight: 600,
-                                backgroundColor: alpha(theme.palette.primary.main, 0.12),
-                                color: theme.palette.primary.main
-                              }}
-                            />
-                            <Chip
-                              size="small"
-                              label={`Active ${number(b.active)}`}
-                              sx={{
-                                fontWeight: 600,
-                                backgroundColor: alpha(theme.palette.success.main, 0.16),
-                                color: theme.palette.success.main
-                              }}
-                            />
-                          </Stack>
-                        </Stack>
-                      )}
-                    />
-                  </ListItem>
-                )) : (
-                  <Typography variant="caption" color="text.secondary">No borrower data.</Typography>
-                )}
-              </List>
-            )}
-          </Paper>
-        </Grid>
-
-        {/* NEW: Recent Borrow Activity */}
-        <Grid item xs={12} md={6}>
-          <Paper sx={surfacePaper({ p: 2.5, minHeight: 320, display: 'flex', flexDirection: 'column' })}>
+        <Grid item xs={12} lg={7}>
+          <Paper sx={surfacePaper({ p: 2.25, minHeight: 300, display: 'flex', flexDirection: 'column' })}>
             <Typography fontWeight={800} fontSize={14}>Recent Borrow Activity</Typography>
             <Divider sx={{ my:1 }} />
             {loading ? <Skeleton variant="rounded" height={220} /> : (
-              <List dense>
-                {recentActivity.length ? recentActivity.map(it => {
-                  const style = statusChipStyle(it.status);
-                  return (
-                    <ListItem key={it.id} divider alignItems="flex-start" sx={{ gap: 1 }}>
-                      <ListItemAvatar>
-                        <Avatar sx={{ bgcolor: alpha(theme.palette.info.main, 0.18), color: theme.palette.info.main }}>🔄</Avatar>
-                      </ListItemAvatar>
-                      <ListItemText
-                        primaryTypographyProps={{ fontWeight: 700, fontSize: 13 }}
-                        secondary={(
-                          <Stack spacing={0.5} mt={0.25} alignItems="flex-start">
-                            <Typography variant="caption" color="text.secondary">
-                              {it.itemsSummary}{it.date ? ` • ${it.date}` : ''}
-                            </Typography>
-                            <Chip
-                              size="small"
-                              label={it.status}
-                              sx={{ fontWeight: 600, bgcolor: style.bg, color: style.color }}
-                            />
-                          </Stack>
-                        )}
-                        secondaryTypographyProps={{ component: 'div' }}
-                        primary={it.who}
-                      />
-                    </ListItem>
-                  );
-                }) : (
-                  <Typography variant="caption" color="text.secondary">No recent activity.</Typography>
-                )}
-              </List>
+              recentActivity.length ? (
+                <List dense disablePadding sx={{ py: 0, maxHeight: { xs: 280, md: 256 }, overflowY: 'auto' }}>
+                  {recentActivity.map(it => {
+                    const style = statusChipStyle(it.status);
+                    return (
+                      <ListItem key={it.id} divider alignItems="flex-start" sx={{ gap: 1, py: 1.1 }}>
+                        <ListItemAvatar>
+                          <Avatar sx={{ bgcolor: alpha(theme.palette.info.main, 0.16), color: theme.palette.info.main, width: 36, height: 36, fontSize: 18 }}>🔄</Avatar>
+                        </ListItemAvatar>
+                        <ListItemText
+                          primaryTypographyProps={{ fontWeight: 700, fontSize: 13 }}
+                          secondaryTypographyProps={{ component: 'div' }}
+                          primary={it.who || `Borrow #${it.id}`}
+                          secondary={(
+                            <Stack spacing={0.5} mt={0.25} alignItems="flex-start">
+                              <Typography variant="caption" color="text.secondary">
+                                {it.itemsSummary || 'No titles listed'}{it.itemCount ? ` • ${it.itemCount} item${it.itemCount === 1 ? '' : 's'}` : ''}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {it.dateLabel}{it.when ? ` • ${it.when}` : ''}
+                              </Typography>
+                              <Chip size="small" label={it.status} sx={{ fontWeight: 600, bgcolor: style.bg, color: style.color }} />
+                            </Stack>
+                          )}
+                        />
+                      </ListItem>
+                    );
+                  })}
+                </List>
+              ) : (
+                <Box sx={{ flexGrow:1, display:'flex', alignItems:'center', justifyContent:'center', textAlign: 'center', py: 4 }}>
+                  <Typography variant="caption" color="text.secondary">No recent lending activity recorded.</Typography>
+                </Box>
+              )
             )}
           </Paper>
         </Grid>
       </Grid>
 
-      <Paper sx={surfacePaper({ mt: 3, p: 2.5 })}>
-        <Typography fontWeight={700} fontSize={13} mb={1}>Scenarios Highlighted</Typography>
+      <Paper sx={surfacePaper({ mt: 3, p: 2.25 })}>
+        <Typography fontWeight={700} fontSize={13} mb={1}>Focus Highlights</Typography>
         <Stack direction="row" gap={1} flexWrap="wrap">
           <Chip size="small" label="Availability mix" />
           <Chip size="small" label="Borrow load" />
-          <Chip size="small" label="Category concentration" />
-          <Chip size="small" label="Seasonality" />
-          <Chip size="small" label="Overdue impact" />
-          {!!statusFilter && <Chip size="small" color="primary" label={`Status filter: ${statusFilter}`} />}
+          <Chip size="small" label="Digital vs physical" />
+          <Chip size="small" label="Due oversight" />
+          <Chip size="small" label="Activity spotlight" />
         </Stack>
       </Paper>
     </Box>
