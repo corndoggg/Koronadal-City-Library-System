@@ -1,15 +1,58 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import axios from 'axios';
 import {
-  Box, Typography, Chip, CircularProgress, Table, TableBody, TableCell,
-  TableContainer, TableHead, TableRow, Paper, Button, Tooltip, Dialog,
-  DialogTitle, DialogContent, DialogActions, Stack, Divider, Avatar,
-  MenuItem, Select, InputLabel, FormControl, TextField, Checkbox,
-  FormControlLabel, IconButton, useTheme, InputAdornment
+  Avatar,
+  Badge,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  Checkbox,
+  Chip,
+  Container,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  FormControl,
+  FormControlLabel,
+  Grid,
+  IconButton,
+  InputAdornment,
+  InputLabel,
+  MenuItem,
+  Paper,
+  Select,
+  Skeleton,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TextField,
+  Tooltip,
+  Typography,
+  useTheme
 } from "@mui/material";
 import {
-  Book, Article, Visibility, Search, CheckCircle, Cancel, DoneAll,
-  Undo, TaskAlt, Refresh
+  Article,
+  AssignmentLate,
+  Book,
+  Cancel,
+  CheckCircle,
+  DoneAll,
+  FilterAlt,
+  Inbox,
+  PendingActions,
+  Refresh,
+  Search,
+  TaskAlt,
+  Undo,
+  Visibility
 } from "@mui/icons-material";
 import { alpha } from "@mui/material/styles";
 import { useSystemSettings } from '../../../contexts/SystemSettingsContext.jsx'; // added
@@ -20,6 +63,43 @@ const API_BASE = import.meta.env.VITE_API_BASE;
 // Lost is controlled by the checkbox; dropdown excludes 'Lost'
 const returnConditions = ['Good', 'Fair', 'Average', 'Poor', 'Bad'];
 // const FINE_PER_DAY = parseFloat(import.meta.env.VITE_FINE) || 0; // remove this line
+const statusFilterOptions = [
+  {
+    label: "All",
+    matcher: () => true,
+    countKey: (tallies) => tallies.total
+  },
+  {
+    label: "Pending approval",
+    matcher: (label) => label === "Pending Approval",
+    countKey: (tallies) => tallies.pending
+  },
+  {
+    label: "Awaiting pickup",
+    matcher: (label) => label === "Approved",
+    countKey: (tallies) => tallies.awaitingPickup
+  },
+  {
+    label: "Borrowed",
+    matcher: (label) => label === "Borrowed",
+    countKey: (tallies) => tallies.borrowed
+  },
+  {
+    label: "Overdue",
+    matcher: (label) => label.startsWith("Overdue"),
+    countKey: (tallies) => tallies.overdue
+  },
+  {
+    label: "Returned",
+    matcher: (label) => label === "Returned",
+    countKey: (tallies) => tallies.returned
+  },
+  {
+    label: "Rejected",
+    matcher: (label) => label === "Rejected",
+    countKey: (tallies) => tallies.rejected
+  }
+];
 
 const LibrarianBorrowPage = () => {
   const theme = useTheme();
@@ -43,11 +123,9 @@ const LibrarianBorrowPage = () => {
   const [returnTx, setReturnTx] = useState(null);
   // NEW: remarks for return
   const [returnRemarks, setReturnRemarks] = useState("");
-  // NEW: lost handling
-  const [lostSubmitting, setLostSubmitting] = useState(false);
-  // const [lostRemarks, setLostRemarks] = useState(""); // Removed lost remarks state
 
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState(statusFilterOptions[0].label);
 
   // Fetch only librarian-visible transactions (books only)
   useEffect(() => { fetchTransactions(); }, []);
@@ -94,10 +172,10 @@ const LibrarianBorrowPage = () => {
   }, [transactions]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Simplified: use cache or fallback label
-  const getBorrowerInfo = (borrowerId) => {
+  const getBorrowerInfo = useCallback((borrowerId) => {
     if (!borrowerId) return '';
     return borrowerNameById[borrowerId] || `Borrower #${borrowerId}`;
-  };
+  }, [borrowerNameById]);
 
   // Due dates (from /borrow payload)
   useEffect(() => {
@@ -141,16 +219,6 @@ const LibrarianBorrowPage = () => {
       setDocDetails(docInfo);
     })();
   }, [transactions]);
-
-  // Helper: status mapping (show Rejected correctly)
-  const txStatus = (tx) => {
-    if (tx?.ApprovalStatus === 'Rejected') return 'Rejected';
-    if (tx?.ReturnStatus === 'Returned') return 'Returned';
-    if (tx?.ApprovalStatus === 'Pending') return 'Pending';
-    if (tx?.ApprovalStatus === 'Approved' && tx?.RetrievalStatus !== 'Retrieved') return 'Approved (Awaiting Pickup)';
-    if (tx?.RetrievalStatus === 'Retrieved' && tx?.ReturnStatus !== 'Returned') return 'Borrowed';
-    return tx?.ApprovalStatus || 'Unknown';
-  };
 
   // Guard: book-only transactions (should already be true due to API filter)
   const isBookOnly = (tx) => (tx?.items || []).every(it => it.ItemType === 'Book');
@@ -268,32 +336,8 @@ const LibrarianBorrowPage = () => {
     } finally { setActionLoading(false); }
   };
 
-  // NEW: Mark Lost (books only)
-  const markLost = async (tx) => {
-    if (!tx) return;
-    // Only allow marking lost on Approved transactions
-    if (tx.ApprovalStatus !== 'Approved') return;
-    setLostSubmitting(true);
-    try {
-      const items = (tx.items || [])
-        .filter(i => i.ItemType === 'Book' && i.BookCopyID)
-        .map(i => ({ borrowedItemId: i.BorrowedItemID }));
-      if (!items.length) return;
-      await axios.post(`${API_BASE}/lost`, {
-        borrowId: tx.BorrowID,
-        items,
-        remarks: lostRemarks || undefined
-      });
-      logAudit('BORROW_MARK_LOST', 'Borrow', tx.BorrowID, { items: items.length });
-      setLostRemarks("");
-      await fetchTransactions();
-    } finally {
-      setLostSubmitting(false);
-    }
-  };
-
   // Derived Status + Chip
-  const deriveStatus = (tx) => {
+  const deriveStatus = useCallback((tx) => {
     const dueRaw = dueDates[tx.BorrowID];
     const due = dueRaw ? new Date(dueRaw) : null;
     const today = new Date();
@@ -309,7 +353,7 @@ const LibrarianBorrowPage = () => {
       return { label: "Borrowed", color: "secondary" };
     }
     return { label: tx.ApprovalStatus || "Unknown", color: "default" };
-  };
+  }, [dueDates]);
 
   const StatusChip = ({ tx }) => {
     const s = deriveStatus(tx);
@@ -326,15 +370,69 @@ const LibrarianBorrowPage = () => {
       />
     );
   };
+  const scenarioTallies = useMemo(() => {
+    const tallies = {
+      total: transactions.length,
+      pending: 0,
+      awaitingPickup: 0,
+      borrowed: 0,
+      overdue: 0,
+      returned: 0,
+      rejected: 0,
+      active: 0
+    };
 
-  const countBy = (predicate) => transactions.filter(predicate).length;
-  const summary = [
-    { label: "Pending", value: countBy(t => deriveStatus(t).label === "Pending Approval"), color: theme.palette.warning.main },
-    { label: "Approved", value: countBy(t => deriveStatus(t).label === "Approved"), color: theme.palette.info.main },
-    { label: "Borrowed", value: countBy(t => deriveStatus(t).label === "Borrowed"), color: theme.palette.secondary.main },
-    { label: "Overdue", value: countBy(t => deriveStatus(t).label.startsWith("Overdue")), color: theme.palette.error.main },
-    { label: "Returned", value: countBy(t => deriveStatus(t).label === "Returned"), color: theme.palette.success.main }
-  ];
+    transactions.forEach(tx => {
+      const status = deriveStatus(tx).label;
+      if (status.startsWith("Overdue")) {
+        tallies.overdue += 1;
+      } else if (status === "Pending Approval") {
+        tallies.pending += 1;
+      } else if (status === "Approved") {
+        tallies.awaitingPickup += 1;
+      } else if (status === "Borrowed") {
+        tallies.borrowed += 1;
+      } else if (status === "Returned") {
+        tallies.returned += 1;
+      } else if (status === "Rejected") {
+        tallies.rejected += 1;
+      }
+    });
+
+    tallies.active = tallies.awaitingPickup + tallies.borrowed;
+    return tallies;
+  }, [transactions, deriveStatus]);
+
+  const summaryCards = useMemo(() => ([
+    {
+      label: "Pending approvals",
+      value: scenarioTallies.pending,
+      icon: <PendingActions fontSize="small" />,
+      description: "Awaiting librarian review",
+      color: theme.palette.warning.main
+    },
+    {
+      label: "Active checkouts",
+      value: scenarioTallies.active,
+      icon: <TaskAlt fontSize="small" />,
+      description: `${scenarioTallies.awaitingPickup || 0} pickup • ${scenarioTallies.borrowed || 0} borrowed`,
+      color: theme.palette.primary.main
+    },
+    {
+      label: "Overdue items",
+      value: scenarioTallies.overdue,
+      icon: <AssignmentLate fontSize="small" />,
+      description: "Prioritize follow-ups today",
+      color: theme.palette.error.main
+    },
+    {
+      label: "Completed returns",
+      value: scenarioTallies.returned,
+      icon: <DoneAll fontSize="small" />,
+      description: "Successfully closed transactions",
+      color: theme.palette.success.main
+    }
+  ]), [scenarioTallies, theme]);
 
   // Return Modal
   const renderReturnModal = () => !returnTx ? null : (
@@ -543,7 +641,6 @@ const LibrarianBorrowPage = () => {
     if (!selectedTx) return null;
     const dueDate = dueDates[selectedTx.BorrowID];
     const borrowerInfo = getBorrowerInfo(selectedTx.BorrowerID);
-    const derived = deriveStatus(selectedTx);
     return (
       <Dialog
         open={modalOpen}
@@ -777,332 +874,408 @@ const LibrarianBorrowPage = () => {
         '& b': { fontWeight: 600 }
       }}
     >
-      {data.filter(([_, v]) => v).map(([k, v]) => (
-        <Typography key={k} variant="caption" sx={{ display: 'block' }}>
-          <b>{k}:</b> {v}
+      {data.filter(([, value]) => value).map(([key, value]) => (
+        <Typography key={key} variant="caption" sx={{ display: 'block' }}>
+          <b>{key}:</b> {value}
         </Typography>
       ))}
     </Stack>
   );
 
-  // Search, table, and UI
-  const filteredTransactions = transactions.filter(tx => {
-    const borrower = getBorrowerInfo(tx.BorrowerID) || "";
-    const searchLower = search.toLowerCase();
-    return (
-      borrower.toLowerCase().includes(searchLower) ||
-      (tx.Purpose || "").toLowerCase().includes(searchLower) ||
-      (tx.BorrowDate || "").toLowerCase().includes(searchLower) ||
-      (dueDates[tx.BorrowID] || "").toLowerCase().includes(searchLower) ||
-      String(tx.BorrowID).includes(searchLower)
-    );
-  });
+  // Search, filter, and sort
+  const filtersActive = statusFilter !== statusFilterOptions[0].label || search.trim().length > 0;
 
-  const statusPriority = (tx) => {
-    const d = deriveStatus(tx).label;
-    if (d.startsWith("Overdue")) return 0;
-    if (d === "Pending Approval") return 1;
-    if (d === "Approved") return 2;
-    if (d === "Borrowed") return 3;
-    if (d === "Returned") return 4;
-    if (d === "Rejected") return 5;
-    return 6;
+  const resetFilters = () => {
+    setSearch("");
+    setStatusFilter(statusFilterOptions[0].label);
   };
-  // Sort latest borrowings first (primary: BorrowDate desc, fallback: BorrowID desc)
-  const sortedTransactions = [...filteredTransactions].sort((a, b) => {
-    const ta = a.BorrowDate ? new Date(a.BorrowDate).getTime() : 0;
-    const tb = b.BorrowDate ? new Date(b.BorrowDate).getTime() : 0;
-    if (tb !== ta) return tb - ta;
-    return (b.BorrowID || 0) - (a.BorrowID || 0);
-  });
+
+  const filteredTransactions = useMemo(() => {
+    const activeOption = statusFilterOptions.find(opt => opt.label === statusFilter) ?? statusFilterOptions[0];
+    const matcher = activeOption.matcher;
+    const searchLower = search.trim().toLowerCase();
+
+    return transactions.filter(tx => {
+      const statusLabel = deriveStatus(tx).label;
+      if (!matcher(statusLabel)) {
+        return false;
+      }
+
+      if (!searchLower) {
+        return true;
+      }
+
+      const borrower = (getBorrowerInfo(tx.BorrowerID) || "").toLowerCase();
+      const purpose = (tx.Purpose || "").toLowerCase();
+      const borrowDate = (tx.BorrowDate || "").toLowerCase();
+      const dueRaw = (dueDates[tx.BorrowID] || "").toLowerCase();
+      const idString = String(tx.BorrowID || "").toLowerCase();
+
+      return (
+        borrower.includes(searchLower) ||
+        purpose.includes(searchLower) ||
+        borrowDate.includes(searchLower) ||
+        dueRaw.includes(searchLower) ||
+        idString.includes(searchLower)
+      );
+    });
+  }, [transactions, statusFilter, search, deriveStatus, getBorrowerInfo, dueDates]);
+
+  const sortedTransactions = useMemo(() => {
+    return [...filteredTransactions].sort((a, b) => {
+      const ta = a.BorrowDate ? new Date(a.BorrowDate).getTime() : 0;
+      const tb = b.BorrowDate ? new Date(b.BorrowDate).getTime() : 0;
+      if (tb !== ta) return tb - ta;
+      return (b.BorrowID || 0) - (a.BorrowID || 0);
+    });
+  }, [filteredTransactions]);
+
+  const filteredCount = sortedTransactions.length;
+
+  const renderEmptyState = () => (
+    <Stack alignItems="center" spacing={1.5} sx={{ py: 6 }}>
+      <Avatar sx={{ bgcolor: alpha(theme.palette.primary.main, 0.08), color: theme.palette.primary.main, width: 56, height: 56 }}>
+        <Inbox fontSize="small" />
+      </Avatar>
+      <Typography variant="subtitle1" fontWeight={700} textAlign="center">
+        {filtersActive ? "No transactions match the current filters" : "No borrow transactions yet"}
+      </Typography>
+      <Typography variant="body2" color="text.secondary" textAlign="center" maxWidth={360}>
+        {filtersActive
+          ? "Try adjusting your filters or refreshing to see the latest circulation updates."
+          : "Approve, track, and close out physical book borrowings. New requests will appear here."}
+      </Typography>
+    </Stack>
+  );
 
   return (
-    <Box p={3} sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
-      {/* Header */}
-      <Paper
-        elevation={0}
-        sx={{
-          mb: 3,
-          p: 2,
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 2,
-          alignItems: 'center',
-          border: `2px solid ${theme.palette.divider}`,
-          borderRadius: 1,
-          bgcolor: 'background.paper'
-        }}
-      >
-        <Box>
-          <Typography variant="h6" fontWeight={800} letterSpacing={.5} lineHeight={1.15}>
-            Borrow Transactions
-          </Typography>
-          <Typography variant="caption" color="text.secondary" fontWeight={600}>
-            Monitor & manage borrowing lifecycle
-          </Typography>
-        </Box>
-        <TextField
-          size="small"
-          placeholder="Search borrower / purpose / dates / ID"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <Search fontSize="small" />
-              </InputAdornment>
-            )
-          }}
-          sx={{
-            width: { xs: '100%', sm: 340, md: 400 },
-            ml: { xs: 0, md: 'auto' },
-            '& .MuiOutlinedInput-root': { borderRadius: 1 }
-          }}
-        />
-        <Tooltip title="Refresh">
-          <IconButton
-            size="small"
-            onClick={fetchTransactions}
+    <Box component="main" sx={{ flexGrow: 1, bgcolor: 'background.default', py: { xs: 3, md: 4 }, minHeight: '100vh' }}>
+      <Container maxWidth="xl">
+        <Stack spacing={3}>
+          <Box
             sx={{
-              borderRadius: 1,
-              border: `1.5px solid ${theme.palette.divider}`,
-              '&:hover': { bgcolor: theme.palette.action.hover }
+              position: 'relative',
+              borderRadius: 3,
+              overflow: 'hidden',
+              p: { xs: 2.5, md: 3 },
+              backgroundImage: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.12)} 0%, ${alpha(theme.palette.secondary.main, 0.65)} 100%)`,
+              color: theme.palette.common.white,
+              border: `1px solid ${alpha(theme.palette.primary.main, 0.28)}`,
+              boxShadow: `0 18px 42px ${alpha(theme.palette.primary.main, 0.16)}`
             }}
           >
-            <Refresh fontSize="small" />
-          </IconButton>
-        </Tooltip>
-      </Paper>
-
-      {/* Summary */}
-      <Box
-        sx={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 1.5,
-          mb: 2
-        }}
-      >
-        {summary.map(s => (
-          <Paper
-            key={s.label}
-            elevation={0}
-            sx={{
-              px: 1.5,
-              py: 1,
-              minWidth: 120,
-              border: `1.5px solid ${alpha(s.color, .5)}`,
-              bgcolor: alpha(s.color, .08),
-              borderRadius: 1,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: .25
-            }}
-          >
-            <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ letterSpacing: .4 }}>
-              {s.label}
-            </Typography>
-            <Typography fontWeight={800} fontSize={18} lineHeight={1}>
-              {s.value}
-            </Typography>
-          </Paper>
-        ))}
-      </Box>
-
-      {/* Table */}
-      {loading ? (
-        <Paper
-          elevation={0}
-          sx={{
-            p: 4,
-            textAlign: 'center',
-            border: `2px solid ${theme.palette.divider}`,
-            borderRadius: 1,
-            bgcolor: 'background.paper'
-          }}
-        >
-          <CircularProgress />
-          <Typography mt={2} variant="caption" color="text.secondary" fontWeight={600}>
-            Loading transactions…
-          </Typography>
-        </Paper>
-      ) : (
-        <Paper
-          elevation={0}
-          sx={{
-            border: `2px solid ${theme.palette.divider}`,
-            borderRadius: 1,
-            overflow: 'hidden',
-            bgcolor: 'background.paper'
-          }}
-        >
-          <TableContainer
-            sx={{
-              maxHeight: '68vh',
-              '&::-webkit-scrollbar': { width: 8 },
-              '&::-webkit-scrollbar-thumb': {
-                background: theme.palette.divider,
-                borderRadius: 4
-              }
-            }}
-          >
-            <Table stickyHeader size="small">
-              <TableHead>
-                <TableRow
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2.5} alignItems={{ xs: 'flex-start', md: 'center' }} justifyContent="space-between">
+              <Box>
+                <Typography variant="h4" fontWeight={800} letterSpacing={0.6}>
+                  Circulation dashboard
+                </Typography>
+                <Typography variant="body2" sx={{ mt: 0.75, color: alpha(theme.palette.common.white, 0.85), maxWidth: 520 }}>
+                  Stay on top of physical lending requests, retrievals, and returns with scenarios tailored for librarians.
+                </Typography>
+              </Box>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'stretch', sm: 'center' }}>
+                <Chip
+                  label={`Total: ${scenarioTallies.total}`}
+                  size="small"
                   sx={{
-                    '& th': {
-                      fontWeight: 700,
-                      fontSize: 12,
-                      letterSpacing: .5,
-                      bgcolor: theme.palette.background.default,
-                      borderBottom: `2px solid ${theme.palette.divider}`
+                    bgcolor: alpha(theme.palette.common.white, 0.15),
+                    color: alpha(theme.palette.common.white, 0.95),
+                    fontWeight: 700
+                  }}
+                />
+                <Button
+                  onClick={fetchTransactions}
+                  startIcon={<Refresh fontSize="small" />}
+                  variant="contained"
+                  color="inherit"
+                  disabled={loading}
+                  sx={{
+                    borderRadius: 2,
+                    px: 2.5,
+                    fontWeight: 700,
+                    bgcolor: theme.palette.mode === 'dark' ? alpha(theme.palette.common.white, 0.18) : theme.palette.common.white,
+                    color: theme.palette.mode === 'dark' ? theme.palette.common.white : theme.palette.grey[900],
+                    '&:hover': {
+                      bgcolor: theme.palette.mode === 'dark'
+                        ? alpha(theme.palette.common.white, 0.24)
+                        : alpha(theme.palette.common.white, 0.9)
                     }
                   }}
                 >
-                  <TableCell width={140}>Status</TableCell>
-                  <TableCell width={105}>Borrow Date</TableCell>
-                  <TableCell width={105}>Due Date</TableCell>
-                  <TableCell>Borrower</TableCell>
-                  <TableCell width={90} align="center">Items</TableCell>
-                  <TableCell>Purpose</TableCell>
-                  <TableCell width={260} align="center">Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody
-                sx={{
-                  '& tr:hover': { backgroundColor: theme.palette.action.hover },
-                  '& td': { borderBottom: `1px solid ${theme.palette.divider}` }
-                }}
-              >
-                {sortedTransactions.map(tx => {
-                  const due = dueDates[tx.BorrowID];
-                  const dStatus = deriveStatus(tx);
-                  const isOverdue = dStatus.label.startsWith("Overdue");
-                  return (
-                    <TableRow key={tx.BorrowID}>
-                      <TableCell>
-                        <StatusChip tx={tx} />
-                      </TableCell>
-                      <TableCell>
-                        <Typography fontSize={12} fontWeight={600}>
-                          {tx.BorrowDate ? formatDate(tx.BorrowDate) : "—"}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Typography
-                          fontSize={12}
-                          fontWeight={700}
-                          color={isOverdue ? 'error.main' : 'text.primary'}
-                        >
-                          {due ? formatDate(due) : "—"}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Typography fontSize={13} fontWeight={600} noWrap>
-                          {getBorrowerInfo(tx.BorrowerID) || tx.BorrowerID}
-                        </Typography>
-                      </TableCell>
-                      <TableCell align="center">
-                        <Chip size="small" label={(tx.items||[]).length} sx={{ borderRadius: 0.75 }} />
-                      </TableCell>
-                      <TableCell>
-                        <Typography fontSize={12} noWrap maxWidth={180}>
-                          {tx.Purpose || '—'}
-                        </Typography>
-                      </TableCell>
-                      <TableCell align="center">
-                        <Stack direction="row" spacing={0.75} justifyContent="center" flexWrap="wrap">
-                          <Tooltip title="View Details">
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              startIcon={<Visibility />}
-                              onClick={() => { setSelectedTx(tx); setModalOpen(true); }}
-                              sx={{ borderRadius: 0.75, fontWeight: 600 }}
-                            >
-                              View
-                            </Button>
-                          </Tooltip>
+                  Refresh
+                </Button>
+              </Stack>
+            </Stack>
+          </Box>
 
-                          {tx.ApprovalStatus === "Pending" && (
-                            <>
-                              <Button size="small" variant="outlined" color="success" startIcon={<CheckCircle />}
-                                onClick={() => handleApprove(tx)} sx={{ borderRadius: 0.75, fontWeight: 600 }}>
-                                Approve
-                              </Button>
-                              <Tooltip title="Reject">
+          <Grid container spacing={3}>
+            {summaryCards.map(card => (
+              <Grid item xs={12} sm={6} md={3} key={card.label}>
+                <Card elevation={0} sx={{ borderRadius: 2, border: `1px solid ${alpha(card.color, 0.35)}`, boxShadow: `0 18px 32px ${alpha(card.color, 0.14)}`, height: '100%' }}>
+                  <CardContent>
+                    <Stack spacing={2}>
+                      <Stack direction="row" spacing={2} alignItems="center">
+                        <Avatar sx={{ bgcolor: alpha(card.color, 0.12), color: card.color, width: 48, height: 48 }}>
+                          {card.icon}
+                        </Avatar>
+                        <Box>
+                          <Typography variant="overline" sx={{ color: card.color, letterSpacing: 0.6, fontWeight: 700, textTransform: 'uppercase' }}>
+                            {card.label}
+                          </Typography>
+                          <Typography variant="h4" sx={{ fontWeight: 800, lineHeight: 1 }}>
+                            {card.value}
+                          </Typography>
+                        </Box>
+                      </Stack>
+                      <Typography variant="caption" color="text.secondary">
+                        {card.description}
+                      </Typography>
+                    </Stack>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+
+          <Card elevation={0} sx={{ borderRadius: 2, border: `1px solid ${alpha(theme.palette.divider, 0.6)}` }}>
+            <CardHeader
+              avatar={
+                <Avatar sx={{ bgcolor: alpha(theme.palette.primary.main, 0.12), color: theme.palette.primary.main }}>
+                  <FilterAlt fontSize="small" />
+                </Avatar>
+              }
+              title="Filters"
+              subheader="Search borrowers or focus on a status lane"
+              action={
+                <Button size="small" onClick={resetFilters} disabled={!filtersActive} sx={{ textTransform: 'none', fontWeight: 600 }}>
+                  Clear all
+                </Button>
+              }
+            />
+            <Divider />
+            <CardContent>
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={5}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Search borrower, purpose, ID, or date"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Search fontSize="small" />
+                        </InputAdornment>
+                      )
+                    }}
+                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                  />
+                </Grid>
+                <Grid item xs={12} md={7}>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: 0.4, mb: 1, display: 'block' }}>
+                    Status
+                  </Typography>
+                  <Stack direction="row" flexWrap="wrap" gap={1}>
+                    {statusFilterOptions.map(option => {
+                      const count = option.countKey(scenarioTallies) || 0;
+                      const isActive = statusFilter === option.label;
+                      return (
+                        <Badge
+                          key={option.label}
+                          color="primary"
+                          badgeContent={count || null}
+                          invisible={!count}
+                          overlap="rectangular"
+                          sx={{ '& .MuiBadge-badge': { right: -6, top: -6 } }}
+                        >
+                          <Chip
+                            label={option.label}
+                            onClick={() => setStatusFilter(option.label)}
+                            variant={isActive ? 'filled' : 'outlined'}
+                            color={isActive ? 'primary' : 'default'}
+                            sx={{ borderRadius: 1.5, fontWeight: 600, textTransform: 'capitalize' }}
+                          />
+                        </Badge>
+                      );
+                    })}
+                  </Stack>
+                </Grid>
+              </Grid>
+            </CardContent>
+          </Card>
+
+          <Card elevation={0} sx={{ borderRadius: 2, border: `1px solid ${alpha(theme.palette.divider, 0.6)}`, overflow: 'hidden' }}>
+            <CardHeader
+              title="Borrow transactions"
+              subheader={`${filteredCount} of ${scenarioTallies.total} transactions`}
+              action={
+                <Chip
+                  icon={<AssignmentLate fontSize="small" />}
+                  label={`${scenarioTallies.overdue} overdue`}
+                  color={scenarioTallies.overdue ? 'error' : 'default'}
+                  size="small"
+                  sx={{ borderRadius: 1, fontWeight: 600 }}
+                />
+              }
+            />
+            <Divider />
+            {loading ? (
+              <CardContent>
+                <Stack spacing={1.5}>
+                  <Skeleton variant="rounded" height={52} />
+                  <Skeleton variant="rounded" height={52} />
+                  <Skeleton variant="rounded" height={52} />
+                </Stack>
+              </CardContent>
+            ) : sortedTransactions.length ? (
+              <TableContainer sx={{ maxHeight: '68vh' }}>
+                <Table stickyHeader size="small">
+                  <TableHead>
+                    <TableRow sx={{ '& th': { fontWeight: 700, fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.4, bgcolor: theme.palette.background.paper, borderBottom: `2px solid ${theme.palette.divider}` } }}>
+                      <TableCell width={160}>Status</TableCell>
+                      <TableCell width={180}>Borrower</TableCell>
+                      <TableCell width={110}>Borrowed</TableCell>
+                      <TableCell width={140}>Due date</TableCell>
+                      <TableCell>Purpose</TableCell>
+                      <TableCell width={90} align="center">Items</TableCell>
+                      <TableCell width={240} align="center">Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody sx={{ '& tr:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.04) }, '& td': { borderBottom: `1px solid ${theme.palette.divider}` } }}>
+                    {sortedTransactions.map(tx => {
+                      const due = dueDates[tx.BorrowID];
+                      const status = deriveStatus(tx);
+                      const isOverdue = status.label.startsWith('Overdue');
+                      const dueDescriptor = (() => {
+                        if (!due) return '—';
+                        const dueTime = startOfDay(new Date(due));
+                        const todayTime = startOfDay(new Date());
+                        const diffDays = Math.round((dueTime - todayTime) / 86400000);
+                        if (dueTime < todayTime) return `Overdue ${Math.abs(diffDays)}d`;
+                        if (diffDays === 0) return 'Due today';
+                        if (diffDays === 1) return 'Due tomorrow';
+                        return `Due in ${diffDays}d`;
+                      })();
+                      const borrowerName = getBorrowerInfo(tx.BorrowerID) || '—';
+                      const itemCount = (tx.items || []).length;
+                      return (
+                        <TableRow key={tx.BorrowID} hover>
+                          <TableCell>
+                            <Stack spacing={0.5} alignItems="flex-start">
+                              <StatusChip tx={tx} />
+                              <Typography variant="caption" color="text.secondary" fontWeight={600}>#{tx.BorrowID}</Typography>
+                            </Stack>
+                          </TableCell>
+                          <TableCell>
+                            <Stack spacing={0.25}>
+                              <Typography fontSize={13} fontWeight={700} noWrap>{borrowerName}</Typography>
+                              <Typography variant="caption" color="text.secondary">Borrower #{tx.BorrowerID || '—'}</Typography>
+                            </Stack>
+                          </TableCell>
+                          <TableCell>
+                            <Typography fontSize={12} fontWeight={600}>{tx.BorrowDate ? formatDate(tx.BorrowDate) : '—'}</Typography>
+                            <Typography variant="caption" color="text.secondary">{tx.ApprovalStatus || 'Pending'}</Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography fontSize={12} fontWeight={700} color={isOverdue ? 'error.main' : 'text.primary'}>
+                              {due ? formatDate(due) : '—'}
+                            </Typography>
+                            <Typography variant="caption" color={isOverdue ? 'error.main' : 'text.secondary'}>
+                              {dueDescriptor}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography fontSize={12} color="text.secondary" noWrap maxWidth={220}>
+                              {tx.Purpose || '—'}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="center">
+                            <Chip size="small" label={itemCount} sx={{ borderRadius: 0.75, fontWeight: 600 }} />
+                          </TableCell>
+                          <TableCell align="center">
+                            <Stack direction="row" spacing={0.75} justifyContent="center" flexWrap="wrap">
+                              <Tooltip title="View details">
                                 <IconButton
                                   size="small"
-                                  color="error"
-                                  onClick={() => handleReject(tx)}
-                                  sx={{
-                                    border: `1px solid ${alpha(theme.palette.error.main, .5)}`,
-                                    borderRadius: 0.75
-                                  }}
+                                  onClick={() => { setSelectedTx(tx); setModalOpen(true); }}
+                                  sx={{ border: `1px solid ${theme.palette.divider}`, borderRadius: 1 }}
                                 >
-                                  <Cancel fontSize="small" />
+                                  <Visibility fontSize="small" />
                                 </IconButton>
                               </Tooltip>
-                            </>
-                          )}
-
-                          {tx.ApprovalStatus === "Approved" && tx.RetrievalStatus !== "Retrieved" && (
-                            <Tooltip title="Mark Retrieved">
-                              <Button
-                                size="small"
-                                variant="contained"
-                                onClick={() => handleSetRetrieved(tx)}
-                                sx={{ borderRadius: 0.75, fontWeight: 700 }}
-                              >
-                                Retrieved
-                              </Button>
-                            </Tooltip>
-                          )}
-
-                          {tx.RetrievalStatus === "Retrieved" && tx.ReturnStatus !== "Returned" && (
-                            <Tooltip title="Return Items">
-                              <Button
-                                size="small"
-                                color="secondary"
-                                variant="contained"
-                                onClick={() => openReturnModal(tx)}
-                                sx={{ borderRadius: 0.75, fontWeight: 700 }}
-                              >
-                                Return
-                              </Button>
-                            </Tooltip>
-                          )}
-
-                          {/* Row-level Mark Lost removed: Lost is handled only inside the Return modal per item. */}
-
-                          {tx.ReturnStatus === "Returned" && (
-                            <Chip
-                              size="small"
-                              label="Completed"
-                              color="success"
-                              icon={<DoneAll fontSize="small" />}
-                              sx={{ borderRadius: 0.75, fontWeight: 600 }}
-                            />
-                          )}
-                        </Stack>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-                {sortedTransactions.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
-                      <Typography variant="body2" color="text.secondary">
-                        No transactions found{search ? " for this search." : "."}
-                      </Typography>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Paper>
-      )}
+                              {tx.ApprovalStatus === 'Pending' && (
+                                <>
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    color="success"
+                                    startIcon={<CheckCircle fontSize="small" />}
+                                    onClick={() => handleApprove(tx)}
+                                    disabled={actionLoading}
+                                    sx={{ borderRadius: 1, fontWeight: 600 }}
+                                  >
+                                    Approve
+                                  </Button>
+                                  <Tooltip title="Reject">
+                                    <IconButton
+                                      size="small"
+                                      color="error"
+                                      onClick={() => handleReject(tx)}
+                                      disabled={actionLoading}
+                                      sx={{ border: `1px solid ${alpha(theme.palette.error.main, 0.5)}`, borderRadius: 1 }}
+                                    >
+                                      <Cancel fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                </>
+                              )}
+                              {tx.ApprovalStatus === 'Approved' && tx.RetrievalStatus !== 'Retrieved' && (
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  onClick={() => handleSetRetrieved(tx)}
+                                  disabled={actionLoading}
+                                  sx={{ borderRadius: 1, fontWeight: 700 }}
+                                >
+                                  Retrieved
+                                </Button>
+                              )}
+                              {tx.RetrievalStatus === 'Retrieved' && tx.ReturnStatus !== 'Returned' && (
+                                <Button
+                                  size="small"
+                                  color="secondary"
+                                  variant="contained"
+                                  onClick={() => openReturnModal(tx)}
+                                  disabled={actionLoading}
+                                  sx={{ borderRadius: 1, fontWeight: 700 }}
+                                >
+                                  Return
+                                </Button>
+                              )}
+                              {tx.ReturnStatus === 'Returned' && (
+                                <Chip
+                                  size="small"
+                                  label="Completed"
+                                  color="success"
+                                  icon={<DoneAll fontSize="small" />}
+                                  sx={{ borderRadius: 1, fontWeight: 600 }}
+                                />
+                              )}
+                            </Stack>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            ) : (
+              <CardContent>{renderEmptyState()}</CardContent>
+            )}
+          </Card>
+        </Stack>
+      </Container>
 
       {renderTxModal()}
       {renderReturnModal()}

@@ -24,7 +24,7 @@ USE `kcls_db`;
 -- 1. Core user tables
 CREATE TABLE IF NOT EXISTS `Users` (
   `UserID` INT(11) NOT NULL AUTO_INCREMENT,
-  `Username` VARCHAR(50) NOT NULL,
+  `Username` TEXT NOT NULL,
   `Password` VARCHAR(100) NOT NULL,
   `Role` ENUM('Staff','Borrower') NOT NULL,
   PRIMARY KEY (`UserID`),

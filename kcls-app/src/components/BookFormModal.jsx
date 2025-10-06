@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Grid, TextField, Typography, Button, Box,
   Table, TableHead, TableRow, TableCell, TableBody, Tabs, Tab, Snackbar, Alert, Paper, Chip,
-  IconButton, Tooltip, Divider, useTheme, MenuItem, Stack
+  IconButton, Tooltip, Divider, MenuItem, Stack
 } from '@mui/material';
 import {
   Add, Edit as EditIcon, Save, Cancel, LibraryBooks,
@@ -10,11 +10,10 @@ import {
 } from '@mui/icons-material';
 
 const BookFormModal = ({
-  open, onClose, isEdit, bookForm, handleBookChange, initialBookForm,
+  open, onClose, isEdit, bookForm, handleBookChange,
   copyForm, handleCopyChange, initialCopyForm, handleSaveBook,
   editCopyIndex, copies, setCopyForm, setEditCopyIndex, setCopies, locations = [],
 }) => {
-  const theme = useTheme();
   // Standardized condition options (Good → Bad)
   const conditionOptions = ['Good', 'Fair', 'Average', 'Poor', 'Bad'];
   const [tabIndex, setTabIndex] = useState(0);
@@ -69,6 +68,13 @@ const BookFormModal = ({
   };
 
   const handleCopyAction = () => {
+    if (editCopyIndex !== null) {
+      const current = copies[editCopyIndex];
+      if (current?.availability === 'Borrowed') {
+        showToast('Borrowed copies cannot be modified from this modal.', 'warning');
+        return;
+      }
+    }
     for (let key of ['accessionNumber', 'location']) {
       if (!copyForm[key]) {
         showToast(`${key.charAt(0).toUpperCase() + key.slice(1)} is required.`, 'error');
@@ -93,6 +99,11 @@ const BookFormModal = ({
   };
 
   const removeCopy = (idx) => {
+    const target = copies[idx];
+    if (target?.availability === 'Borrowed') {
+      showToast('Borrowed copies cannot be removed.', 'error');
+      return;
+    }
     setCopies(copies.filter((_, i) => i !== idx));
     setUnsaved(true);
   };
@@ -147,9 +158,31 @@ const BookFormModal = ({
   const copyFields = [
     { key: 'accessionNumber', label: 'Accession Number', required: true },
     { key: 'location', label: 'Location', required: true, select: true, options: locations },
-    { key: 'availability', label: 'Availability', select: true, options: ['Available', 'Borrowed', 'Reserved', 'Lost'] },
+    { key: 'availability', label: 'Availability', select: true },
     { key: 'condition', label: 'Condition', select: true, options: conditionOptions }
   ];
+
+  const editingCopy = editCopyIndex !== null ? copies[editCopyIndex] : null;
+  const editingCopyAvailability = editingCopy?.availability || '';
+  const editingCopyIsAvailable = editingCopyAvailability === 'Available';
+  const copyIsBorrowed = editingCopyAvailability === 'Borrowed';
+  const copyAvailabilityOptions = useMemo(() => {
+    let options;
+    if (editCopyIndex === null) {
+      options = ['Available', 'Reserved'];
+    } else if (copyIsBorrowed) {
+      options = ['Borrowed'];
+    } else {
+      options = ['Available', 'Reserved', 'Lost'];
+      if (editingCopyAvailability && !options.includes(editingCopyAvailability)) {
+        options = [...options, editingCopyAvailability];
+      }
+    }
+    if (copyForm.availability && !options.includes(copyForm.availability)) {
+      options = [...options, copyForm.availability];
+    }
+    return options;
+  }, [editCopyIndex, copyIsBorrowed, editingCopyAvailability, copyForm.availability]);
 
   const availabilityStats = useMemo(() => {
     const total = copies.length;
@@ -246,148 +279,176 @@ const BookFormModal = ({
           dividers
           sx={{
             bgcolor: 'background.default',
-            p: 2.25
+            p: 0
           }}
         >
-          <Tabs
-            value={tabIndex}
-            onChange={handleTabChange}
-            sx={{
-              mb: 2,
-              // remove default underline
-              '& .MuiTabs-indicator': { display: 'none' },
-              '& .MuiTabs-flexContainer': { alignItems: 'stretch' },
-              // base (all tabs)
-              '& .MuiTab-root': {
-                textTransform: 'none',
-                fontWeight: 600,
-                px: 2.25,
-                mr: 1,
-                minHeight: 40,
-                lineHeight: 1.2,
-                borderRadius: 0.75,
-                border: theme => `2px solid ${theme.palette.divider}`,
-                backgroundColor: theme => theme.palette.background.paper,
-                color: theme => theme.palette.text.secondary,
-                transition: 'all .18s',
-                boxShadow: 'none',
-                '&:hover': {
-                  backgroundColor: theme => theme.palette.action.hover,
-                  borderColor: theme => theme.palette.primary.light,
-                  color: theme => theme.palette.text.primary
-                }
-              },
-              // selected state
-              '& .MuiTab-root.Mui-selected': {
-                backgroundColor: theme => theme.palette.primary.main,
-                color: theme => `${theme.palette.primary.contrastText} !important`,
-                borderColor: theme => theme.palette.primary.main,
-                boxShadow: theme => `0 2px 6px ${theme.palette.primary.main}33`
-              },
-              // focus-visible for accessibility
-              '& .MuiTab-root:focus-visible': {
-                outline: theme => `2px solid ${theme.palette.primary.main}`,
-                outlineOffset: 2
-              }
-            }}
-          >
-            <Tab label="Book Details" disableRipple />
-            <Tab
-              disableRipple
-              label={
-                <Box display="flex" gap={1} alignItems="center">
-                  Copies
+          <Stack spacing={2.5} sx={{ p: { xs: 2, md: 2.75 } }}>
+            <Box
+              sx={{
+                position: 'relative',
+                borderRadius: 2,
+                p: { xs: 2, md: 3 },
+                backgroundImage: theme => `linear-gradient(135deg, ${theme.palette.mode === 'dark' ? theme.palette.primary.dark : theme.palette.primary.light} 0%, ${theme.palette.mode === 'dark' ? theme.palette.primary.main : theme.palette.primary.dark} 100%)`,
+                color: theme => theme.palette.common.white,
+                border: theme => `1px solid ${theme.palette.primary.main}`,
+                boxShadow: theme => `0 18px 36px ${theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.35)' : 'rgba(47, 128, 237, 0.25)'}`
+              }}
+            >
+              <Stack
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={2}
+                alignItems={{ xs: 'flex-start', md: 'center' }}
+                justifyContent="space-between"
+              >
+                <Box>
+                  <Typography variant="overline" sx={{ opacity: 0.85, letterSpacing: 0.6 }}>
+                    {isEdit ? 'Update book record' : 'New book record'}
+                  </Typography>
+                  <Typography variant="h5" fontWeight={800} letterSpacing={0.45}>
+                    Library book catalog workspace
+                  </Typography>
+                  <Typography variant="body2" sx={{ mt: 0.75, maxWidth: 520, opacity: 0.88 }}>
+                    Capture bibliographic details and manage physical copies in a focused, Devias-inspired flow tailored for librarians.
+                  </Typography>
+                </Box>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'flex-start', sm: 'center' }}>
                   <Chip
                     size="small"
-                    label={copies.length}
-                    color={copies.length ? 'primary' : 'default'}
-                    sx={{ fontWeight: 600, height: 20 }}
+                    label={requiredBookKeys.every(k => bookForm[k]) ? 'Details complete' : 'Details missing'}
+                    color={requiredBookKeys.every(k => bookForm[k]) ? 'success' : 'warning'}
+                    sx={{ fontWeight: 700, borderRadius: 1 }}
                   />
-                </Box>
-              }
-            />
-          </Tabs>
+                  <Chip
+                    size="small"
+                    label={`Copies: ${copies.length}`}
+                    color={copies.length ? 'primary' : 'default'}
+                    sx={{ fontWeight: 700, borderRadius: 1 }}
+                  />
+                  {unsaved && (
+                    <Chip size="small" color="warning" label="Unsaved" sx={{ fontWeight: 700, borderRadius: 1 }} />
+                  )}
+                </Stack>
+              </Stack>
+            </Box>
 
-          {tabIndex === 0 && (
             <Paper
               variant="outlined"
               sx={{
-                p: 2,
-                borderRadius: 1,
-                border: theme => `2px solid ${theme.palette.divider}`,
+                borderRadius: 2,
+                border: theme => `1.5px solid ${theme.palette.divider}`,
+                overflow: 'hidden',
                 bgcolor: 'background.paper'
               }}
             >
-              <Grid container spacing={2}>
-                {bookFields.map(({ key, label, required, type }) => (
-                  <Grid item xs={12} sm={6} key={key}>
-                    <TextField
-                      label={label}
-                      name={key}
-                      value={bookForm[key]}
-                      onChange={e => {
-                        handleBookChange(e);
-                        setUnsaved(true);
-                      }}
-                      fullWidth
-                      size="small"
-                      required={required}
-                      type={type || 'text'}
-                      InputLabelProps={type === 'number' ? { shrink: true } : undefined}
-                      autoComplete="off"
-                      sx={{
-                        '& .MuiOutlinedInput-root': { borderRadius: 1 }
-                      }}
-                    />
-                  </Grid>
-                ))}
-              </Grid>
-              <Divider sx={{ my: 2 }} />
-              <Stack direction="row" gap={1} flexWrap="wrap">
-                <Chip
-                  size="small"
-                  label="Fill required fields"
-                  color={requiredBookKeys.every(k => bookForm[k]) ? 'success' : 'default'}
-                  sx={{ fontWeight: 600, borderRadius: 0.75 }}
+              <Tabs
+                value={tabIndex}
+                onChange={handleTabChange}
+                variant="scrollable"
+                scrollButtons="auto"
+                sx={{ px: { xs: 1, md: 2 }, pt: 1 }}
+              >
+                <Tab
+                  value={0}
+                  label="Details"
+                  sx={{ textTransform: 'none', fontWeight: 700 }}
                 />
-                <Chip
-                  size="small"
-                  label={`Copies: ${copies.length}`}
-                  color={copies.length ? 'primary' : 'default'}
-                  sx={{ fontWeight: 600, borderRadius: 0.75 }}
+                <Tab
+                  value={1}
+                  sx={{ textTransform: 'none', fontWeight: 700 }}
+                  label={
+                    <Box display="flex" gap={1} alignItems="center">
+                      Copies
+                      <Chip
+                        size="small"
+                        label={copies.length}
+                        color={copies.length ? 'primary' : 'default'}
+                        sx={{ fontWeight: 600, height: 20 }}
+                      />
+                    </Box>
+                  }
                 />
-              </Stack>
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                Tip: Add all bibliographic info now; you can still edit later.
-              </Typography>
-            </Paper>
-          )}
+              </Tabs>
+              <Divider />
 
-            {tabIndex === 1 && (
-              <Stack gap={2}>
-                <Paper
-                  variant="outlined"
-                  sx={{
-                    p: 2,
-                    borderRadius: 1,
-                    border: theme => `2px solid ${theme.palette.divider}`,
-                    bgcolor: 'background.paper'
-                  }}
-                >
-                  <Typography fontWeight={700} fontSize={14} mb={1}>
-                    {editCopyIndex !== null ? 'Edit Copy' : 'Add Book Copy'}
+              <Box sx={{ display: tabIndex === 0 ? 'block' : 'none', p: { xs: 2, md: 3 }, pt: { xs: 1.5, md: 2 } }}>
+                <Stack spacing={2.5}>
+                  <Box
+                    sx={{
+                      borderRadius: 2,
+                      border: theme => `1.5px dashed ${theme.palette.primary.light}`,
+                      bgcolor: theme => theme.palette.mode === 'dark' ? theme.palette.background.default : theme.palette.grey[50],
+                      p: { xs: 2, md: 2.5 }
+                    }}
+                  >
+                    <Stack spacing={1.5}>
+                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'flex-start', sm: 'center' }}>
+                        <Typography fontWeight={700} fontSize={15}>
+                          Step 1 · Catalog bibliographic details
+                        </Typography>
+                        <Chip
+                          size="small"
+                          color={requiredBookKeys.every(k => bookForm[k]) ? 'success' : 'default'}
+                          label={requiredBookKeys.every(k => bookForm[k]) ? 'Ready' : 'Fill required fields'}
+                          sx={{ fontWeight: 600, borderRadius: 1 }}
+                        />
+                      </Stack>
+                      <Typography variant="body2" color="text.secondary">
+                        Provide the essential information found on the book’s title page so search, shelving, and circulation stay in sync.
+                      </Typography>
+                    </Stack>
+                  </Box>
+
+                  <Grid container spacing={2.25}>
+                    {bookFields.map(({ key, label, required, type }) => (
+                      <Grid item xs={12} sm={6} key={key}>
+                        <TextField
+                          label={label}
+                          name={key}
+                          value={bookForm[key]}
+                          onChange={e => {
+                            handleBookChange(e);
+                            setUnsaved(true);
+                          }}
+                          fullWidth
+                          size="medium"
+                          required={required}
+                          type={type || 'text'}
+                          InputLabelProps={type === 'number' ? { shrink: true } : undefined}
+                          autoComplete="off"
+                          InputProps={{ sx: { borderRadius: 1.5, minHeight: 56 } }}
+                        />
+                      </Grid>
+                    ))}
+                  </Grid>
+
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                    Tip: Complete required fields now—you can still fine-tune the entry before saving.
                   </Typography>
-                  <Grid container spacing={2}>
+                </Stack>
+              </Box>
+
+              <Box sx={{ display: tabIndex === 1 ? 'block' : 'none', p: { xs: 2, md: 3 }, pt: { xs: 1.5, md: 2 } }}>
+                <Stack spacing={2.5}>
+                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ xs: 'flex-start', md: 'center' }}>
+                    <Typography fontWeight={700} fontSize={15}>
+                      Physical copies ledger
+                    </Typography>
+                    <Stack direction="row" spacing={1} flexWrap="wrap">
+                      <Chip size="small" label={`Total ${availabilityStats.total}`} color="primary" sx={{ fontWeight: 600, borderRadius: 1 }} />
+                      <Chip size="small" label={`${availabilityStats.available} available`} color="success" sx={{ fontWeight: 600, borderRadius: 1 }} />
+                      <Chip size="small" label={`${availabilityStats.borrowed} borrowed`} color="warning" sx={{ fontWeight: 600, borderRadius: 1 }} />
+                      <Chip size="small" label={`${availabilityStats.reserved} reserved`} color="info" sx={{ fontWeight: 600, borderRadius: 1 }} />
+                      <Chip size="small" label={`${availabilityStats.lost} lost`} color="error" sx={{ fontWeight: 600, borderRadius: 1 }} />
+                    </Stack>
+                  </Stack>
+
+                  <Grid container spacing={2.25}>
                     {copyFields.map(({ key, label, required, select, options }) => {
                       const isLocationField = key === 'location';
-                      return (
-                        <Grid
-                          item
-                          key={key}
-                          xs={12}
-                          sm={isLocationField ? 12 : 6}
-                        >
-                          {select && isLocationField ? (
+                      const isAvailabilityField = key === 'availability';
+                      if (select && isLocationField) {
+                        return (
+                          <Grid item xs={12} md={6} key={key}>
                             <TextField
                               select
                               label={label}
@@ -401,26 +462,26 @@ const BookFormModal = ({
                               size="medium"
                               required={required}
                               helperText={locations.length === 0 ? 'Add locations first.' : 'Choose where this copy is stored.'}
-                              disabled={locations.length === 0}
+                              disabled={locations.length === 0 || copyIsBorrowed}
                               InputLabelProps={{ shrink: true }}
+                              InputProps={{ sx: { borderRadius: 1.5, minHeight: 56 } }}
                               SelectProps={{
                                 displayEmpty: true,
                                 MenuProps: wideSelectMenuProps,
-                                renderValue: (value) => formatLocationLabel(value)
-                              }}
-                              sx={{
-                                '& .MuiOutlinedInput-root': { borderRadius: 1, minHeight: 54 },
-                                '& .MuiSelect-select': { display: 'flex', alignItems: 'center' },
-                                '& .MuiInputLabel-root': { fontWeight: 600 }
+                                renderValue: value => formatLocationLabel(value)
                               }}
                             >
-                              <MenuItem value="" disabled>
+                              {[<MenuItem key="location-placeholder" value="" disabled>
                                 <Typography color="text.secondary" sx={{ fontStyle: 'italic' }}>
                                   Select a location
                                 </Typography>
-                              </MenuItem>
-                              {locations.length === 0 && <MenuItem value="no-location" disabled>No locations</MenuItem>}
-                              {locations.map(loc => (
+                              </MenuItem>,
+                              ...(locations.length === 0 ? [
+                                <MenuItem key="location-empty" value="no-location" disabled>
+                                  No locations available
+                                </MenuItem>
+                              ] : []),
+                              ...locations.map(loc => (
                                 <MenuItem key={loc.ID} value={String(loc.ID)} sx={{ whiteSpace: 'normal', alignItems: 'flex-start' }}>
                                   <Stack spacing={0.25}>
                                     <Typography fontWeight={600}>{loc.Name}</Typography>
@@ -431,9 +492,15 @@ const BookFormModal = ({
                                     )}
                                   </Stack>
                                 </MenuItem>
-                              ))}
+                              ))]}
                             </TextField>
-                          ) : select ? (
+                          </Grid>
+                        );
+                      }
+
+                      if (select && isAvailabilityField) {
+                        return (
+                          <Grid item xs={12} md={3} key={key}>
                             <TextField
                               select
                               label={label}
@@ -446,30 +513,43 @@ const BookFormModal = ({
                               fullWidth
                               size="medium"
                               required={required}
+                              disabled={copyIsBorrowed}
                               InputLabelProps={{ shrink: true }}
+                              InputProps={{ sx: { borderRadius: 1.5, minHeight: 56 } }}
                               SelectProps={{
                                 MenuProps: baseSelectMenuProps,
                                 displayEmpty: true,
                                 renderValue: renderEmptyValue(label)
                               }}
-                              sx={{
-                                '& .MuiOutlinedInput-root': { borderRadius: 1, minHeight: 54 },
-                                '& .MuiInputLabel-root': { fontWeight: 600 }
-                              }}
                             >
-                              <MenuItem value="" disabled>
+                              {[<MenuItem key="availability-placeholder" value="" disabled>
                                 <Typography color="text.secondary" sx={{ fontStyle: 'italic' }}>
                                   {`Select ${label.toLowerCase()}`}
                                 </Typography>
-                              </MenuItem>
-                              {options.map(opt => (
-                                <MenuItem key={opt} value={opt} sx={{ whiteSpace: 'normal' }}>
-                                  {opt}
+                              </MenuItem>,
+                              ...copyAvailabilityOptions.map(option => (
+                                <MenuItem
+                                  key={option}
+                                  value={option}
+                                  sx={{ whiteSpace: 'normal' }}
+                                  disabled={
+                                    (copyIsBorrowed && option === 'Borrowed') ||
+                                    (editCopyIndex !== null && editingCopyIsAvailable && option === 'Available')
+                                  }
+                                >
+                                  {option}
                                 </MenuItem>
-                              ))}
+                              ))]}
                             </TextField>
-                          ) : (
+                          </Grid>
+                        );
+                      }
+
+                      if (select) {
+                        return (
+                          <Grid item xs={12} md={3} key={key}>
                             <TextField
+                              select
                               label={label}
                               name={key}
                               value={copyForm[key]}
@@ -480,30 +560,63 @@ const BookFormModal = ({
                               fullWidth
                               size="medium"
                               required={required}
-                              autoComplete="off"
-                              error={
-                                key === 'accessionNumber' &&
-                                !!copyForm.accessionNumber &&
-                                accessionExists(copyForm.accessionNumber, editCopyIndex)
-                              }
-                              helperText={
-                                key === 'accessionNumber' &&
-                                accessionExists(copyForm.accessionNumber, editCopyIndex)
-                                  ? 'Accession already used.'
-                                  : ' '
-                              }
+                              disabled={copyIsBorrowed}
                               InputLabelProps={{ shrink: true }}
-                              sx={{
-                                '& .MuiOutlinedInput-root': { borderRadius: 1, minHeight: 54 },
-                                '& .MuiInputLabel-root': { fontWeight: 600 }
+                              InputProps={{ sx: { borderRadius: 1.5, minHeight: 56 } }}
+                              SelectProps={{
+                                MenuProps: baseSelectMenuProps,
+                                displayEmpty: true,
+                                renderValue: renderEmptyValue(label)
                               }}
-                            />
-                          )}
+                            >
+                              {[<MenuItem key={`${key}-placeholder`} value="" disabled>
+                                <Typography color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                                  {`Select ${label.toLowerCase()}`}
+                                </Typography>
+                              </MenuItem>,
+                              ...options.map(opt => (
+                                <MenuItem key={opt} value={opt} sx={{ whiteSpace: 'normal' }}>
+                                  {opt}
+                                </MenuItem>
+                              ))]}
+                            </TextField>
+                          </Grid>
+                        );
+                      }
+
+                      return (
+                        <Grid item xs={12} md={3} key={key}>
+                          <TextField
+                            label={label}
+                            name={key}
+                            value={copyForm[key]}
+                            onChange={e => {
+                              handleCopyChange(e);
+                              setUnsaved(true);
+                            }}
+                            fullWidth
+                            size="medium"
+                            required={required}
+                            autoComplete="off"
+                            InputLabelProps={{ shrink: true }}
+                            InputProps={{ sx: { borderRadius: 1.5, minHeight: 56 } }}
+                            error={
+                              key === 'accessionNumber' &&
+                              !!copyForm.accessionNumber &&
+                              accessionExists(copyForm.accessionNumber, editCopyIndex)
+                            }
+                            helperText={
+                              key === 'accessionNumber' &&
+                              accessionExists(copyForm.accessionNumber, editCopyIndex)
+                                ? 'Accession already used.'
+                                : ' '
+                            }
+                          />
                         </Grid>
                       );
                     })}
 
-                    <Grid item xs={12} sm={6}>
+                    <Grid item xs={12} md={3}>
                       <Button
                         size="medium"
                         variant="outlined"
@@ -511,23 +624,23 @@ const BookFormModal = ({
                         onClick={generateAccession}
                         fullWidth
                         disabled={!!copyForm.accessionNumber}
-                        sx={{ minHeight: 54, fontWeight: 600, borderRadius: 1 }}
+                        sx={{ minHeight: 56, fontWeight: 600, borderRadius: 1 }}
                       >
-                        Auto Accession
+                        Auto accession
                       </Button>
                     </Grid>
 
                     <Grid item xs={12}>
-                      <Stack direction="row" spacing={1}>
+                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
                         <Button
                           variant="contained"
                           size="medium"
                           startIcon={editCopyIndex !== null ? <Save /> : <Add />}
                           onClick={handleCopyAction}
-                          disabled={copyInvalid || locations.length === 0}
+                          disabled={copyIsBorrowed || copyInvalid || locations.length === 0}
                           sx={{ fontWeight: 700, borderRadius: 1, minHeight: 48 }}
                         >
-                          {editCopyIndex !== null ? 'Update Copy' : 'Add Copy'}
+                          {editCopyIndex !== null ? 'Update copy' : 'Add copy'}
                         </Button>
                         {editCopyIndex !== null && (
                           <Button
@@ -545,156 +658,117 @@ const BookFormModal = ({
                     </Grid>
                   </Grid>
 
-                  <Divider sx={{ my: 2 }} />
+                  <Divider />
 
-                  <Stack direction="row" spacing={1} flexWrap="wrap">
-                    <Chip
-                      size="small"
-                      label={`Total: ${availabilityStats.total}`}
-                      color="primary"
-                      sx={{ fontWeight: 600, borderRadius: 0.75 }}
-                    />
-                    <Chip
-                      size="small"
-                      label={`Available: ${availabilityStats.available}`}
-                      color="success"
-                      sx={{ fontWeight: 600, borderRadius: 0.75 }}
-                    />
-                    <Chip
-                      size="small"
-                      label={`Borrowed: ${availabilityStats.borrowed}`}
-                      color="warning"
-                      sx={{ fontWeight: 600, borderRadius: 0.75 }}
-                    />
-                    <Chip
-                      size="small"
-                      label={`Reserved: ${availabilityStats.reserved}`}
-                      color="info"
-                      sx={{ fontWeight: 600, borderRadius: 0.75 }}
-                    />
-                    <Chip
-                      size="small"
-                      label={`Lost: ${availabilityStats.lost}`}
-                      color="error"
-                      sx={{ fontWeight: 600, borderRadius: 0.75 }}
-                    />
-                  </Stack>
-
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                    Tip: Edit or remove any copy before saving the book.
-                  </Typography>
-                </Paper>
-
-                <Paper
-                  variant="outlined"
-                  sx={{
-                    p: 0,
-                    overflow: 'hidden',
-                    borderRadius: 1,
-                    border: theme => `2px solid ${theme.palette.divider}`,
-                    bgcolor: 'background.paper'
-                  }}
-                >
                   <Box
                     sx={{
-                      px: 2,
-                      py: 1,
-                      borderBottom: theme => `1px solid ${theme.palette.divider}`,
-                      display: 'flex',
-                      alignItems: 'center'
+                      border: theme => `1.5px solid ${theme.palette.divider}`,
+                      borderRadius: 1.5,
+                      overflow: 'hidden',
+                      bgcolor: 'background.default'
                     }}
                   >
-                    <Typography fontWeight={700} fontSize={14}>
-                      Book Copies ({copies.length})
-                    </Typography>
-                  </Box>
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow
+                    <Table size="small" stickyHeader>
+                      <TableHead>
+                        <TableRow
+                          sx={{
+                            '& th': {
+                              fontWeight: 700,
+                              fontSize: 12,
+                              letterSpacing: 0.4,
+                              borderBottom: theme => `2px solid ${theme.palette.divider}`,
+                              bgcolor: 'background.paper'
+                            }
+                          }}
+                        >
+                          <TableCell>Accession #</TableCell>
+                          <TableCell>Location</TableCell>
+                          <TableCell>Availability</TableCell>
+                          <TableCell>Condition</TableCell>
+                          <TableCell align="center">Actions</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody
                         sx={{
-                          '& th': {
-                            fontWeight: 700,
-                            fontSize: 12,
-                            bgcolor: 'background.default',
-                            borderBottom: theme => `2px solid ${theme.palette.divider}`
-                          }
+                          '& td': { borderBottom: theme => `1px solid ${theme.palette.divider}` },
+                          '& tr:hover': { background: theme => theme.palette.action.hover }
                         }}
                       >
-                        <TableCell>Accession #</TableCell>
-                        <TableCell>Location</TableCell>
-                        <TableCell>Availability</TableCell>
-                        <TableCell>Condition</TableCell>
-                        
-                        <TableCell align="center">Actions</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody
-                      sx={{
-                        '& td': { borderBottom: theme => `1px solid ${theme.palette.divider}` },
-                        '& tr:hover': { background: theme.palette.action.hover }
-                      }}
-                    >
-                      {copies.map((copy, idx) => (
-                        <TableRow key={idx}>
-                          <TableCell>{copy.accessionNumber}</TableCell>
-                          <TableCell>{getLocationName(copy.location)}</TableCell>
-                          <TableCell>
-                            <Chip
-                              label={copy.availability || 'Available'}
-                              size="small"
-                              color={
-                                copy.availability === 'Borrowed'
-                                  ? 'warning'
-                                  : copy.availability === 'Reserved'
-                                  ? 'info'
-                                  : copy.availability === 'Lost'
-                                  ? 'error'
-                                  : 'success'
-                              }
-                              sx={{ fontWeight: 600 }}
-                            />
-                          </TableCell>
-                          <TableCell>{copy.condition || '-'}</TableCell>
-                          <TableCell align="center">
-                            <Tooltip title="Edit">
-                              <IconButton
+                        {copies.map((copy, idx) => (
+                          <TableRow key={idx} hover>
+                            <TableCell>{copy.accessionNumber}</TableCell>
+                            <TableCell>{getLocationName(copy.location)}</TableCell>
+                            <TableCell>
+                              <Chip
+                                label={copy.availability || 'Available'}
                                 size="small"
-                                onClick={() => {
-                                  setCopyForm({ ...copy });
-                                  setEditCopyIndex(idx);
-                                }}
-                                sx={{ borderRadius: 0.75 }}
+                                color={
+                                  copy.availability === 'Borrowed'
+                                    ? 'warning'
+                                    : copy.availability === 'Reserved'
+                                    ? 'info'
+                                    : copy.availability === 'Lost'
+                                    ? 'error'
+                                    : 'success'
+                                }
+                                sx={{ fontWeight: 600, borderRadius: 1 }}
+                              />
+                            </TableCell>
+                            <TableCell>{copy.condition || '-'}</TableCell>
+                            <TableCell align="center">
+                              <Tooltip title="Edit">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => {
+                                    setCopyForm({ ...copy });
+                                    setEditCopyIndex(idx);
+                                  }}
+                                  sx={{ borderRadius: 0.75 }}
+                                >
+                                  <EditIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip
+                                title={
+                                  copy.availability === 'Borrowed'
+                                    ? 'Borrowed copies cannot be removed'
+                                    : 'Remove'
+                                }
                               >
-                                <EditIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Remove">
-                              <IconButton
-                                size="small"
-                                color="error"
-                                onClick={() => removeCopy(idx)}
-                                sx={{ borderRadius: 0.75 }}
-                              >
-                                <DeleteIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                      {copies.length === 0 && (
-                        <TableRow>
-                          <TableCell colSpan={6} align="center">
-                            <Typography variant="caption" color="text.secondary">
-                              No copies added yet.
-                            </Typography>
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </Paper>
-              </Stack>
-            )}
+                                <span>
+                                  <IconButton
+                                    size="small"
+                                    color="error"
+                                    onClick={() => removeCopy(idx)}
+                                    sx={{ borderRadius: 0.75 }}
+                                    disabled={copy.availability === 'Borrowed'}
+                                  >
+                                    <DeleteIcon fontSize="small" />
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {copies.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
+                              <Typography variant="body2" color="text.secondary">
+                                No copies added yet.
+                              </Typography>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                    Keep your circulation dashboard accurate by logging every shelf or storage location.
+                  </Typography>
+                </Stack>
+              </Box>
+            </Paper>
+          </Stack>
         </DialogContent>
 
         <DialogActions

@@ -158,188 +158,270 @@ const LoginPage = () => {
 
   return (
     <Box
-      minHeight="100vh"
-      display="flex"
-      alignItems="center"
-      justifyContent="center"
       sx={{
-        background: theme.palette.background.default,
-        p: 2
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: { xs: 'column', lg: 'row' },
+        background: theme.palette.mode === 'light'
+          ? alpha(theme.palette.primary.light, 0.04)
+          : theme.palette.background.default
       }}
     >
-      <Paper
-        elevation={0}
+      <Box
         sx={{
-          p: 3,
-          width: '100%',
-          maxWidth: 420,
-          borderRadius: 1,                             // boxy
-          border: `2px solid ${theme.palette.divider}`,// strong border
-          boxShadow: `0 4px 12px rgba(0,0,0,0.08), 0 0 0 1px ${alpha(theme.palette.divider,0.6)}`,
-          bgcolor: 'background.paper',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 2
+          flex: 1,
+          display: { xs: 'none', lg: 'flex' },
+          order: { xs: 2, lg: 1 },
+          position: 'relative',
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'hidden',
+          backgroundImage: `linear-gradient(140deg, ${alpha(theme.palette.primary.dark, 0.82)} 0%, ${alpha(theme.palette.secondary.main, 0.78)} 100%), url('/library-hero.jpg')`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat'
         }}
       >
         <Box
           sx={{
+            position: 'absolute',
+            inset: 32,
+            borderRadius: 4,
+            border: `1px solid ${alpha(theme.palette.common.white, 0.28)}`,
+            background: alpha(theme.palette.common.white, 0.05)
+          }}
+        />
+        <Stack spacing={4} sx={{ position: 'relative', maxWidth: 420, color: alpha('#fff', 0.98) }}>
+          <Stack direction="row" spacing={2} alignItems="center">
+            <Box
+              component="img"
+              src="/logo.png"
+              alt="Koronadal City seal"
+              sx={{ width: 56, height: 56, objectFit: 'contain', borderRadius: 2, backgroundColor: alpha('#fff', 0.08), p: 1 }}
+            />
+            <Typography variant="overline" sx={{ letterSpacing: 2, fontWeight: 700 }}>
+              Borrower Hub
+            </Typography>
+          </Stack>
+          <Stack spacing={2}>
+            <Typography variant="h3" fontWeight={800} lineHeight={1.1}>
+              Access collections, request documents, and track every loan with confidence.
+            </Typography>
+            <Typography variant="body1" sx={{ color: alpha('#fff', 0.82) }}>
+              Stay on top of due dates, digital expirations, and community programs curated for Koronadal learners. Your library card is now a smarter, faster experience.
+            </Typography>
+          </Stack>
+          <Stack spacing={1.5}>
+            <Stack direction="row" spacing={1.5}>
+              <Typography variant="subtitle2" fontWeight={700} sx={{ color: alpha('#fff', 0.92) }}>
+                Borrower insights
+              </Typography>
+              <Divider flexItem orientation="vertical" sx={{ borderColor: alpha('#fff', 0.24) }} />
+              <Typography variant="caption" sx={{ color: alpha('#fff', 0.72), letterSpacing: 0.5 }}>
+                Real-time availability • Digital archives • Personalized reminders
+              </Typography>
+            </Stack>
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                gap: 1.5
+              }}
+            >
+              <Box sx={{ backgroundColor: alpha('#fff', 0.08), borderRadius: 2, p: 2 }}>
+                <Typography variant="h5" fontWeight={800}>
+                  2,300+
+                </Typography>
+                <Typography variant="caption" sx={{ color: alpha('#fff', 0.7) }}>
+                  community resources just a click away
+                </Typography>
+              </Box>
+              <Box sx={{ backgroundColor: alpha('#fff', 0.08), borderRadius: 2, p: 2 }}>
+                <Typography variant="h5" fontWeight={800}>
+                  24/7
+                </Typography>
+                <Typography variant="caption" sx={{ color: alpha('#fff', 0.7) }}>
+                  digital document access for verified borrowers
+                </Typography>
+              </Box>
+            </Box>
+          </Stack>
+        </Stack>
+      </Box>
+
+      <Box
+        sx={{
+          width: { xs: '100%', lg: '50%' },
+          order: { xs: 1, lg: 2 },
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          px: { xs: 3, md: 8 },
+          py: { xs: 6, md: 10 }
+        }}
+      >
+        <Paper
+          elevation={0}
+          sx={{
+            width: '100%',
+            maxWidth: 440,
+            borderRadius: 3,
+            border: `1px solid ${alpha(theme.palette.divider, 0.8)}`,
+            boxShadow: theme.palette.mode === 'light'
+              ? `0 18px 48px ${alpha(theme.palette.common.black, 0.08)}`
+              : `0 18px 48px ${alpha(theme.palette.common.black, 0.32)}`,
+            bgcolor: 'background.paper',
+            p: { xs: 3, md: 4 },
             display: 'flex',
             flexDirection: 'column',
-            alignItems: 'center',
-            gap: 1.25,
-            p: 2,
-            borderRadius: 1,
-            border: `1.5px solid ${theme.palette.divider}`,
-            background: alpha(theme.palette.primary.main, 0.04)
+            gap: 3
           }}
         >
-          <Box
-            component="img"
-            src="/logo.png"          // place the seal/logo file as /public/logo.png (or adjust path)
-            alt="Koronadal City Library Logo"
-            sx={{
-              width: 84,
-              height: 84,
-              objectFit: 'contain',
-              borderRadius: 1,
-              border: `1.5px solid ${alpha(theme.palette.primary.main, 0.5)}`,
-              background: '#fff',
-              p: 1
-            }}
-          />
-          <Typography
-            variant="h6"
-            fontWeight={800}
-            letterSpacing={0.5}
-            textAlign="center"
-            sx={{ fontSize: 18, lineHeight: 1.1 }}
-          >
-            Koronadal City Library
-          </Typography>
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            fontWeight={600}
-            letterSpacing={0.5}
-            sx={{ fontSize: 11 }}
-          >
-            Account Access Portal
-          </Typography>
-        </Box>
-
-        <Box component="form" onSubmit={handleLogin} sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
-          <TextField
-            label="Username"
-            value={username}
-            onChange={e => setUsername(e.target.value)}
-            fullWidth
-            required
-            size="small"
-          />
-          <TextField
-            label="Password"
-            type="password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            fullWidth
-            required
-            size="small"
-          />
-
-          <Stack direction="row" alignItems="center" justifyContent="space-between">
-            <FormControlLabel
-              control={
-                <Checkbox
-                  size="small"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                />
-              }
-              label={<Typography variant="caption" fontSize={12}>Remember me</Typography>}
+          <Stack spacing={2.5} alignItems="center">
+            <Box
+              component="img"
+              src="/logo.png"
+              alt="Koronadal City Library seal"
               sx={{
-                m: 0,
-                '& .MuiFormControlLabel-label': { fontWeight: 600, letterSpacing: 0.3 }
+                width: 78,
+                height: 78,
+                objectFit: 'contain',
+                borderRadius: 2,
+                border: `1.5px solid ${alpha(theme.palette.primary.main, 0.45)}`,
+                backgroundColor: theme.palette.common.white,
+                p: 1.25
               }}
             />
+            <Stack spacing={0.5} alignItems="center" textAlign="center">
+              <Typography variant="h5" fontWeight={800} letterSpacing={0.6}>
+                Koronadal City Library
+              </Typography>
+              <Typography variant="body2" color="text.secondary" fontWeight={600}>
+                Sign in to steward our community’s knowledge.
+              </Typography>
+            </Stack>
+          </Stack>
+
+          <Box component="form" onSubmit={handleLogin} sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            <Box>
+              <Typography variant="caption" color="text.secondary" fontWeight={700} letterSpacing={0.6} sx={{ textTransform: 'uppercase' }}>
+                Credentials
+              </Typography>
+            </Box>
+            <TextField
+              label="Username"
+              value={username}
+              onChange={e => setUsername(e.target.value)}
+              fullWidth
+              required
+              size="small"
+            />
+            <TextField
+              label="Password"
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              fullWidth
+              required
+              size="small"
+            />
+
+            <Stack direction="row" alignItems="center" justifyContent="space-between">
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    size="small"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                  />
+                }
+                label={<Typography variant="caption" fontSize={12}>Remember me</Typography>}
+                sx={{
+                  m: 0,
+                  '& .MuiFormControlLabel-label': { fontWeight: 600, letterSpacing: 0.3 }
+                }}
+              />
+              <Link
+                component="button"
+                type="button"
+                variant="body2"
+                sx={{ fontSize: 12, fontWeight: 600, letterSpacing: 0.3 }}
+                onClick={() => navigate('/forgot-password')}
+              >
+                Forgot password?
+              </Link>
+            </Stack>
+
+            {error && (
+              <Alert
+                severity="error"
+                variant="filled"
+                sx={{
+                  borderRadius: 1.5,
+                  fontSize: 13,
+                  py: 0.75
+                }}
+              >
+                {error}
+              </Alert>
+            )}
+
+            <Button
+              type="submit"
+              variant="contained"
+              color="primary"
+              fullWidth
+              disabled={loading}
+              sx={{
+                mt: 0.5,
+                fontWeight: 700,
+                letterSpacing: 0.5,
+                borderRadius: 2,
+                py: 1.1
+              }}
+            >
+              {loading ? <CircularProgress size={22} color="inherit" /> : 'Login'}
+            </Button>
+
             <Link
               component="button"
               type="button"
-              variant="body2"
-              sx={{ fontSize: 12, fontWeight: 600, letterSpacing: 0.3 }}
-              onClick={() => navigate('/forgot-password')}
+              onClick={() => setTermsOpen(true)}
+              sx={{
+                fontSize: 12,
+                fontWeight: 600,
+                letterSpacing: 0.3,
+                textAlign: 'center'
+              }}
             >
+              View Terms &amp; Conditions
             </Link>
-          </Stack>
 
-          {error && (
-            <Alert
-              severity="error"
-              variant="filled"
-              sx={{
-                borderRadius: 1,
-                fontSize: 13,
-                py: 0.5
-              }}
-            >
-              {error}
-            </Alert>
-          )}
+            <Divider sx={{ my: 1.75 }} />
 
-          <Button
-            type="submit"
-            variant="contained"
-            color="primary"
-            fullWidth
-            disabled={loading}
-            sx={{
-              mt: 0.5,
-              fontWeight: 700,
-              letterSpacing: 0.5,
-              borderRadius: 1,
-              py: 1
-            }}
-          >
-            {loading ? <CircularProgress size={22} color="inherit" /> : 'Login'}
-          </Button>
-
-          <Link
-            component="button"
-            type="button"
-            onClick={() => setTermsOpen(true)}
-            sx={{
-              fontSize: 12,
-              fontWeight: 600,
-              letterSpacing: 0.3,
-              textAlign: 'center'
-            }}
-          >
-            View Terms &amp; Conditions
-          </Link>
-
-          <Divider sx={{ my: 1.5 }} />
-
-          <Box textAlign="center">
-            <Typography variant="caption" display="block" color="text.secondary" mb={0.5} fontWeight={600} letterSpacing={0.3}>
-              Not yet registered?
-            </Typography>
-            <Button
-              fullWidth
-              variant="outlined"
-              size="small"
-              onClick={() => navigate('/register-borrower')}
-              sx={{
-                fontWeight: 700,
-                letterSpacing: 0.5,
-                borderRadius: 1,
-                py: 0.9
-              }}
-            >
-              Register as Borrower
-            </Button>
+            <Box textAlign="center">
+              <Typography variant="caption" display="block" color="text.secondary" mb={0.75} fontWeight={600} letterSpacing={0.3}>
+                Not yet registered?
+              </Typography>
+              <Button
+                fullWidth
+                variant="outlined"
+                size="small"
+                onClick={() => navigate('/register-borrower')}
+                sx={{
+                  fontWeight: 700,
+                  letterSpacing: 0.5,
+                  borderRadius: 2,
+                  py: 0.95
+                }}
+              >
+                Register as Borrower
+              </Button>
+            </Box>
           </Box>
-        </Box>
-      </Paper>
+        </Paper>
+      </Box>
+
       <TermsDialog open={termsOpen} onClose={() => setTermsOpen(false)} />
     </Box>
   );

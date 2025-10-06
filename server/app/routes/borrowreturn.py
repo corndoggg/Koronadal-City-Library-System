@@ -512,25 +512,6 @@ def list_return_transactions():
         cursor.close()
         conn.close()
 
-
-# --- Get due date for a borrow transaction (always 200) ---
-@borrowreturn_bp.route('/borrow/<int:borrow_id>/due-date', methods=['GET'])
-def get_borrow_due_date(borrow_id):
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    try:
-        cursor.execute("""
-            SELECT MAX(ReturnDate) AS ReturnDate
-            FROM ReturnTransactions
-            WHERE BorrowID=%s
-        """, (borrow_id,))
-        row = cursor.fetchone()
-        return jsonify({'BorrowID': borrow_id, 'DueDate': row['ReturnDate'] if row else None}), 200
-    finally:
-        cursor.close()
-        conn.close()
-
-
 # --- Mark borrowed item(s) as LOST (no return condition) ---
 @borrowreturn_bp.route('/lost', methods=['POST'])
 def mark_items_lost():

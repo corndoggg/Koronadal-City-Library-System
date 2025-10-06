@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request
 from ..db import get_db_connection
 from datetime import datetime
+import re
 from ..services.notifications import (
     notify_account_registration_submitted,
     notify_account_approved,
@@ -15,6 +16,9 @@ from app.services.passwords import (
 
 users_bp = Blueprint('users', __name__)
 
+USERNAME_PATTERN = re.compile(r'^[A-Za-z0-9._-]+$')
+USERNAME_MIN_LENGTH = 4
+
 def parse_date(date_str):
     if not date_str:
         return None
@@ -27,6 +31,38 @@ def parse_date(date_str):
             return datetime.strptime(date_str, "%a, %d %b %Y %H:%M:%S %Z").date()
         except ValueError:
             return None
+
+
+# --- Username availability check ---
+@users_bp.route('/users/username-available', methods=['GET'])
+def username_available():
+    username = request.args.get('username', '')
+    if username is None:
+        return jsonify({'error': 'username_required'}), 400
+
+    username = username.strip()
+    if not username:
+        return jsonify({'error': 'username_required'}), 400
+
+    if len(username) < USERNAME_MIN_LENGTH:
+        return jsonify({'available': False, 'reason': 'too_short', 'minLength': USERNAME_MIN_LENGTH}), 200
+
+    if not USERNAME_PATTERN.match(username):
+        return jsonify({'available': False, 'reason': 'invalid_format'}), 200
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT 1 FROM Users WHERE LOWER(Username) = LOWER(%s) LIMIT 1",
+            (username,),
+        )
+        exists = cursor.fetchone() is not None
+    finally:
+        cursor.close()
+        conn.close()
+
+    return jsonify({'available': not exists})
 
 # --- Add User (with Borrower or Staff) ---
 @users_bp.route('/users', methods=['POST'])

@@ -1,23 +1,26 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { formatDate } from '../../../utils/date';
 import axios from "axios";
 import {
-  Box, Typography, TextField, Tabs, Tab, Grid, Chip, Stack, InputAdornment,
+  Box, Typography, TextField, Grid, Chip, Stack, InputAdornment,
   CircularProgress, Button, Snackbar, Alert, Fab, Badge, Drawer, IconButton, Dialog,
   DialogTitle, DialogContent, DialogActions, RadioGroup, FormControlLabel, Radio,
-  Tooltip, Paper, Skeleton, MenuItem, Select, FormControl, InputLabel, Divider
+  Tooltip, Paper, Skeleton, MenuItem, Select, FormControl, Divider, Container, Card,
+  ToggleButton, ToggleButtonGroup, Pagination
 } from "@mui/material";
 import {
-  Book, Article, Search, ListAlt, Close, Visibility, FilterAlt,
-  RestartAlt, Sort, Info, Delete, Add, PictureAsPdf
+  Book, Article, Search, ListAlt, Close, FilterAlt,
+  Delete, Add, PictureAsPdf, RestartAlt
 } from "@mui/icons-material";
 import { alpha } from "@mui/material/styles";
 import DocumentPDFViewer from '../../../components/DocumentPDFViewer';
 
-const PAGE_SIZE_OPTIONS = [8, 12, 16, 24];
-const tomorrow = () => {
-  const d = new Date(); d.setDate(d.getDate() + 1);
-  return formatDate(d);
+const DEFAULT_ROWS_PER_PAGE = 8;
+const today = () => formatDate(new Date());
+
+const SEARCHABLE_KEYS_BY_TYPE = {
+  Book: ["Title", "Author", "Publisher", "ISBN", "Category", "Edition", "Description"],
+  Document: ["Title", "Author", "Category", "Department", "Classification", "Year", "Description"]
 };
 
 const BrowseLibraryPage = () => {
@@ -31,7 +34,6 @@ const BrowseLibraryPage = () => {
   const [borrowed, setBorrowed] = useState([]);
 
   // UI state
-  const [tab, setTab] = useState(0);
   const [loading, setLoading] = useState(false);
   const [borrowLoading, setBorrowLoading] = useState(false);
   const [toast, setToast] = useState({ open: false, message: "", severity: "success" });
@@ -42,8 +44,9 @@ const BrowseLibraryPage = () => {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("title_asc");
   const [onlyAvailable, setOnlyAvailable] = useState(false);
+  const [resourceFilter, setResourceFilter] = useState('all');
   const [page, setPage] = useState(1);
-  const [rowsPerPage, setRowsPerPage] = useState(PAGE_SIZE_OPTIONS[0]);
+  const rowsPerPage = DEFAULT_ROWS_PER_PAGE;
 
   // Borrow form
   const [purpose, setPurpose] = useState("");
@@ -58,11 +61,13 @@ const BrowseLibraryPage = () => {
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
   const [pdfUrl, setPdfUrl] = useState('');
 
-  useEffect(() => { fetchData(); fetchBorrowed(); }, []);
-  useEffect(() => { setPage(1); }, [tab, search, sort, onlyAvailable, rowsPerPage]);
-  useEffect(() => { setPage(1); }, [tab, search, sort, onlyAvailable, rowsPerPage]);
+  const handleResourceFilterChange = (_, value) => {
+    if (value !== null) {
+      setResourceFilter(value);
+    }
+  };
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const [booksRes, docsRes] = await Promise.all([
@@ -91,15 +96,18 @@ const BrowseLibraryPage = () => {
       setBooks([]); setDocuments([]);
     }
     setLoading(false);
-  };
+  }, [API_BASE]);
 
-  const fetchBorrowed = async () => {
+  const fetchBorrowed = useCallback(async () => {
     if (!borrowerId) return;
     try {
       const res = await axios.get(`${API_BASE}/borrow/borrower/${borrowerId}`);
       setBorrowed(res.data || []);
     } catch { setBorrowed([]); }
-  };
+  }, [API_BASE, borrowerId]);
+
+  useEffect(() => { fetchData(); fetchBorrowed(); }, [fetchData, fetchBorrowed]);
+  useEffect(() => { setPage(1); }, [search, sort, onlyAvailable, resourceFilter]);
 
   // Add status helpers (ignore Rejected and Returned for occupancy)
   const txStatus = (tx) => {
@@ -139,6 +147,9 @@ const BrowseLibraryPage = () => {
 
   // Add actions
   const handleAddToCart = (item, isBook) => {
+    if (cart.length >= 3) {
+      return notify("Borrow limit reached (3 items).", "warning");
+    }
     if (isBook) {
       const available = (item.inventory || []).find(inv => (inv.availability || inv.Availability) === "Available");
       if (!available) return notify("No available copy.", "info");
@@ -151,6 +162,10 @@ const BrowseLibraryPage = () => {
   };
 
   const handleConfirmAddDoc = () => {
+    if (cart.length >= 3) {
+      setDocTypeDialogOpen(false);
+      return notify("Borrow limit reached (3 items).", "warning");
+    }
     if (!selectedDoc) return;
     const types = getAvailableDocTypes(selectedDoc);
   if (!types.length) return notify("No copies available.", "info");
@@ -234,7 +249,7 @@ const BrowseLibraryPage = () => {
     return types;
   };
 
-  const filterItems = (list, searchableKeys) => {
+  const filterItems = useCallback((list) => {
     const q = (search || '').trim().toLowerCase();
     if (!q) return list;
 
@@ -243,13 +258,14 @@ const BrowseLibraryPage = () => {
       return String(val).toLowerCase().includes(q);
     };
 
-    return (list || []).filter(item => searchableKeys.some(k => matchValue(item?.[k])));
-
-    return (list || []).filter(item => keys.some(k => matchValue(item?.[k])));
-  };
+    return (list || []).filter(item => {
+      const keys = SEARCHABLE_KEYS_BY_TYPE[item.type] || [];
+      return keys.some(k => matchValue(item?.[k]));
+    });
+  }, [search]);
 
   // Sorting
-  const sortItems = (items, isBook) => {
+  const sortItems = useCallback((items) => {
     return [...items].sort((a,b) => {
       const avA = (a.inventory || []).filter(inv => (inv.availability || inv.Availability) === "Available").length;
       const avB = (b.inventory || []).filter(inv => (inv.availability || inv.Availability) === "Available").length;
@@ -263,26 +279,53 @@ const BrowseLibraryPage = () => {
         default: return 0;
       }
     });
-  };
+  }, [sort]);
 
-  // Base list
-  const baseList = tab === 0
-    ? filterItems(books, ["Title","Author","Publisher","ISBN","Category","Edition","Description"])
-    : filterItems(documents, ["Title","Author","Category","Department","Classification","Year","Description"]);
+  const catalog = useMemo(
+    () => [
+      ...(books || []).map(book => ({ ...book, type: 'Book' })),
+      ...(documents || []).map(doc => ({ ...doc, type: 'Document' }))
+    ],
+    [books, documents]
+  );
 
-  const afterAvail = onlyAvailable
-    ? baseList.filter(i =>
-        tab === 0
-          ? (i.inventory||[]).some(inv => (inv.availability||inv.Availability)==="Available")
-          : getAvailableDocTypes(i).length > 0
-      )
-    : baseList;
+  const filteredCatalog = useMemo(() => {
+    let list = catalog;
+    if (resourceFilter !== 'all') {
+      const typeValue = resourceFilter === 'book' ? 'Book' : 'Document';
+      list = list.filter(item => item.type === typeValue);
+    }
 
-  const finalList = sortItems(afterAvail, tab === 0);
+    list = filterItems(list);
+
+    if (onlyAvailable) {
+      list = list.filter(item =>
+        item.type === 'Book'
+          ? (item.inventory || []).some(inv => (inv.availability || inv.Availability) === 'Available')
+          : getAvailableDocTypes(item).length > 0
+      );
+    }
+
+    return sortItems(list);
+  }, [catalog, resourceFilter, onlyAvailable, filterItems, sortItems]);
 
   // Pagination
-  const totalPages = Math.max(1, Math.ceil(finalList.length / rowsPerPage));
-  const paged = finalList.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+  const totalPages = Math.max(1, Math.ceil(filteredCatalog.length / rowsPerPage));
+  const paged = filteredCatalog.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
+  const headerStats = [
+    { label: 'Books catalogued', value: books.length },
+    { label: 'Documents available', value: documents.length },
+    { label: 'Items queued', value: cart.length }
+  ];
+
+  const emptyLabel = resourceFilter === 'document' ? 'documents' : resourceFilter === 'book' ? 'books' : 'items';
 
   const disabledReason = (item, isBook) => {
     const availableCount = (item.inventory || []).filter(inv => (inv.availability || inv.Availability) === "Available").length;
@@ -329,359 +372,417 @@ const BrowseLibraryPage = () => {
     </Typography>
   ) : null;
 
-  const ClearFiltersButton = () => (
-    <Button
-      size="small"
-      variant="text"
-      startIcon={<RestartAlt fontSize="small" />}
-      onClick={() => { setSearch(""); setOnlyAvailable(false); setSort("title_asc"); }}
-      sx={{ fontWeight:600 }}
-    >
-      Reset
-    </Button>
-  );
-
   return (
-    <Box p={3} pb={10} sx={{ minHeight:'100vh', bgcolor:'background.default' }}>
-      {/* Toolbar */}
-      <Paper
-        elevation={0}
-        sx={{
-          p:2,
-          mb:3,
-          border: theme => `2px solid ${theme.palette.divider}`,
-          borderRadius:1,
-          display:'flex',
-          flexWrap:'wrap',
-          gap:1.5,
-          alignItems:'center',
-          bgcolor:'background.paper'
-        }}
-      >
-        <Box mr={2}>
-          <Typography fontWeight={800} fontSize={18} lineHeight={1}>Browse Library</Typography>
-          <Typography variant="caption" color="text.secondary" fontWeight={600}>
-            Discover & queue items to borrow
-          </Typography>
-        </Box>
-
-        <TextField
-          placeholder="Search title, author, category, publisher, ISBN..."
-          size="small"
-          value={search}
-          onChange={e=>setSearch(e.target.value)}
-          InputProps={{
-            startAdornment:<InputAdornment position="start"><Search fontSize="small" /></InputAdornment>,
-            sx:{ borderRadius:1 }
-          }}
-          sx={{ width:320, maxWidth:'100%' }}
-        />
-
-        <FormControl size="small" sx={{ width:170 }}>
-          <InputLabel id="sort-select-label">Sort</InputLabel>
-            <Select
-              labelId="sort-select-label"
-              id="sort-select"
-              label="Sort"
-              value={sort}
-              onChange={e=>setSort(e.target.value)}
-              sx={{ borderRadius:1 }}
-            >
-              <MenuItem value="title_asc">Title A-Z</MenuItem>
-              <MenuItem value="title_desc">Title Z-A</MenuItem>
-              <MenuItem value="avail_desc">Availability High-Low</MenuItem>
-              <MenuItem value="avail_asc">Availability Low-High</MenuItem>
-              <MenuItem value="year_desc">Year New-Old</MenuItem>
-              <MenuItem value="year_asc">Year Old-New</MenuItem>
-            </Select>
-        </FormControl>
-
-        <Chip
-          icon={<FilterAlt fontSize="small" />}
-          label={onlyAvailable ? "Only Available" : "All Copies"}
-          onClick={()=>setOnlyAvailable(o=>!o)}
-          size="small"
-          color={onlyAvailable ? "success" : "default"}
-          sx={{ fontWeight:600, borderRadius:0.75 }}
-        />
-
-        <ClearFiltersButton />
-
-        <Tabs
-          value={tab}
-          onChange={(_,v)=>setTab(v)}
-          sx={{
-            ml:'auto',
-            '& .MuiTabs-flexContainer':{ gap:1 },
-            '& .MuiTab-root':{
-              minHeight:40,
-              border: theme => `1.5px solid ${theme.palette.divider}`,
-              borderRadius:1,
-              px:2,
-              textTransform:'none',
-              fontWeight:600
-            },
-            '& .Mui-selected':{
-              borderColor: theme=> theme.palette.primary.main,
-              color:'primary.main !important'
-            }
-          }}
-        >
-          <Tab label={`Books (${books.length})`} icon={<Book fontSize="small" />} iconPosition="start" />
-          <Tab label={`Documents (${documents.length})`} icon={<Article fontSize="small" />} iconPosition="start" />
-        </Tabs>
-      </Paper>
-
-      {/* Pagination Header */}
-      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb:1 }}>
-        <Typography variant="caption" fontWeight={600} color="text.secondary">
-          Showing {finalList.length ? ((page-1)*rowsPerPage+1) : 0}
-          {" - "}
-          {Math.min(page*rowsPerPage, finalList.length)} of {finalList.length}
-        </Typography>
-        <Divider flexItem orientation="vertical" />
-        <FormControl size="small">
-          <Select
-            value={rowsPerPage}
-            onChange={e=>setRowsPerPage(e.target.value)}
-            sx={{ height:32, borderRadius:1 }}
+    <Box sx={{ minHeight: '100vh', bgcolor: theme => alpha(theme.palette.background.default, 0.85) }}>
+      <Container maxWidth="xl" sx={{ py: { xs: 0, md: 0 } }}>
+        <Stack spacing={{ xs: 1, md: 1 }}>
+          <Paper
+            elevation={0}
+            sx={{
+              position: 'relative',
+              borderRadius: 4,
+              overflow: 'hidden',
+              backgroundImage: theme => `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.9)}, ${alpha(theme.palette.secondary.main, 0.82)})`,
+              color: 'common.white',
+              px: { xs: 1, md: 3 },
+              py: { xs: 0, md: 2 }
+            }}
           >
-            {PAGE_SIZE_OPTIONS.map(opt => <MenuItem key={opt} value={opt}>{opt}/page</MenuItem>)}
-          </Select>
-        </FormControl>
-        <Stack direction="row" spacing={0.5} ml="auto">
-          <Button
-            size="small"
-            variant="outlined"
-            disabled={page===1}
-            onClick={()=>setPage(1)}
-            sx={{ borderRadius:0.75 }}
-          >First</Button>
-          <Button
-            size="small"
-            variant="outlined"
-            disabled={page===1}
-            onClick={()=>setPage(p=>Math.max(1,p-1))}
-            sx={{ borderRadius:0.75 }}
-          >Prev</Button>
-          <Button
-            size="small"
-            variant="outlined"
-            disabled={page===totalPages}
-            onClick={()=>setPage(p=>Math.min(totalPages,p+1))}
-            sx={{ borderRadius:0.75 }}
-          >Next</Button>
-          <Button
-            size="small"
-            variant="outlined"
-            disabled={page===totalPages}
-            onClick={()=>setPage(totalPages)}
-            sx={{ borderRadius:0.75 }}
-          >Last</Button>
-        </Stack>
-      </Stack>
-
-      {/* Results */}
-      {loading ? (
-        <Grid container spacing={2}>
-          {Array.from({ length: rowsPerPage }).map((_,i)=>(
-            <Grid item xs={12} sm={6} md={4} lg={3} key={i}>
-              <Paper sx={{
-                p:2,
-                border: theme => `2px solid ${theme.palette.divider}`,
-                borderRadius:1
-              }}>
-                <Skeleton variant="rectangular" height={90} sx={{ mb:1, borderRadius:0.75 }} />
-                <Skeleton width="70%" />
-                <Skeleton width="50%" />
-                <Skeleton width="90%" />
-                <Skeleton variant="rectangular" height={32} sx={{ mt:2, borderRadius:0.5 }} />
-              </Paper>
-            </Grid>
-          ))}
-        </Grid>
-      ) : (
-        <Grid container spacing={2}>
-          {paged.map(item => {
-            const isBook = tab === 0;
-            const availableCount = (item.inventory || []).filter(inv => (inv.availability || inv.Availability) === "Available").length;
-            const docTypes = !isBook ? getAvailableDocTypes(item) : [];
-            const reason = disabledReason(item, isBook);
-            const showDigitalView = !isBook && (item.File_Path || item.file_path) && (item.Sensitivity || item.sensitivity) === "Public";
-            return (
-              <Grid item xs={12} sm={6} md={4} lg={3} key={item.Book_ID || item.Document_ID}>
-                <Paper
-                  elevation={0}
-                  sx={{
-                    position:'relative',
-                    height:'100%',
-                    display:'flex',
-                    flexDirection:'column',
-                    p:1.75,
-                    border: theme => `2px solid ${theme.palette.divider}`,
-                    borderRadius:1,
-                    bgcolor:'background.paper',
-                    transition:'border-color .2s, box-shadow .2s',
-                    '&:hover':{
-                      borderColor: theme => theme.palette.primary.main,
-                      boxShadow: theme => `0 4px 14px ${alpha(theme.palette.primary.main,0.15)}`
-                    }
-                  }}
-                >
-                  {reason && (
-                    <Box
-                      sx={{
-                        position:'absolute',
-                        inset:0,
-                        bgcolor: theme => alpha(theme.palette.background.default,0.68),
-                        backdropFilter:'blur(1px)',
-                        display:'flex',
-                        alignItems:'center',
-                        justifyContent:'center',
-                        borderRadius:1,
-                        textAlign:'center',
-                        px:1
-                      }}
-                    >
-                      <Typography fontSize={12} fontWeight={700} color="text.secondary">
-                        {reason}
-                      </Typography>
-                    </Box>
-                  )}
-
-                  {/* Placeholder image using placehold.co with encoded title */}
-                  <Box
-                    component="img"
-                    src={`https://placehold.co/400x200?text=${encodeURIComponent((item.Title||'Untitled').slice(0,40))}`}
-                    alt={item.Title || 'Untitled'}
-                    loading="lazy"
+            <Stack
+              spacing={{ xs: 1, md: 3 }}
+              direction={{ xs: 'column', md: 'row' }}
+              justifyContent="space-between"
+              alignItems={{ xs: 'flex-start', md: 'center' }}
+            >
+              <Box maxWidth={{ md: '60%' }}>
+                <Typography variant="overline" sx={{ color: alpha('#fff', 0.7), fontWeight: 700, letterSpacing: 1.2 }}>
+                  Borrower experience
+                </Typography>
+                <Typography variant="h3" fontWeight={800} sx={{ lineHeight: 1.1, mt: 1 }}>
+                  Browse the Koronadal collections
+                </Typography>
+                <Typography variant="body1" sx={{ mt: 1.5, opacity: 0.86 }}>
+                  Discover books and city documents, manage your borrowing queue, and keep tabs on availability in one high-performance workspace.
+                </Typography>
+              </Box>
+              <Stack direction={{ xs: 'row', sm: 'column', md: 'row' }} spacing={1} flexWrap="wrap">
+                {headerStats.map(stat => (
+                  <Paper
+                    key={stat.label}
+                    elevation={0}
                     sx={{
-                      width:'100%',
-                      height:110,
-                      objectFit:'cover',
-                      borderRadius:0.75,
-                      mb:1,
-                      border: theme => `1px solid ${theme.palette.divider}`
-                    }}
-                  />
-                  <Stack direction="row" alignItems="flex-start" spacing={1} mb={0.5}>
-                    <Box flexGrow={1} minWidth={0}>
-                      <Typography
-                        fontWeight={700}
-                        fontSize={14}
-                        noWrap
-                        title={item.Title}
-                        sx={{ lineHeight:1.15 }}
-                      >
-                        {item.Title}
-                      </Typography>
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        noWrap
-                        title={item.Author || item.Publisher}
-                      >
-                        {(item.Author || item.Publisher || "")}
-                      </Typography>
-                    </Box>
-                    <Chip
-                      label={isBook ? "BOOK" : "DOC"}
-                      size="small"
-                      color={isBook ? "primary" : "secondary"}
-                      sx={{ fontWeight:700, borderRadius:0.5, flexShrink: 0 }}
-                    />
-                  </Stack>
-
-                  <Divider sx={{ my:1 }} />
-
-                  <Box flexGrow={1}>
-                    {renderDetails(item, isBook)}
-                  </Box>
-
-                  <Stack direction="row" spacing={0.5} mt={1.25} flexWrap="wrap">
-                    <Chip
-                      size="small"
-                      label={`Available: ${availableCount}`}
-                      color={availableCount > 0 ? "success" : "default"}
-                      sx={{ fontSize:11, fontWeight:600 }}
-                    />
-                    {!isBook && docTypes.map(t=>(
-                      <Chip
-                        key={t}
-                        size="small"
-                        label={t}
-                        variant="outlined"
-                        color="info"
-                        sx={{ fontSize:11, fontWeight:600 }}
-                      />
-                    ))}
-                    {!isBook && showDigitalView && (
-                      <Tooltip title="View digital preview">
-                        <IconButton
-                          size="small"
-                          onClick={()=>handleViewPdf(item.File_Path || item.file_path)}
-                          sx={{
-                            ml:'auto',
-                            border: theme => `1px solid ${theme.palette.divider}`,
-                            borderRadius:0.75
-                          }}
-                        >
-                          <PictureAsPdf fontSize="inherit" />
-                        </IconButton>
-                      </Tooltip>
-                    )}
-                  </Stack>
-
-                  <Button
-                    fullWidth
-                    variant="contained"
-                    size="small"
-                    disabled={!!reason || borrowLoading}
-                    onClick={()=>handleAddToCart(item, isBook)}
-                    startIcon={<Add fontSize="small" />}
-                    sx={{
-                      mt:1.25,
-                      fontWeight:600,
-                      borderRadius:0.75,
-                      boxShadow:'none'
+                      px: 1.75,
+                      py: 0.75,
+                      borderRadius: 2,
+                      bgcolor: alpha('#000', 0.18),
+                      border: `1px solid ${alpha('#fff', 0.22)}`,
+                      minWidth: 150
                     }}
                   >
-                    {reason || "Add to Queue"}
-                  </Button>
-                </Paper>
-              </Grid>
-            );
-          })}
-          {!paged.length && (
-            <Grid item xs={12}>
-              <Paper
+                    <Typography variant="caption" sx={{ color: alpha('#fff', 0.72), fontWeight: 600, letterSpacing: 0.6 }}>
+                      {stat.label}
+                    </Typography>
+                    <Typography variant="h5" fontWeight={800} sx={{ mt: 0.5 }}>
+                      {stat.value}
+                    </Typography>
+                  </Paper>
+                ))}
+              </Stack>
+            </Stack>
+          </Paper>
+
+          <Card
+            elevation={0}
+            sx={{
+              borderRadius: 4,
+              border: theme => `1px solid ${alpha(theme.palette.divider, 0.6)}`,
+              backdropFilter: 'blur(8px)',
+              backgroundColor: theme => alpha(theme.palette.background.paper, 0.92),
+              p: { xs: 2.5, md: 3 },
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 2.5
+            }}
+          >
+            <Stack
+              direction={{ xs: 'column', lg: 'row' }}
+              spacing={2}
+              alignItems={{ xs: 'stretch', lg: 'center' }}
+            >
+              <TextField
+                placeholder="Search title, author, category, publisher, ISBN..."
+                fullWidth
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Search fontSize="small" />
+                    </InputAdornment>
+                  ),
+                  sx: { borderRadius: 2 }
+                }}
+              />
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={1.5}
+                alignItems={{ xs: 'stretch', sm: 'center' }}
+                sx={{ width: { xs: '100%', sm: 'auto' } }}
+              >
+                <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 180 } }}>
+                  <Select
+                    value={sort}
+                    onChange={e => setSort(e.target.value)}
+                    displayEmpty
+                    sx={{ borderRadius: 2 }}
+                  >
+                    <MenuItem value="title_asc">Title A–Z</MenuItem>
+                    <MenuItem value="title_desc">Title Z–A</MenuItem>
+                    <MenuItem value="avail_desc">Availability High–Low</MenuItem>
+                    <MenuItem value="avail_asc">Availability Low–High</MenuItem>
+                    <MenuItem value="year_desc">Year New–Old</MenuItem>
+                    <MenuItem value="year_asc">Year Old–New</MenuItem>
+                  </Select>
+                </FormControl>
+                <Chip
+                  icon={<FilterAlt fontSize="small" />}
+                  label={onlyAvailable ? 'Only Available' : 'All Copies'}
+                  onClick={() => setOnlyAvailable(o => !o)}
+                  color={onlyAvailable ? 'success' : 'default'}
+                  sx={{ fontWeight: 600, borderRadius: 1.5, px: 1.25 }}
+                />
+                <Button
+                  size="small"
+                  startIcon={<RestartAlt fontSize="small" />}
+                  onClick={() => { setSearch(''); setOnlyAvailable(false); setSort('title_asc'); }}
+                  sx={{ fontWeight: 600, borderRadius: 1.5 }}
+                >
+                  Reset
+                </Button>
+              </Stack>
+            </Stack>
+
+            <Divider />
+
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={2}
+              alignItems={{ xs: 'flex-start', sm: 'center' }}
+              justifyContent="space-between"
+            >
+              <Typography variant="caption" sx={{ fontWeight: 700, letterSpacing: 0.6, color: 'text.secondary' }}>
+                Resource filter
+              </Typography>
+              <ToggleButtonGroup
+                value={resourceFilter}
+                exclusive
+                onChange={handleResourceFilterChange}
                 sx={{
-                  p:6,
-                  textAlign:'center',
-                  border: theme => `2px dashed ${theme.palette.divider}`,
-                  borderRadius:1
+                  backgroundColor: theme => alpha(theme.palette.background.default, 0.6),
+                  borderRadius: 2,
+                  p: 0.5,
+                  '& .MuiToggleButton-root': {
+                    border: 'none',
+                    borderRadius: 1.5,
+                    px: 2.5,
+                    py: 1,
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    gap: 0.5
+                  },
+                  '& .Mui-selected': {
+                    backgroundColor: theme => alpha(theme.palette.primary.main, 0.12),
+                    color: 'primary.main'
+                  }
                 }}
               >
-                <Typography color="text.secondary" fontWeight={600}>
-                  No {tab===0 ? "books" : "documents"} match filters.
-                </Typography>
-              </Paper>
+                <ToggleButton value="all">
+                  All items&nbsp;
+                  <Typography component="span" variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>
+                    ({catalog.length})
+                  </Typography>
+                </ToggleButton>
+                <ToggleButton value="book">
+                  <Book fontSize="small" />
+                  Books&nbsp;
+                  <Typography component="span" variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>
+                    ({books.length})
+                  </Typography>
+                </ToggleButton>
+                <ToggleButton value="document">
+                  <Article fontSize="small" />
+                  Documents&nbsp;
+                  <Typography component="span" variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>
+                    ({documents.length})
+                  </Typography>
+                </ToggleButton>
+              </ToggleButtonGroup>
+            </Stack>
+          </Card>
+
+          {loading ? (
+            <Grid container spacing={2.5}>
+              {Array.from({ length: rowsPerPage }).map((_, i) => (
+                <Grid item xs={12} sm={6} md={4} lg={3} key={i}>
+                  <Paper
+                    sx={{
+                      p: 2,
+                      border: theme => `1px solid ${alpha(theme.palette.divider, 0.7)}`,
+                      borderRadius: 3
+                    }}
+                  >
+                    <Skeleton variant="rectangular" height={110} sx={{ mb: 1.5, borderRadius: 2 }} />
+                    <Skeleton width="70%" />
+                    <Skeleton width="50%" />
+                    <Skeleton width="90%" />
+                    <Skeleton variant="rectangular" height={34} sx={{ mt: 2, borderRadius: 1 }} />
+                  </Paper>
+                </Grid>
+              ))}
+            </Grid>
+          ) : (
+            <Grid container spacing={2.5}>
+              {paged.map(item => {
+                const isBook = item.type === 'Book';
+                const availableCount = (item.inventory || []).filter(inv => (inv.availability || inv.Availability) === "Available").length;
+                const docTypes = !isBook ? getAvailableDocTypes(item) : [];
+                const reason = disabledReason(item, isBook);
+                const showDigitalView = !isBook && (item.File_Path || item.file_path) && (item.Sensitivity || item.sensitivity) === "Public";
+                return (
+                  <Grid item xs={12} sm={6} md={4} lg={3} key={`${item.type}-${item.Book_ID || item.Document_ID}`}>
+                    <Paper
+                      elevation={0}
+                      sx={{
+                        position: 'relative',
+                        height: '100%',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        p: 2,
+                        border: theme => `1px solid ${alpha(theme.palette.divider, 0.7)}`,
+                        borderRadius: 3,
+                        bgcolor: 'background.paper',
+                        transition: 'border-color .2s, box-shadow .2s',
+                        '&:hover': {
+                          borderColor: theme => theme.palette.primary.main,
+                          boxShadow: theme => `0 8px 26px ${alpha(theme.palette.primary.main, 0.18)}`
+                        }
+                      }}
+                    >
+                      {reason && (
+                        <Box
+                          sx={{
+                            position: 'absolute',
+                            inset: 0,
+                            bgcolor: theme => alpha(theme.palette.background.default, 0.74),
+                            backdropFilter: 'blur(1px)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            borderRadius: 3,
+                            textAlign: 'center',
+                            px: 2
+                          }}
+                        >
+                          <Typography fontSize={12} fontWeight={700} color="text.secondary">
+                            {reason}
+                          </Typography>
+                        </Box>
+                      )}
+
+                      <Box
+                        component="img"
+                        src={`https://placehold.co/400x200?text=${encodeURIComponent((item.Title || 'Untitled').slice(0, 40))}`}
+                        alt={item.Title || 'Untitled'}
+                        loading="lazy"
+                        sx={{
+                          width: '100%',
+                          height: 120,
+                          objectFit: 'cover',
+                          borderRadius: 2,
+                          mb: 1.5,
+                          border: theme => `1px solid ${alpha(theme.palette.divider, 0.7)}`
+                        }}
+                      />
+                      <Stack direction="row" alignItems="flex-start" spacing={1} mb={0.5}>
+                        <Box flexGrow={1} minWidth={0}>
+                          <Typography
+                            fontWeight={700}
+                            fontSize={14}
+                            noWrap
+                            title={item.Title}
+                            sx={{ lineHeight: 1.2 }}
+                          >
+                            {item.Title}
+                          </Typography>
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            noWrap
+                            title={item.Author || item.Publisher}
+                          >
+                            {item.Author || item.Publisher || ''}
+                          </Typography>
+                        </Box>
+                        <Chip
+                          label={isBook ? 'BOOK' : 'DOC'}
+                          size="small"
+                          color={isBook ? 'primary' : 'secondary'}
+                          sx={{ fontWeight: 700, borderRadius: 1, flexShrink: 0 }}
+                        />
+                      </Stack>
+
+                      <Divider sx={{ my: 1 }} />
+
+                      <Box flexGrow={1}>
+                        {renderDetails(item, isBook)}
+                      </Box>
+
+                      <Stack direction="row" spacing={0.75} mt={1.5} flexWrap="wrap">
+                        <Chip
+                          size="small"
+                          label={`Available: ${availableCount}`}
+                          color={availableCount > 0 ? 'success' : 'default'}
+                          sx={{ fontSize: 11, fontWeight: 600, borderRadius: 1 }}
+                        />
+                        {!isBook && docTypes.map(t => (
+                          <Chip
+                            key={t}
+                            size="small"
+                            label={t}
+                            variant="outlined"
+                            color="info"
+                            sx={{ fontSize: 11, fontWeight: 600, borderRadius: 1 }}
+                          />
+                        ))}
+                        {!isBook && showDigitalView && (
+                          <Tooltip title="View digital preview">
+                            <IconButton
+                              size="small"
+                              onClick={() => handleViewPdf(item.File_Path || item.file_path)}
+                              sx={{
+                                ml: 'auto',
+                                border: theme => `1px solid ${theme.palette.divider}`,
+                                borderRadius: 1.5
+                              }}
+                            >
+                              <PictureAsPdf fontSize="inherit" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                      </Stack>
+
+                      <Button
+                        fullWidth
+                        variant="contained"
+                        size="small"
+                        disabled={!!reason || borrowLoading}
+                        onClick={() => handleAddToCart(item, isBook)}
+                        startIcon={<Add fontSize="small" />}
+                        sx={{
+                          mt: 1.5,
+                          fontWeight: 600,
+                          borderRadius: 1.5,
+                          boxShadow: 'none'
+                        }}
+                      >
+                        {reason || 'Add to Queue'}
+                      </Button>
+                    </Paper>
+                  </Grid>
+                );
+              })}
+              {!paged.length && (
+                <Grid item xs={12}>
+                  <Paper
+                    sx={{
+                      p: 6,
+                      textAlign: 'center',
+                      border: theme => `1px dashed ${alpha(theme.palette.divider, 0.8)}`,
+                      borderRadius: 3,
+                      bgcolor: theme => alpha(theme.palette.background.paper, 0.7)
+                    }}
+                  >
+                    <Typography color="text.secondary" fontWeight={600}>
+                      No {emptyLabel} match the current filters.
+                    </Typography>
+                  </Paper>
+                </Grid>
+              )}
             </Grid>
           )}
-        </Grid>
-      )}
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1.5}
+            alignItems="center"
+            justifyContent="space-between"
+          >
+            <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>
+              Page {Math.min(page, totalPages)} of {totalPages}
+            </Typography>
+            <Pagination
+              count={totalPages}
+              page={Math.min(page, totalPages)}
+              onChange={(_, value) => setPage(value)}
+              shape="rounded"
+              color="primary"
+              siblingCount={1}
+              boundaryCount={1}
+            />
+          </Stack>
+        </Stack>
+      </Container>
 
       {/* Floating Cart */}
       <Tooltip title="Borrow Queue">
         <Fab
           color="primary"
-          onClick={()=>setCartOpen(true)}
+          onClick={() => setCartOpen(true)}
           sx={{
-            position:'fixed',
-            bottom:32,
-            right:32,
-            borderRadius:1,
-            boxShadow:'0 4px 16px rgba(0,0,0,0.25)'
+            position: 'fixed',
+            bottom: 32,
+            right: 32,
+            borderRadius: 2,
+            boxShadow: '0 12px 32px rgba(0,0,0,0.22)'
           }}
         >
           <Badge badgeContent={cart.length} color="error">
@@ -759,10 +860,10 @@ const BrowseLibraryPage = () => {
                     <IconButton
                       size="small"
                       color="error"
-                      onClick={()=>handleRemoveFromCart(i)}
+                      onClick={() => handleRemoveFromCart(i)}
                       sx={{
-                        border: theme => `1px solid ${alpha('#f44336',.4)}`,
-                        borderRadius:0.75
+                        border: `1px solid ${alpha('#f44336', 0.4)}`,
+                        borderRadius: 0.75
                       }}
                     >
                       <Close fontSize="inherit" />
@@ -791,7 +892,7 @@ const BrowseLibraryPage = () => {
                 size="small"
                 value={returnDate || ""}
                 onChange={e=>setReturnDate(e.target.value)}
-                inputProps={{ min: tomorrow() }}
+                inputProps={{ min: today() }}
                 InputLabelProps={{ shrink: true }}
                 fullWidth
               />

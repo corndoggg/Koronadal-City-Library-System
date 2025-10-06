@@ -1,57 +1,11 @@
 import os
 from flask import Blueprint, jsonify, request, current_app, send_from_directory, send_file, abort
 from werkzeug.utils import secure_filename
-from ..services.system import (
-    snapshot,
-    get_cpu,
-    get_memory,
-    get_disks,
-    get_network,
-    get_system,
-)
 from ..services.backup import create_backup, list_backups, get_backup_dir
 from ..services.settings import load_settings, save_settings  # added
 from ..services.image_pdf import images_to_pdf, get_uploads_dir, get_generated_dir, _is_allowed_image  # added
 
 systems_bp = Blueprint("systems", __name__)
-
-def _get_float(arg: str, default: float) -> float:
-    try:
-        return float(request.args.get(arg, default))
-    except (TypeError, ValueError):
-        return default
-
-@systems_bp.route("/system/health", methods=["GET"])
-def health():
-    return jsonify({"status": "ok"}), 200
-
-@systems_bp.route("/system/info", methods=["GET"])
-def system_info():
-    return jsonify(get_system()), 200
-
-@systems_bp.route("/system/cpu", methods=["GET"])
-def system_cpu():
-    interval = _get_float("interval", 0.1)
-    return jsonify(get_cpu(interval=interval)), 200
-
-@systems_bp.route("/system/memory", methods=["GET"])
-def system_memory():
-    return jsonify(get_memory()), 200
-
-@systems_bp.route("/system/disks", methods=["GET"])
-def system_disks():
-    return jsonify(get_disks()), 200
-
-@systems_bp.route("/system/network", methods=["GET"])
-def system_network():
-    sample = _get_float("sample", 0.0)  # seconds to measure throughput
-    return jsonify(get_network(sample_seconds=sample)), 200
-
-@systems_bp.route("/system/snapshot", methods=["GET"])
-def system_snapshot():
-    cpu_interval = _get_float("cpu_interval", 0.1)
-    net_sample = _get_float("net_sample", 0.0)
-    return jsonify(snapshot(cpu_interval=cpu_interval, net_sample=net_sample)), 200
 
 @systems_bp.route("/system/backup", methods=["POST"])
 def system_backup():
