@@ -1,3 +1,9 @@
 {
-  "fine": 10
+  "fine": 10,
+  "borrow_limit": 3,
+  "auto_backup_enabled": true,
+  "auto_backup_time": "09:36",
+  "auto_backup_days": [
+    "Tue"
+  ]
 }

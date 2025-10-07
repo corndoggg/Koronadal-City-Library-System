@@ -1,15 +1,17 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { loadSystemSettings, saveSystemSettings as apiSave } from '../config/systemSettings';
 
+const defaultSettings = { fine: 5, borrow_limit: 3, _source: 'default' };
+
 const Ctx = createContext({
-  settings: { fine: 5, _source: 'default' },
+  settings: defaultSettings,
   loading: true,
   refresh: async () => {},
   save: async () => {},
 });
 
 export function SystemSettingsProvider({ children }) {
-  const [settings, setSettings] = useState({ fine: 5, _source: 'default' });
+  const [settings, setSettings] = useState(() => ({ ...defaultSettings }));
   const [loading, setLoading] = useState(true);
 
   const refresh = async () => {

@@ -66,6 +66,68 @@ def update_system_settings():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@systems_bp.route("/system/settings/borrow-limit", methods=["GET"])
+def get_borrow_limit_setting():
+    settings = load_settings()
+    return jsonify({"borrow_limit": settings.get("borrow_limit")}), 200
+
+@systems_bp.route("/system/settings/borrow-limit", methods=["POST"])
+def update_borrow_limit_setting():
+    data = request.get_json(silent=True) or {}
+    if "borrow_limit" not in data:
+        return jsonify({"error": "Missing borrow_limit"}), 400
+    try:
+        limit_val = int(data["borrow_limit"])
+        if limit_val <= 0:
+            raise ValueError()
+    except Exception:
+        return jsonify({"error": "borrow_limit must be a positive integer"}), 400
+
+    saved = save_settings({"borrow_limit": limit_val})
+    return jsonify({"borrow_limit": saved.get("borrow_limit")}), 200
+
+
+@systems_bp.route("/system/settings/backup-schedule", methods=["GET"])
+def get_backup_schedule():
+    settings = load_settings()
+    return (
+        jsonify(
+            {
+                "auto_backup_enabled": settings.get("auto_backup_enabled"),
+                "auto_backup_time": settings.get("auto_backup_time"),
+                "auto_backup_days": settings.get("auto_backup_days"),
+            }
+        ),
+        200,
+    )
+
+
+@systems_bp.route("/system/settings/backup-schedule", methods=["POST"])
+def update_backup_schedule():
+    data = request.get_json(silent=True) or {}
+    payload = {}
+    if "auto_backup_enabled" in data:
+        payload["auto_backup_enabled"] = data["auto_backup_enabled"]
+    if "auto_backup_time" in data:
+        payload["auto_backup_time"] = data["auto_backup_time"]
+    if "auto_backup_days" in data:
+        payload["auto_backup_days"] = data["auto_backup_days"]
+
+    if not payload:
+        return jsonify({"error": "No schedule fields provided"}), 400
+
+    saved = save_settings(payload)
+    return (
+        jsonify(
+            {
+                "auto_backup_enabled": saved.get("auto_backup_enabled"),
+                "auto_backup_time": saved.get("auto_backup_time"),
+                "auto_backup_days": saved.get("auto_backup_days"),
+            }
+        ),
+        200,
+    )
+
 @systems_bp.route("/system/image-to-pdf", methods=["POST"])
 def system_image_to_pdf():
     """
@@ -85,7 +147,10 @@ def system_image_to_pdf():
         for f in files:
             if not f or not getattr(f, "filename", ""):
                 continue
-            fname = secure_filename(f.filename)
+            fname = secure_filename(f.filename or "")
+            if not fname:
+                errors.append("Unnamed file skipped")
+                continue
             if not _is_allowed_image(fname):
                 errors.append(f"{fname}: unsupported file type")
                 continue

@@ -16,7 +16,7 @@ const DocumentManagementPage = () => {
   const [filteredDocs, setFilteredDocs] = useState([]);
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const rowsPerPage = 8;
+  const rowsPerPage = 24;
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' });
   const [modalOpen, setModalOpen] = useState(false);
   const [isEdit, setIsEdit] = useState(false);

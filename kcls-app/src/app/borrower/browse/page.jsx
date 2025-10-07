@@ -14,6 +14,7 @@ import {
 } from "@mui/icons-material";
 import { alpha } from "@mui/material/styles";
 import DocumentPDFViewer from '../../../components/DocumentPDFViewer';
+import { useSystemSettings } from '../../../contexts/SystemSettingsContext.jsx';
 
 const DEFAULT_ROWS_PER_PAGE = 8;
 const today = () => formatDate(new Date());
@@ -27,6 +28,13 @@ const BrowseLibraryPage = () => {
   const API_BASE = import.meta.env.VITE_API_BASE;
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const borrowerId = user?.borrower?.BorrowerID || user?.BorrowerID || null;
+  const { settings: systemSettings } = useSystemSettings();
+
+  const borrowLimit = useMemo(() => {
+    const val = Number(systemSettings?.borrow_limit ?? 3);
+    if (!Number.isFinite(val) || val <= 0) return 3;
+    return Math.trunc(val);
+  }, [systemSettings]);
 
   // Data state
   const [books, setBooks] = useState([]);
@@ -110,16 +118,34 @@ const BrowseLibraryPage = () => {
   useEffect(() => { setPage(1); }, [search, sort, onlyAvailable, resourceFilter]);
 
   // Add status helpers (ignore Rejected and Returned for occupancy)
-  const txStatus = (tx) => {
+  const txStatus = useCallback((tx) => {
     if (tx.ReturnStatus === 'Returned') return 'Returned';
     if (tx.ApprovalStatus === 'Rejected') return 'Rejected';
     if (tx.ApprovalStatus === 'Pending') return 'Pending';
     if (tx.ApprovalStatus === 'Approved' && tx.RetrievalStatus !== 'Retrieved') return 'ApprovedAwaitingPickup';
     if (tx.RetrievalStatus === 'Retrieved' && tx.ReturnStatus !== 'Returned') return 'Borrowed';
     return tx.ApprovalStatus || 'Unknown';
-  };
-  const statusOccupiesCopy = (status) =>
-    status === 'Pending' || status === 'ApprovedAwaitingPickup' || status === 'Borrowed';
+  }, []);
+  const statusOccupiesCopy = useCallback(
+    (status) => status === 'Pending' || status === 'ApprovedAwaitingPickup' || status === 'Borrowed',
+    [],
+  );
+
+  const activeBorrowCount = useMemo(() => {
+    if (!Array.isArray(borrowed)) return 0;
+    return borrowed.reduce((total, tx) => {
+      const status = txStatus(tx);
+      if (!statusOccupiesCopy(status)) return total;
+      const items = Array.isArray(tx.items) ? tx.items : [];
+      return total + items.length;
+    }, 0);
+  }, [borrowed, statusOccupiesCopy, txStatus]);
+
+  const totalQueued = activeBorrowCount + cart.length;
+  const rawRemaining = borrowLimit - totalQueued;
+  const remainingSlots = Math.max(rawRemaining, 0);
+  const limitReached = rawRemaining <= 0;
+  const overCapacity = rawRemaining < 0;
 
   // Update: only physical document items occupy inventory; detect physical by DocumentStorageID
   const isItemBorrowedOrPending = (item, isBook, type = null) =>
@@ -147,8 +173,13 @@ const BrowseLibraryPage = () => {
 
   // Add actions
   const handleAddToCart = (item, isBook) => {
-    if (cart.length >= 3) {
-      return notify("Borrow limit reached (3 items).", "warning");
+    if (borrowLimit && limitReached) {
+      const message = overCapacity
+        ? `Borrow limit exceeded. Reduce your queue by ${totalQueued - borrowLimit} item${totalQueued - borrowLimit === 1 ? '' : 's'}.`
+        : borrowLimit <= activeBorrowCount
+          ? `Borrow limit reached (${borrowLimit}). Return existing items before queuing more.`
+          : `Borrow limit reached (${borrowLimit}). You already have ${cart.length} queued and ${activeBorrowCount} active.`;
+      return notify(message, overCapacity ? "error" : "warning");
     }
     if (isBook) {
       const available = (item.inventory || []).find(inv => (inv.availability || inv.Availability) === "Available");
@@ -162,9 +193,14 @@ const BrowseLibraryPage = () => {
   };
 
   const handleConfirmAddDoc = () => {
-    if (cart.length >= 3) {
+    if (borrowLimit && limitReached) {
       setDocTypeDialogOpen(false);
-      return notify("Borrow limit reached (3 items).", "warning");
+      const message = overCapacity
+        ? `Borrow limit exceeded. Reduce your queue by ${totalQueued - borrowLimit} item${totalQueued - borrowLimit === 1 ? '' : 's'}.`
+        : borrowLimit <= activeBorrowCount
+          ? `Borrow limit reached (${borrowLimit}). Return existing items before queuing more.`
+          : `Borrow limit reached (${borrowLimit}). You already have ${cart.length} queued and ${activeBorrowCount} active.`;
+      return notify(message, overCapacity ? "error" : "warning");
     }
     if (!selectedDoc) return;
     const types = getAvailableDocTypes(selectedDoc);
@@ -198,6 +234,12 @@ const BrowseLibraryPage = () => {
     if (!cart.length) return notify("Cart is empty.", "warning");
     if (!purpose.trim()) return notify("Enter purpose.", "warning");
     if (!returnDate) return notify("Select return date.", "warning");
+    if (borrowLimit && overCapacity) {
+      return notify(
+        `Borrow limit exceeded. Limit is ${borrowLimit} item${borrowLimit === 1 ? '' : 's'} (active + queued). Remove items from your queue.`,
+        "error",
+      );
+    }
     setBorrowLoading(true);
     try {
       const items = cart.map(ci =>
@@ -322,7 +364,12 @@ const BrowseLibraryPage = () => {
   const headerStats = [
     { label: 'Books catalogued', value: books.length },
     { label: 'Documents available', value: documents.length },
-    { label: 'Items queued', value: cart.length }
+    {
+      label: 'Borrow slots used',
+      value: borrowLimit
+        ? `${Math.min(totalQueued, borrowLimit)}/${borrowLimit}${overCapacity ? '+' : ''}`
+        : totalQueued,
+    }
   ];
 
   const emptyLabel = resourceFilter === 'document' ? 'documents' : resourceFilter === 'book' ? 'books' : 'items';
@@ -773,7 +820,9 @@ const BrowseLibraryPage = () => {
       </Container>
 
       {/* Floating Cart */}
-      <Tooltip title="Borrow Queue">
+      <Tooltip title={borrowLimit
+        ? `Borrow Queue (${remainingSlots} slot${remainingSlots === 1 ? '' : 's'} left)`
+        : 'Borrow Queue'}>
         <Fab
           color="primary"
           onClick={() => setCartOpen(true)}
@@ -807,7 +856,9 @@ const BrowseLibraryPage = () => {
           <Typography fontWeight={800} fontSize={15}>Borrow Queue</Typography>
           <Chip
             size="small"
-            label={`${cart.length} item${cart.length!==1?'s':''}`}
+            label={borrowLimit
+              ? `${cart.length} queued · ${remainingSlots} slot${remainingSlots === 1 ? '' : 's'} left`
+              : `${cart.length} item${cart.length !== 1 ? 's' : ''}`}
             sx={{ fontWeight:600 }}
           />
           <IconButton
@@ -877,6 +928,19 @@ const BrowseLibraryPage = () => {
                 </Paper>
               ))}
               <Divider sx={{ my:1 }} />
+              {borrowLimit ? (
+                <Alert
+                  severity={overCapacity ? 'error' : limitReached ? 'warning' : 'info'}
+                  variant="outlined"
+                  sx={{ borderRadius:1 }}
+                >
+                  {overCapacity
+                    ? `Reduce your queue by ${totalQueued - borrowLimit} item${totalQueued - borrowLimit === 1 ? '' : 's'} to meet the limit of ${borrowLimit}. Active loans: ${activeBorrowCount}, queued: ${cart.length}.`
+                    : limitReached
+                      ? `Borrow limit reached (${borrowLimit}). Active loans: ${activeBorrowCount}, queued: ${cart.length}. Remove items to free up slots.`
+                      : `You can add ${remainingSlots} more item${remainingSlots === 1 ? '' : 's'} (limit ${borrowLimit}). Active loans: ${activeBorrowCount}.`}
+                </Alert>
+              ) : null}
               <TextField
                 label="Purpose"
                 value={purpose}
@@ -897,15 +961,19 @@ const BrowseLibraryPage = () => {
                 fullWidth
               />
               <Tooltip
-                title={!borrowerId ? "Login required" : ""}
-                disableHoverListener={!!borrowerId}
+                title={!borrowerId
+                  ? "Login required"
+                  : overCapacity
+                    ? `Reduce queue by ${totalQueued - borrowLimit} item${totalQueued - borrowLimit === 1 ? '' : 's'} to meet the ${borrowLimit}-item limit.`
+                    : ""}
+                disableHoverListener={!!borrowerId && !overCapacity}
               >
                 <span>
                   <Button
                     variant="contained"
                     color="success"
                     fullWidth
-                    disabled={borrowLoading || !borrowerId}
+                    disabled={borrowLoading || !borrowerId || overCapacity}
                     onClick={handleBorrowAll}
                     sx={{ fontWeight:700, borderRadius:0.75 }}
                   >

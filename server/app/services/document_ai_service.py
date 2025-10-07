@@ -3,11 +3,24 @@ import tempfile
 import shutil
 import re
 from datetime import datetime
+from io import BytesIO
 
 try:
     from PyPDF2 import PdfReader
 except ImportError:
     PdfReader = None
+
+try:
+    import pytesseract
+except ImportError:
+    pytesseract = None
+
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
+
+from . import document_classifier
 
 ALLOWED_SENSITIVITY = ["Public", "Restricted", "Confidential"]
 ALLOWED_CLASSIFICATIONS = ["Public Resources", "Government Document", "Historical Files"]
@@ -19,6 +32,65 @@ _SENS_KEYWORDS = [
     r"\bpassport\b", r"\bcredit card\b", r"\baccount number\b",
     r"\bssn\b", r"\bsocial security\b", r"\bstudent id\b"
 ]
+
+OCR_MAX_PAGES = 3
+
+
+def _iter_page_images(page):
+    """Yield raw image bytes from a PDF page."""
+    yielded = False
+
+    try:
+        for img in getattr(page, "images", []) or []:
+            data = getattr(img, "data", None)
+            if data:
+                yielded = True
+                yield data
+    except Exception:
+        pass
+
+    if yielded:
+        return
+
+    try:
+        resources = page.get("/Resources")
+        if not resources:
+            return
+        xobjects = resources.get("/XObject")
+        if not xobjects:
+            return
+        xobjects = xobjects.get_object()
+        for name, xobj in xobjects.items():  # pylint: disable=unused-variable
+            if xobj.get("/Subtype") != "/Image":
+                continue
+            try:
+                yield xobj.get_data()
+            except Exception:
+                continue
+    except Exception:
+        return
+
+
+def _ocr_images_from_page(page) -> str:
+    if not pytesseract or not Image:
+        return ""
+
+    texts = []
+    for data in _iter_page_images(page):
+        try:
+            with Image.open(BytesIO(data)) as img:
+                pil_img = img.convert("RGB") if img.mode not in ("RGB", "L") else img.copy()
+        except Exception:
+            continue
+        try:
+            text = pytesseract.image_to_string(pil_img)
+        except Exception:
+            text = ""
+        finally:
+            pil_img.close()
+        if text and text.strip():
+            texts.append(text.strip())
+    return "\n".join(texts)
 
 def _safe_filename(original_name: str) -> str:
     base = os.path.basename(original_name or "document.pdf")
@@ -64,24 +136,37 @@ def _normalize_classification(val):
             return c
     return None  # route will re‑heuristic if needed
 
-def _extract_fields_from_pdf(pdf_path: str) -> dict:
+def _extract_fields_from_pdf(pdf_path: str):
     data = {}
+    combined_text = ""
+    ocr_used = False
     if not PdfReader:
-        return data
+        return data, combined_text, ocr_used
+    text_segments = []
+    ocr_segments = []
     try:
         reader = PdfReader(pdf_path)
-        pages_text = []
-        for i in range(min(3, len(reader.pages))):
+        page_count = len(reader.pages)
+        limit = min(OCR_MAX_PAGES, page_count)
+        for i in range(limit):
+            page = reader.pages[i]
             try:
-                pages_text.append(reader.pages[i].extract_text() or "")
+                text_segments.append(page.extract_text() or "")
             except Exception:
-                continue
-        text = "\n".join(pages_text)
-        lower = text.lower()
-        lines = [l.strip() for l in text.splitlines() if l.strip()]
+                text_segments.append("")
+            ocr_text = _ocr_images_from_page(page)
+            if ocr_text:
+                ocr_segments.append(ocr_text)
+
+        text_content = "\n".join(seg for seg in text_segments if seg).strip()
+        ocr_content = "\n".join(ocr_segments).strip()
+        parts = [part for part in (text_content, ocr_content) if part]
+        combined_text = "\n".join(parts)
+        analysis_source = combined_text or text_content or ""
+        lines_source = text_content or analysis_source
+        lines = [l.strip() for l in lines_source.splitlines() if l.strip()]
         if lines:
             data["Title"] = lines[0][:180]
-        import re
         for l in lines[:30]:
             low = l.lower()
             if not data.get("Author") and (" by " in low or low.startswith("by ")):
@@ -96,6 +181,8 @@ def _extract_fields_from_pdf(pdf_path: str) -> dict:
                     data["Year"] = m.group(1)
             if data.get("Author") and data.get("Year"):
                 break
+
+        lower = analysis_source.lower()
         data["Classification"] = _heuristic_classification(lower)
         data["Sensitivity"] = _heuristic_sensitivity(lower)
         # Aligned defaults
@@ -106,8 +193,11 @@ def _extract_fields_from_pdf(pdf_path: str) -> dict:
         if not data.get("Year"):
             data["Year"] = "N/A"
     except Exception:
-        pass
-    return data
+        combined_text = combined_text or ""
+    finally:
+        ocr_used = bool(ocr_segments)
+
+    return data, combined_text, ocr_used
 
 def process_upload(file_storage, save_original=False, save_dir="uploaded_docs"):
     """
@@ -125,8 +215,7 @@ def process_upload(file_storage, save_original=False, save_dir="uploaded_docs"):
     try:
         file_storage.stream.seek(0)
         file_storage.save(temp_path)
-
-        extracted = _extract_fields_from_pdf(temp_path)
+        extracted, combined_text, ocr_used = _extract_fields_from_pdf(temp_path)
         extracted["Classification"] = _normalize_classification(extracted.get("Classification")) or extracted.get("Classification")
         extracted["Sensitivity"] = _normalize_sensitivity(extracted.get("Sensitivity"))
         # Alignment: guarantee keys & defaults
@@ -143,6 +232,17 @@ def process_upload(file_storage, save_original=False, save_dir="uploaded_docs"):
             safe_name = _safe_filename(file_storage.filename)
             final_saved_path = os.path.join(save_dir, safe_name)
             shutil.copyfile(temp_path, final_saved_path)
+
+        training_metadata = {
+            "file_name": file_storage.filename or "document.pdf",
+            "saved_path": final_saved_path,
+            "ocr_used": ocr_used,
+            "text_chars": len(combined_text)
+        }
+        try:
+            document_classifier.record_training_sample(dict(extracted), combined_text, training_metadata)
+        except Exception:
+            pass
 
         return {
             "saved_path": final_saved_path,

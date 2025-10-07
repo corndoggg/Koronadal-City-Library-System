@@ -1,18 +1,34 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Box, Paper, Typography, Stack, TextField, Button, Divider,
   Alert, Snackbar, CircularProgress, Chip,
-  Dialog, DialogTitle, DialogContent, DialogActions
+  Dialog, DialogTitle, DialogContent, DialogActions,
+  Switch, FormGroup, FormControlLabel, Checkbox, FormHelperText, Tooltip
 } from '@mui/material';
 import { Save as SaveIcon, Restore as ResetIcon, Backup as BackupIcon, Refresh as RefreshIcon, Download as DownloadIcon } from '@mui/icons-material';
 import { useSystemSettings } from '../../../contexts/SystemSettingsContext.jsx';
 import { formatDateTime } from '../../../utils/date';
+import { loadBackupSchedule, saveBackupSchedule } from '../../../config/systemSettings';
+
+const DAY_OPTIONS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const DAY_LABELS = {
+  Mon: 'Monday',
+  Tue: 'Tuesday',
+  Wed: 'Wednesday',
+  Thu: 'Thursday',
+  Fri: 'Friday',
+  Sat: 'Saturday',
+  Sun: 'Sunday',
+};
+
+const sortDays = (days) => [...days].sort((a, b) => DAY_OPTIONS.indexOf(a) - DAY_OPTIONS.indexOf(b));
 
 const SettingsPage = () => {
   const { settings: ctxSettings, loading: ctxLoading, save: saveCtx, refresh } = useSystemSettings();
 
   // local input state with safe defaults
   const [fineInput, setFineInput] = useState(() => Number(ctxSettings?.fine ?? 5));
+  const [borrowInput, setBorrowInput] = useState(() => Number(ctxSettings?.borrow_limit ?? 3));
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState({ open: false, text: '', severity: 'success' });
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -22,15 +38,30 @@ const SettingsPage = () => {
     if (ctxSettings && typeof ctxSettings.fine !== 'undefined') {
       setFineInput(Number(ctxSettings.fine));
     }
+    if (ctxSettings && typeof ctxSettings.borrow_limit !== 'undefined') {
+      setBorrowInput(Number(ctxSettings.borrow_limit));
+    }
   }, [ctxSettings]);
 
   const originalFine = useMemo(() => Number(ctxSettings?.fine ?? 5), [ctxSettings]);
+  const originalBorrow = useMemo(() => Number(ctxSettings?.borrow_limit ?? 3), [ctxSettings]);
+
+  const fineValue = Number(fineInput);
+  const borrowValue = Number(borrowInput);
+  const isFineValid = fineInput !== '' && Number.isFinite(fineValue) && fineValue >= 0;
+  const isBorrowValid = borrowInput !== '' && Number.isFinite(borrowValue) && borrowValue > 0;
+  const unchanged = isFineValid && isBorrowValid && fineValue === originalFine && borrowValue === originalBorrow;
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const saved = await saveCtx({ fine: Number(fineInput) });
+      const payload = {
+        fine: Math.max(0, Math.trunc(fineValue)),
+        borrow_limit: Math.max(1, Math.trunc(borrowValue)),
+      };
+      const saved = await saveCtx(payload);
       setFineInput(Number(saved.fine ?? 5));
+      setBorrowInput(Number(saved.borrow_limit ?? 3));
       setMsg({ open: true, text: 'Settings saved.', severity: 'success' });
     } catch (e) {
       setMsg({ open: true, text: e?.message || 'Failed to save.', severity: 'error' });
@@ -40,13 +71,14 @@ const SettingsPage = () => {
   };
 
   const handleAttemptSave = () => {
-    if (fineInput === '' || Number.isNaN(Number(fineInput))) return; // invalid input guard
+    if (!isFineValid || !isBorrowValid) return; // invalid input guard
     // Always require explicit confirmation (even if unchanged) for clarity
     setConfirmOpen(true);
   };
 
   const handleReset = async () => {
     await refresh();
+    await loadSchedule();
     setMsg({ open: true, text: 'Settings reloaded from server.', severity: 'info' });
   };
 
@@ -71,7 +103,7 @@ const SettingsPage = () => {
     return v || '—';
   };
 
-  const loadBackups = async () => {
+  const loadBackups = useCallback(async () => {
     setBackupsLoading(true);
     setBackupsError('');
     try {
@@ -84,7 +116,7 @@ const SettingsPage = () => {
     } finally {
       setBackupsLoading(false);
     }
-  };
+  }, [API_BASE]);
 
   const triggerBackup = async () => {
     setBackupRunning(true);
@@ -112,7 +144,82 @@ const SettingsPage = () => {
 
   useEffect(() => {
     loadBackups();
+  }, [loadBackups]);
+
+  // Auto backup schedule state
+  const [schedule, setSchedule] = useState({ enabled: false, time: '02:00', days: [...DAY_OPTIONS] });
+  const [scheduleInitial, setScheduleInitial] = useState({ enabled: false, time: '02:00', days: [...DAY_OPTIONS] });
+  const [scheduleLoading, setScheduleLoading] = useState(true);
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+
+  const loadSchedule = useCallback(async () => {
+    setScheduleLoading(true);
+    try {
+      const data = await loadBackupSchedule();
+      const normalized = { ...data, days: sortDays(data.days || DAY_OPTIONS) };
+      setSchedule(normalized);
+      setScheduleInitial(normalized);
+    } catch (e) {
+      setMsg({ open: true, text: e?.message || 'Failed to load backup schedule.', severity: 'error' });
+    } finally {
+      setScheduleLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadSchedule();
+  }, [loadSchedule]);
+
+  const isValidTime = useMemo(() => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(schedule.time || '')), [schedule.time]);
+  const hasDaysSelected = schedule.days.length > 0;
+  const isScheduleValid = (!schedule.enabled || (isValidTime && hasDaysSelected)) && isValidTime;
+
+  const scheduleDirty = useMemo(() => {
+    if (schedule.enabled !== scheduleInitial.enabled) return true;
+    if (schedule.time !== scheduleInitial.time) return true;
+    if (schedule.days.length !== scheduleInitial.days.length) return true;
+    for (let i = 0; i < schedule.days.length; i += 1) {
+      if (schedule.days[i] !== scheduleInitial.days[i]) return true;
+    }
+    return false;
+  }, [schedule, scheduleInitial]);
+
+  const toggleDay = (day) => {
+    setSchedule((prev) => {
+      const has = prev.days.includes(day);
+      const nextDays = has ? prev.days.filter((d) => d !== day) : [...prev.days, day];
+      return { ...prev, days: sortDays(nextDays) };
+    });
+  };
+
+  const handleScheduleSave = async () => {
+    setScheduleSaving(true);
+    try {
+      const payload = {
+        auto_backup_enabled: schedule.enabled,
+        auto_backup_time: schedule.time,
+        auto_backup_days: schedule.days,
+      };
+      const saved = await saveBackupSchedule(payload);
+      const normalized = { ...saved, days: sortDays(saved.days || DAY_OPTIONS) };
+      setSchedule(normalized);
+      setScheduleInitial(normalized);
+      await refresh();
+      setMsg({ open: true, text: 'Auto backup schedule saved.', severity: 'success' });
+    } catch (e) {
+      setMsg({ open: true, text: e?.message || 'Failed to save schedule.', severity: 'error' });
+    } finally {
+      setScheduleSaving(false);
+    }
+  };
+
+  const handleScheduleReset = async () => {
+    if (scheduleDirty) {
+      setSchedule(scheduleInitial);
+    } else {
+      await loadSchedule();
+    }
+  };
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', p: 2 }}>
@@ -135,17 +242,35 @@ const SettingsPage = () => {
               label="Fine per day"
               type="number"
               size="small"
-              value={Number.isFinite(Number(fineInput)) ? fineInput : ''} // safe
-              onChange={(e) => setFineInput(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+              value={fineInput === '' ? '' : fineValue}
+              onChange={(e) => {
+                const v = e.target.value;
+                setFineInput(v === '' ? '' : Math.max(0, Math.trunc(Number(v))));
+              }}
               inputProps={{ min: 0, step: 1 }}
-              helperText={`Current global fine: ${Number(ctxSettings?.fine ?? 5)}`}
+              helperText={isFineValid ? `Current global fine: ${Number(ctxSettings?.fine ?? 5)}` : 'Enter a non-negative integer'}
+              error={!isFineValid}
+            />
+
+            <TextField
+              label="Borrow limit"
+              type="number"
+              size="small"
+              value={borrowInput === '' ? '' : borrowValue}
+              onChange={(e) => {
+                const v = e.target.value;
+                setBorrowInput(v === '' ? '' : Math.max(1, Math.trunc(Number(v))));
+              }}
+              inputProps={{ min: 1, step: 1 }}
+              helperText={isBorrowValid ? `Current borrow limit: ${Number(ctxSettings?.borrow_limit ?? 3)}` : 'Enter a positive integer'}
+              error={!isBorrowValid}
             />
 
             <Stack direction="row" spacing={1}>
               <Button
                 variant="contained"
                 onClick={handleAttemptSave}
-                disabled={ctxLoading || saving || fineInput === '' || Number.isNaN(Number(fineInput))}
+                disabled={ctxLoading || saving || !isFineValid || !isBorrowValid}
               >
                 {saving ? 'Saving…' : 'Save'}
               </Button>
@@ -231,6 +356,86 @@ const SettingsPage = () => {
               </Paper>
             ))}
           </Stack>
+
+          <Divider sx={{ my: 2 }} />
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+            <Typography fontWeight={800} fontSize={16}>Auto Backups</Typography>
+            {scheduleLoading && <CircularProgress size={18} />}
+          </Stack>
+          <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ mb: 1 }}>
+            Configure automatic daily backups. The server will create a backup on selected days at the scheduled time.
+          </Typography>
+
+          <Stack spacing={2}>
+            <FormControlLabel
+              control={(
+                <Switch
+                  checked={schedule.enabled}
+                  onChange={(e) => setSchedule((prev) => ({ ...prev, enabled: e.target.checked }))}
+                  disabled={scheduleLoading || scheduleSaving}
+                />
+              )}
+              label={schedule.enabled ? 'Automatic backups enabled' : 'Automatic backups disabled'}
+            />
+
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'stretch', sm: 'center' }}>
+              <TextField
+                label="Backup time"
+                type="time"
+                size="small"
+                value={schedule.time}
+                onChange={(e) => setSchedule((prev) => ({ ...prev, time: e.target.value }))}
+                InputLabelProps={{ shrink: true }}
+                inputProps={{ step: 60 }}
+                disabled={scheduleLoading || scheduleSaving}
+                error={!isValidTime}
+                helperText={isValidTime ? '24-hour format (HH:MM)' : 'Enter a time between 00:00 and 23:59'}
+                sx={{ maxWidth: { xs: '100%', sm: 180 } }}
+              />
+
+              <Box>
+                <Typography variant="caption" fontWeight={700} color="text.secondary">Run on</Typography>
+                <FormGroup row sx={{ mt: 0.5 }}>
+                  {DAY_OPTIONS.map((day) => (
+                    <FormControlLabel
+                      key={day}
+                      control={(
+                        <Checkbox
+                          checked={schedule.days.includes(day)}
+                          onChange={() => toggleDay(day)}
+                          disabled={scheduleLoading || scheduleSaving}
+                        />
+                      )}
+                      label={DAY_LABELS[day]}
+                    />
+                  ))}
+                </FormGroup>
+                {!hasDaysSelected && (
+                  <FormHelperText error>Select at least one day.</FormHelperText>
+                )}
+              </Box>
+            </Stack>
+
+            <Stack direction="row" spacing={1}>
+              <Button
+                variant="contained"
+                onClick={handleScheduleSave}
+                disabled={scheduleLoading || scheduleSaving || !isScheduleValid || !scheduleDirty}
+              >
+                {scheduleSaving ? 'Saving…' : 'Save Schedule'}
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={handleScheduleReset}
+                disabled={scheduleLoading || scheduleSaving}
+              >
+                Reset
+              </Button>
+              <Tooltip title="Automatic backups run in server time.">
+                <Chip size="small" label={schedule.enabled ? `${schedule.time} · ${schedule.days.join(', ')}` : 'Disabled'} />
+              </Tooltip>
+            </Stack>
+          </Stack>
         </Paper>
       </Box>
 
@@ -249,30 +454,44 @@ const SettingsPage = () => {
         fullWidth
         PaperProps={{ sx:{ borderRadius:1 } }}
       >
-        <DialogTitle sx={{ fontWeight:800, pb:1 }}>Confirm Fine Update</DialogTitle>
+        <DialogTitle sx={{ fontWeight:800, pb:1 }}>Confirm Settings Update</DialogTitle>
         <DialogContent sx={{ pt:0 }}>
           <Typography variant="body2" sx={{ mb:1 }}>
-            Set the global fine per day to <b>{fineInput}</b>? This applies to future penalty calculations.
+            Apply the following updates?
           </Typography>
-          <Stack direction="row" spacing={3} sx={{ fontSize:13, mb:1 }}>
-            <Box>
-              <Typography variant="caption" color="text.secondary" fontWeight={600}>Current</Typography><br />
-              <Typography fontWeight={700}>{originalFine}</Typography>
-            </Box>
-            <Box>
-              <Typography variant="caption" color="text.secondary" fontWeight={600}>New</Typography><br />
-              <Typography fontWeight={700} color={Number(fineInput) === originalFine ? 'text.secondary' : 'primary.main'}>
-                {fineInput}
-              </Typography>
-            </Box>
+          <Stack spacing={1.5} sx={{ fontSize:13, mb:1 }}>
+            <Stack direction="row" spacing={3}>
+              <Box>
+                <Typography variant="caption" color="text.secondary" fontWeight={600}>Current fine / day</Typography><br />
+                <Typography fontWeight={700}>{originalFine}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary" fontWeight={600}>New fine / day</Typography><br />
+                <Typography fontWeight={700} color={fineValue === originalFine ? 'text.secondary' : 'primary.main'}>
+                  {fineValue}
+                </Typography>
+              </Box>
+            </Stack>
+            <Stack direction="row" spacing={3}>
+              <Box>
+                <Typography variant="caption" color="text.secondary" fontWeight={600}>Current borrow limit</Typography><br />
+                <Typography fontWeight={700}>{originalBorrow}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary" fontWeight={600}>New borrow limit</Typography><br />
+                <Typography fontWeight={700} color={borrowValue === originalBorrow ? 'text.secondary' : 'primary.main'}>
+                  {borrowValue}
+                </Typography>
+              </Box>
+            </Stack>
           </Stack>
-          {Number(fineInput) === originalFine ? (
+          {unchanged ? (
             <Alert severity="info" sx={{ mt:1 }} variant="outlined">
-              The value is unchanged. You can still confirm to re-save.
+              The values are unchanged. You can still confirm to re-save.
             </Alert>
           ) : (
             <Alert severity="warning" sx={{ mt:1 }} variant="outlined">
-              Existing computed fines will not be retroactively recalculated.
+              Updates affect future fines and borrowing limits only; existing records remain unchanged.
             </Alert>
           )}
         </DialogContent>

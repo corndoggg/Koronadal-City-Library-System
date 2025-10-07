@@ -5,6 +5,11 @@ import {
 } from '@mui/material';
 import { formatDate } from '../utils/date';
 
+const API_BASE = String(import.meta.env.VITE_API_BASE || '/api').replace(/\/+$/, '');
+const USERNAME_MIN_LENGTH = 4;
+const USERNAME_PATTERN = /^[A-Za-z0-9._-]+$/;
+const NAME_PATTERN = /^[A-Za-z\s]+$/;
+
 const staffPositions = ['Librarian', 'Admin'];
 const borrowerTypes = ['Researcher', 'Government Agency'];
 const accountStatuses = ['Pending', 'Registered', 'Suspended', 'Rejected'];
@@ -31,18 +36,21 @@ const UsersFormModal = ({
   const [details, setDetails] = useState(defaultDetails);
   const [staff, setStaff] = useState(defaultStaff);
   const [borrower, setBorrower] = useState(defaultBorrower);
+  const [usernameStatus, setUsernameStatus] = useState({ checking: false, available: isEdit, message: '' });
 
   useEffect(() => {
     if (isEdit && userData) {
-  setRole(userData.Role || '');
+      setRole(userData.Role || '');
       setUsername(userData.Username || '');
       setPassword('');
       setDetails({
-        firstname: userData.Firstname || '',
-        middlename: userData.Middlename || '',
-        lastname: userData.Lastname || '',
+        firstname: String(userData.Firstname || '').replace(/[^A-Za-z\s]/g, ''),
+        middlename: String(userData.Middlename || '').replace(/[^A-Za-z\s]/g, ''),
+        lastname: String(userData.Lastname || '').replace(/[^A-Za-z\s]/g, ''),
         email: userData.Email || '',
-        contactnumber: userData.ContactNumber || '',
+        contactnumber: userData.ContactNumber
+          ? String(userData.ContactNumber).replace(/\D/g, '').slice(0, 11)
+          : '',
         street: userData.Street || '',
         barangay: userData.Barangay || '',
         city: userData.City || '',
@@ -52,30 +60,130 @@ const UsersFormModal = ({
       // Ensure staff and borrower details are always filled on edit
       setStaff(
         userData.Role === 'Staff'
-          ? { position: userData.staff?.Position || '' }
+          ? { position: (userData.staff?.Position || '').trim() }
           : defaultStaff
       );
       setBorrower(
         userData.Role === 'Borrower'
           ? {
               type: userData.borrower?.Type || '',
-              department: userData.borrower?.Department || '',
+              department: (userData.borrower?.Department || '').trim(),
               accountstatus: userData.borrower?.AccountStatus || ''
             }
           : defaultBorrower
       );
+      setUsernameStatus({ checking: false, available: true, message: '' });
     } else {
-  setRole('');
+      setRole('');
       setUsername('');
       setPassword('');
-      setDetails(defaultDetails);
-      setStaff(defaultStaff);
-      setBorrower(defaultBorrower);
+      setDetails({ ...defaultDetails });
+      setStaff({ ...defaultStaff });
+      setBorrower({ ...defaultBorrower });
+      setUsernameStatus({ checking: false, available: null, message: '' });
     }
   }, [open, isEdit, userData]);
 
+  useEffect(() => {
+    if (isEdit) {
+      return;
+    }
+
+    const trimmed = username.trim();
+
+    if (!trimmed) {
+      setUsernameStatus({ checking: false, available: null, message: '' });
+      return;
+    }
+
+    if (trimmed.length < USERNAME_MIN_LENGTH) {
+      setUsernameStatus({
+        checking: false,
+        available: false,
+        message: `At least ${USERNAME_MIN_LENGTH} characters.`,
+      });
+      return;
+    }
+
+    if (!USERNAME_PATTERN.test(trimmed)) {
+      setUsernameStatus({
+        checking: false,
+        available: false,
+        message: 'Use only letters, numbers, dot, dash, and underscore.',
+      });
+      return;
+    }
+
+    const controller = new AbortController();
+    let cancelled = false;
+
+    const timeout = setTimeout(async () => {
+      setUsernameStatus({ checking: true, available: null, message: 'Checking availability…' });
+
+      try {
+        const response = await fetch(
+          `${API_BASE}/users/username-available?username=${encodeURIComponent(trimmed)}`,
+          { signal: controller.signal }
+        );
+
+        if (!response.ok) {
+          throw new Error('Failed to verify username');
+        }
+
+        const data = await response.json();
+
+        if (cancelled) {
+          return;
+        }
+
+        if (data.available) {
+          setUsernameStatus({ checking: false, available: true, message: 'Username available.' });
+        } else {
+          let reason = 'Username already taken.';
+          if (data.reason === 'too_short') {
+            const min = data.minLength || USERNAME_MIN_LENGTH;
+            reason = `At least ${min} characters.`;
+          } else if (data.reason === 'invalid_format') {
+            reason = 'Use only letters, numbers, dot, dash, and underscore.';
+          } else if (data.reason === 'username_required') {
+            reason = 'Username required.';
+          }
+          setUsernameStatus({ checking: false, available: false, message: reason });
+        }
+      } catch {
+        if (!cancelled) {
+          setUsernameStatus({
+            checking: false,
+            available: false,
+            message: 'Unable to verify username right now.',
+          });
+        }
+      }
+    }, 400);
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+      clearTimeout(timeout);
+    };
+  }, [username, isEdit]);
+
   const handleDetailsChange = e => {
-    setDetails({ ...details, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+
+    setDetails(prev => {
+      if (name === 'contactnumber') {
+        const digitsOnly = value.replace(/\D/g, '').slice(0, 11);
+        return { ...prev, contactnumber: digitsOnly };
+      }
+
+      if (['firstname', 'middlename', 'lastname'].includes(name)) {
+        const sanitized = value.replace(/[^A-Za-z\s]/g, '');
+        return { ...prev, [name]: sanitized };
+      }
+
+      return { ...prev, [name]: value };
+    });
   };
 
   const handleStaffChange = e => {
@@ -86,15 +194,82 @@ const UsersFormModal = ({
     setBorrower({ ...borrower, [e.target.name]: e.target.value });
   };
 
+  const firstNameTrimmed = details.firstname.trim();
+  const middleNameTrimmed = details.middlename.trim();
+  const lastNameTrimmed = details.lastname.trim();
+  const firstNameValid = NAME_PATTERN.test(firstNameTrimmed) && firstNameTrimmed.length > 0;
+  const middleNameValid = middleNameTrimmed.length === 0 || NAME_PATTERN.test(middleNameTrimmed);
+  const lastNameValid = NAME_PATTERN.test(lastNameTrimmed) && lastNameTrimmed.length > 0;
+  const contactDigits = details.contactnumber.trim();
+  const contactHasInput = contactDigits.length > 0;
+  const contactValid = contactDigits.length === 11;
+  const usernameTrimmed = username.trim();
+  const usernameReady = isEdit || (usernameStatus.available === true && !usernameStatus.checking);
+  const usernameHelperText = isEdit
+    ? 'Username cannot be changed'
+    : usernameStatus.message || 'Use letters, numbers, dot, dash, underscore.';
+  const passwordTooShort = Boolean(password) && password.length < 6;
+  const passwordHelperText = passwordTooShort
+    ? 'Min 6 characters.'
+    : isEdit
+      ? 'Leave blank to keep current password.'
+      : 'At least 6 characters.';
+
   const handleSubmit = e => {
     e.preventDefault();
-    const payload = {
-      username,
-      password: password || undefined,
-      role,
-      details,
-      ...(role === 'Staff' ? { staff } : { borrower })
+
+    const staffIncompleteCheck = role === 'Staff' && !staff.position.trim();
+    const borrowerIncompleteCheck =
+      role === 'Borrower' && (!borrower.type || !borrower.accountstatus);
+
+    if (
+      !usernameTrimmed ||
+      !usernameReady ||
+      !firstNameValid ||
+      !middleNameValid ||
+      !lastNameValid ||
+      !contactValid ||
+      !role ||
+      (!isEdit && !password) ||
+      passwordTooShort ||
+      staffIncompleteCheck ||
+      borrowerIncompleteCheck
+    ) {
+      return;
+    }
+
+    const trimmedDetails = {
+      ...details,
+      firstname: firstNameTrimmed,
+      middlename: middleNameTrimmed,
+      lastname: lastNameTrimmed,
+      email: details.email.trim(),
+      contactnumber: contactDigits,
+      street: details.street.trim(),
+      barangay: details.barangay.trim(),
+      city: details.city.trim(),
+      province: details.province.trim()
     };
+
+    const payload = {
+      username: isEdit ? username : usernameTrimmed,
+      role,
+      details: trimmedDetails,
+      ...(role === 'Staff'
+        ? { staff: { position: staff.position.trim() } }
+        : {
+            borrower: {
+              type: borrower.type,
+              department: (borrower.department || '').trim(),
+              accountstatus: borrower.accountstatus
+            }
+          })
+    };
+
+    if (password) {
+      payload.password = password;
+    }
+
     onSave(payload);
   };
 
@@ -138,16 +313,22 @@ const UsersFormModal = ({
 
   const isStaff = role === 'Staff';
   const isBorrower = role === 'Borrower';
-  const staffIncomplete = isStaff && !staff.position;
+  const staffIncomplete = isStaff && !staff.position.trim();
   const borrowerIncomplete =
     isBorrower && (!borrower.type || !borrower.accountstatus);
 
   const submitDisabled =
-    !username ||
+    !usernameTrimmed ||
     !role ||
-    (!isEdit && (!password || password.length < 6)) ||
+    (!isEdit && !password) ||
+    passwordTooShort ||
     staffIncomplete ||
-    borrowerIncomplete;
+    borrowerIncomplete ||
+    !firstNameValid ||
+    !middleNameValid ||
+    !lastNameValid ||
+    !contactValid ||
+    !usernameReady;
 
   return (
     <Dialog
@@ -219,11 +400,18 @@ const UsersFormModal = ({
                 <TextField
                   label="Username"
                   value={username}
-                  onChange={e => setUsername(e.target.value)}
+                  onChange={e => setUsername(e.target.value.replace(/\s/g, ''))}
                   fullWidth
                   required
                   size="small"
                   disabled={isEdit}
+                  error={!isEdit && usernameStatus.available === false}
+                  helperText={usernameHelperText}
+                  FormHelperTextProps={
+                    !isEdit && usernameStatus.available
+                      ? { sx: { color: 'success.main' } }
+                      : undefined
+                  }
                 />
               </Grid>
               <Grid item xs={12} md={4}>
@@ -234,10 +422,10 @@ const UsersFormModal = ({
                   onChange={e => setPassword(e.target.value)}
                   fullWidth
                   required={!isEdit}
-                  placeholder={isEdit ? "Leave blank to keep" : ""}
+                  placeholder={isEdit ? 'Leave blank to keep current password' : ''}
                   size="small"
-                  helperText={!isEdit && password && password.length < 6 ? "Min 6 chars" : " "}
-                  error={!isEdit && !!password && password.length < 6}
+                  helperText={passwordHelperText}
+                  error={passwordTooShort}
                 />
               </Grid>
               <Grid item xs={12} md={4}>
@@ -296,6 +484,7 @@ const UsersFormModal = ({
                   fullWidth
                   required
                   size="small"
+                  helperText="Letters and spaces only."
                 />
               </Grid>
               <Grid item xs={12} md={4}>
@@ -306,6 +495,7 @@ const UsersFormModal = ({
                   onChange={handleDetailsChange}
                   fullWidth
                   size="small"
+                  helperText="Optional — letters only."
                 />
               </Grid>
               <Grid item xs={12} md={4}>
@@ -317,6 +507,7 @@ const UsersFormModal = ({
                   fullWidth
                   required
                   size="small"
+                  helperText="Letters and spaces only."
                 />
               </Grid>
               <Grid item xs={12} md={4}>
@@ -338,7 +529,15 @@ const UsersFormModal = ({
                   value={details.contactnumber}
                   onChange={handleDetailsChange}
                   fullWidth
+                  required
                   size="small"
+                  error={contactHasInput && !contactValid}
+                  helperText={
+                    contactHasInput && !contactValid
+                      ? 'Enter an 11-digit number.'
+                      : '11-digit mobile number.'
+                  }
+                  inputProps={{ inputMode: 'numeric', pattern: '\\d*', maxLength: 11 }}
                 />
               </Grid>
               <Grid item xs={12} md={4}>

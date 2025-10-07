@@ -3,6 +3,7 @@ from .config import Config
 from .cors import init_cors
 from .routes import register_routes
 from app.services.auto_return import start_auto_return_service
+from app.services.auto_backup import start_auto_backup_service
 
 def create_app():
     app = Flask(__name__)
@@ -12,5 +13,6 @@ def create_app():
     # Modular route registration
     register_routes(app)
     start_auto_return_service(app, interval_seconds=60)
+    start_auto_backup_service(app)
 
     return app

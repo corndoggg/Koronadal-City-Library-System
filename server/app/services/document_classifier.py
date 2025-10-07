@@ -1,12 +1,17 @@
-import os, re, hashlib, datetime, mimetypes, math, threading
+import os, re, hashlib, datetime, mimetypes, math, threading, json
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, cast
 import PyPDF2, docx
 
 # ---------- MODEL LOADING (smart cache + graceful fallback) ----------
 _zero_shot = None
 _zero_shot_lock = threading.Lock()
 _zero_shot_failed = False
+
+_TRAINING_DIR = Path(__file__).resolve().parent / "_training_data"
+_TRAINING_FILE = _TRAINING_DIR / "document_samples.jsonl"
+_TRAINING_LOCK = threading.Lock()
+_TRAINING_TEXT_LIMIT = 20000
 
 def get_zero_shot():
     global _zero_shot, _zero_shot_failed
@@ -149,9 +154,13 @@ def classify_document(text: str) -> List[Dict[str, Any]]:
     if model:
         try:
             for seg in segments:
-                res = model(seg[:4000], CLASSIFICATION_LABELS, multi_label=True)
-                for lbl, score in zip(res["labels"], res["scores"]):
-                    agg[lbl].append(score)
+                res = cast(Dict[str, Any], model(seg[:4000], CLASSIFICATION_LABELS, multi_label=True))
+                labels = res.get("labels", [])
+                scores = res.get("scores", [])
+                for lbl, score in zip(labels, scores):
+                    lbl_key = str(lbl)
+                    if lbl_key in agg:
+                        agg[lbl_key].append(float(score))
         except Exception:
             # fallback to heuristic alone
             return _heuristic_classification(text)
@@ -182,10 +191,10 @@ def zero_shot_best(text: str, labels: List[str], threshold: float = 0.40) -> Opt
                 return lab
         return None
     try:
-        res = model(text[:4000], labels, multi_label=True)
+        res = cast(Dict[str, Any], model(text[:4000], labels, multi_label=True))
         best = None
         best_score = 0.0
-        for lab, sc in zip(res["labels"], res["scores"]):
+        for lab, sc in zip(res.get("labels", []), res.get("scores", [])):
             if sc > best_score:
                 best, best_score = lab, sc
         if best_score >= threshold:
@@ -274,6 +283,24 @@ def sensitivity_flag(text: str, pii_findings) -> str:
     if risk >= 1:
         return "Restricted"
     return "Public"
+
+def record_training_sample(extracted_fields: Dict[str, Any], combined_text: str, metadata: Optional[Dict[str, Any]] = None) -> None:
+    """Persist a lightweight training example for later fine-tuning."""
+    if not combined_text:
+        return
+
+    snapshot = dict(extracted_fields or {})
+    sample = {
+        "timestamp": datetime.datetime.utcnow().isoformat(),
+        "fields": snapshot,
+        "text": combined_text[:_TRAINING_TEXT_LIMIT],
+        "metadata": metadata or {}
+    }
+
+    _TRAINING_DIR.mkdir(parents=True, exist_ok=True)
+    with _TRAINING_LOCK:
+        with _TRAINING_FILE.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(sample, ensure_ascii=False) + "\n")
 
 # ------------- MAIN ENTRY -------------
 def analyze_document(path_str: str) -> Dict[str, Any]:

@@ -9,3 +9,4 @@ transformers
 torch
 psutil
 Pillow>=10.0.0
+pytesseract
