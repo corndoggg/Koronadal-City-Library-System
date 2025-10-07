@@ -176,7 +176,7 @@ const LoginPage = () => {
           alignItems: 'center',
           justifyContent: 'center',
           overflow: 'hidden',
-          backgroundImage: `linear-gradient(140deg, ${alpha(theme.palette.primary.dark, 0.82)} 0%, ${alpha(theme.palette.secondary.main, 0.78)} 100%), url('/library-hero.jpg')`,
+          backgroundImage: `linear-gradient(140deg, ${alpha(theme.palette.primary.dark, 0.82)} 0%, ${alpha(theme.palette.secondary.main, 0.78)} 100%), url('/library_front.jpg')`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           backgroundRepeat: 'no-repeat'

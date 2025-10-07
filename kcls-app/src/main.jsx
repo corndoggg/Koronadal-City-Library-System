@@ -17,6 +17,7 @@ import DocumentManagementPage from './app/common/documents/page.jsx'
 import StorageManagementPage from './app/librarian/storages/page.jsx';
 import UserManagementPage from './app/admin/users/page.jsx';
 import LoginPage from './app/login/page.jsx';
+import ForgotPasswordPage from './app/login/forgot/page.jsx';
 import BrowseLibraryPage from './app/borrower/browse/page.jsx';
 import BorrowerBorrowPage from './app/borrower/borrow/page.jsx';
 import LibrarianBorrowPage from './app/librarian/borrow/page.jsx';
@@ -38,6 +39,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
               <Route path="/" element={<Navigate to="/login" replace />} />
               {/* Login & Public routes */}
               <Route path="/login" element={<LoginPage />} />
+              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
               <Route path="/register-borrower" element={<RegisterBorrowerPage />} />
               {/* Admin routes */}
               <Route element={<ProtectedRoute allowedRoles={["Staff"]} allowedPositions={["Admin"]} />}>

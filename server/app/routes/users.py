@@ -69,7 +69,39 @@ def username_available():
 def add_user():
     data = request.json
     conn = get_db_connection()
+    if conn is None:
+        return jsonify({'error': 'database_unavailable'}), 500
     cursor = conn.cursor()
+
+    if not isinstance(data, dict):
+        cursor.close()
+        conn.close()
+        return jsonify({'error': 'invalid_payload'}), 400
+
+    details = data.get('details') or {}
+    if not isinstance(details, dict):
+        cursor.close()
+        conn.close()
+        return jsonify({'error': 'invalid_details'}), 400
+    email = (details.get('email') or '').strip()
+    if not email:
+        cursor.close()
+        conn.close()
+        return jsonify({'error': 'email_required'}), 400
+
+    cursor.execute(
+        """
+        SELECT 1 FROM UserDetails
+        WHERE LOWER(Email) = LOWER(%s)
+        LIMIT 1
+        """,
+        (email,),
+    )
+    if cursor.fetchone():
+        conn.rollback()
+        cursor.close()
+        conn.close()
+        return jsonify({'error': 'email_exists'}), 409
 
     raw_password = data['password']
     hashed = hash_password(raw_password)
@@ -81,12 +113,11 @@ def add_user():
     user_id = cursor.lastrowid
 
     # Insert into UserDetails
-    details = data['details']
     date_of_birth = parse_date(details.get('dateofbirth'))
     cursor.execute("""
         INSERT INTO UserDetails (UserID, Firstname, Middlename, Lastname, Email, ContactNumber, Street, Barangay, City, Province, DateOfBirth)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-    """, (user_id, details['firstname'], details.get('middlename'), details['lastname'], details['email'],
+    """, (user_id, details['firstname'], details.get('middlename'), details['lastname'], email,
           details.get('contactnumber'), details.get('street'), details.get('barangay'), details.get('city'),
           details.get('province'), date_of_birth))
 
@@ -297,6 +328,7 @@ def approve_user_account(user_id):
 def reject_user_account(user_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
+    payload = request.get_json(silent=True) or {}
     # Update AccountStatus to 'Rejected' for borrowers
     cursor.execute("""
         UPDATE Borrowers
@@ -308,7 +340,8 @@ def reject_user_account(user_id):
         sender_id = request.args.get('senderUserId', type=int)
     except Exception:
         sender_id = None
-    notify_account_rejected(cursor, user_id, sender_user_id=sender_id)
+    reason = payload.get('reason') if isinstance(payload, dict) else None
+    notify_account_rejected(cursor, user_id, sender_user_id=sender_id, reason=reason)
 
     conn.commit()
     cursor.close()

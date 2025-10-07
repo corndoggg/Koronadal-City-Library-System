@@ -1,5 +1,9 @@
 from typing import Iterable, Optional, List, Any, Dict
 from app.services.audit import log_event  # NEW
+from app.services.mailer import (
+    send_account_approved_email,
+    send_account_rejected_email,
+)
 
 # NOTE: Adjust table/column names if your schema differs (Staff vs Users, etc.).
 
@@ -179,23 +183,54 @@ def notify_return_recorded(cursor, borrow_id: int, sender_user_id: Optional[int]
         )
 
 def _get_user_name(cursor, user_id: int) -> str:
+    profile = _get_user_profile(cursor, user_id)
+    if not profile:
+        return f"User #{user_id}"
+    return _compose_display_name(profile, f"User #{user_id}")
+
+
+def _get_user_profile(cursor, user_id: int) -> Dict[str, Any]:
     try:
         cursor.execute("""
-            SELECT ud.Firstname, ud.Middlename, ud.Lastname, u.Username
+            SELECT
+                u.Email AS UserEmail,
+                ud.Email AS DetailEmail,
+                u.Username,
+                ud.Firstname,
+                ud.Middlename,
+                ud.Lastname
             FROM Users u
             LEFT JOIN UserDetails ud ON ud.UserID = u.UserID
             WHERE u.UserID=%s
         """, (user_id,))
         row = cursor.fetchone() or {}
-        first = (row.get('Firstname') or '').strip()
-        mid = (row.get('Middlename') or '').strip()
-        last = (row.get('Lastname') or '').strip()
-        if first or last:
-            mi = f" {mid[0]}." if mid else ""
-            return f"{first}{mi} {last}".strip()
-        return row.get('Username') or f"User #{user_id}"
     except Exception:
-        return f"User #{user_id}"
+        return {}
+
+    def _clean(key: str) -> str:
+        return (row.get(key) or row.get(key.lower()) or '').strip()
+
+    email = (row.get('DetailEmail') or row.get('UserEmail') or '').strip() or None
+    username = (row.get('Username') or '').strip() or None
+
+    profile = {
+        'email': email,
+        'username': username,
+        'firstname': _clean('Firstname'),
+        'middlename': _clean('Middlename'),
+        'lastname': _clean('Lastname'),
+    }
+    return profile
+
+
+def _compose_display_name(profile: Dict[str, Any], fallback: str = '') -> str:
+    first = (profile.get('firstname') or '').strip()
+    mid = (profile.get('middlename') or '').strip()
+    last = (profile.get('lastname') or '').strip()
+    if first or last:
+        mi = f" {mid[0]}." if mid else ""
+        return f"{first}{mi} {last}".strip()
+    return (profile.get('username') or fallback).strip() or fallback
 
 def notify_account_registration_submitted(cursor, user_id: int):
     # Notify admins of new borrower registration
@@ -224,7 +259,18 @@ def notify_account_approved(cursor, user_id: int, sender_user_id: Optional[int] 
         title='Account Approved'
     )
 
-def notify_account_rejected(cursor, user_id: int, sender_user_id: Optional[int] = None):
+    profile = _get_user_profile(cursor, user_id)
+    recipient_email = profile.get('email') if profile else None
+    if recipient_email:
+        approver_name = _get_user_name(cursor, sender_user_id) if sender_user_id else None
+        display_name = _compose_display_name(profile, '') or None
+        send_account_approved_email(
+            recipient_email,
+            name=display_name,
+            approved_by=approver_name,
+        )
+
+def notify_account_rejected(cursor, user_id: int, sender_user_id: Optional[int] = None, reason: Optional[str] = None):
     create_notification(
         cursor,
         'ACCOUNT_REJECTED',
@@ -235,6 +281,18 @@ def notify_account_rejected(cursor, user_id: int, sender_user_id: Optional[int] 
         [user_id],
         title='Account Rejected'
     )
+
+    profile = _get_user_profile(cursor, user_id)
+    recipient_email = profile.get('email') if profile else None
+    if recipient_email:
+        reviewer_name = _get_user_name(cursor, sender_user_id) if sender_user_id else None
+        display_name = _compose_display_name(profile, '') or None
+        send_account_rejected_email(
+            recipient_email,
+            name=display_name,
+            rejected_by=reviewer_name,
+            reason=reason,
+        )
 
 def _ensure_type(cursor, code: str, desc: str):
     try:

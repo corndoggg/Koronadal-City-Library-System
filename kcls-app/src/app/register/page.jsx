@@ -87,6 +87,7 @@ const RegisterBorrowerPage = () => {
   const [error, setError] = useState('');
   const [termsOpen, setTermsOpen] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [emailError, setEmailError] = useState('');
   const [usernameStatus, setUsernameStatus] = useState({ state: 'idle', message: '' });
   const [form, setForm] = useState({
     username: '',
@@ -110,6 +111,10 @@ const RegisterBorrowerPage = () => {
     const { name, value } = e.target;
     setForm((f) => ({ ...f, [name]: value }));
     if (name === 'username') {
+      setError('');
+    }
+    if (name === 'email') {
+      setEmailError('');
       setError('');
     }
   };
@@ -180,6 +185,7 @@ const RegisterBorrowerPage = () => {
     form.firstname &&
     form.lastname &&
     form.email &&
+    !emailError &&
     form.password.length >= 6;
 
   const canContinueStep1 = baseCredentialsValid && usernameStatus.state === 'available';
@@ -216,6 +222,7 @@ const RegisterBorrowerPage = () => {
 
   const submit = async () => {
     setError('');
+    setEmailError('');
     if (usernameStatus.state !== 'available') {
       setError('Please choose an available username before submitting.');
       return;
@@ -250,7 +257,22 @@ const RegisterBorrowerPage = () => {
         body: JSON.stringify(payload),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Registration failed');
+      if (!res.ok) {
+        if (res.status === 409 && data?.error === 'email_exists') {
+          const message = 'Email is already registered. Please sign in or use another email.';
+          setEmailError(message);
+          setError(message);
+          setStep(1);
+        } else if (res.status === 400 && data?.error === 'email_required') {
+          setEmailError('Email is required.');
+          setError('Email is required.');
+          setStep(1);
+        } else {
+          setError(data?.error || 'Registration failed');
+        }
+        setLoading(false);
+        return;
+      }
       setSuccess(true);
       setTermsAccepted(false);
     } catch (err) {
@@ -410,6 +432,8 @@ const RegisterBorrowerPage = () => {
                       fullWidth
                       required
                       autoComplete="email"
+                      error={Boolean(emailError)}
+                      helperText={emailError || ' '}
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>
