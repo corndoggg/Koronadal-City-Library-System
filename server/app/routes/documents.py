@@ -191,9 +191,13 @@ def list_uploaded_files():
 def upload_file_to_uploads():
     files = request.files.getlist('files')
     if not files:
+        files = request.files.getlist('files[]')
+    if not files:
         single = request.files.get('file')
         if single is not None:
             files = [single]
+    if not files and request.files:
+        files = list(request.files.values())
 
     valid_files = []
     for f in files:
@@ -213,8 +217,10 @@ def upload_file_to_uploads():
     saved_files = []
     for file_obj, original_name in valid_files:
         safe_name = secure_filename(original_name)
-        unique_filename = f"{uuid.uuid4()}_{safe_name}"
-        save_path = os.path.join(upload_folder, unique_filename)
+        if not safe_name:
+            return jsonify({'error': f'Invalid filename for "{original_name}".'}), 400
+
+        save_path = os.path.join(upload_folder, safe_name)
 
         try:
             file_obj.save(save_path)
@@ -229,11 +235,11 @@ def upload_file_to_uploads():
             return jsonify({'error': f'Failed to store file "{original_name}": {exc}'}), 500
 
         saved_files.append({
-            'file': unique_filename,
+            'file': safe_name,
             'original': original_name,
             'size': stat.st_size,
             'mtime': int(stat.st_mtime),
-            'url': f"/uploads/{unique_filename}"
+            'url': f"/uploads/{safe_name}"
         })
 
     message = f"Uploaded {len(saved_files)} file{'s' if len(saved_files) != 1 else ''}."
