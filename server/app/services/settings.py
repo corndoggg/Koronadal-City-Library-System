@@ -44,6 +44,17 @@ DEFAULTS = {
         "Sat",
         "Sun",
     ],
+    "auto_overdue_enabled": True,
+    "auto_overdue_time": "08:00",
+    "auto_overdue_days": [
+        "Mon",
+        "Tue",
+        "Wed",
+        "Thu",
+        "Fri",
+        "Sat",
+        "Sun",
+    ],
 }
 
 
@@ -135,6 +146,18 @@ def load_settings() -> Dict[str, Any]:
         out.get("auto_backup_days", DEFAULTS["auto_backup_days"]),
         DEFAULTS["auto_backup_days"],
     )
+    out["auto_overdue_enabled"] = _normalize_bool(
+        out.get("auto_overdue_enabled", DEFAULTS["auto_overdue_enabled"]),
+        DEFAULTS["auto_overdue_enabled"],
+    )
+    out["auto_overdue_time"] = _normalize_time(
+        out.get("auto_overdue_time", DEFAULTS["auto_overdue_time"]),
+        DEFAULTS["auto_overdue_time"],
+    )
+    out["auto_overdue_days"] = _normalize_days(
+        out.get("auto_overdue_days", DEFAULTS["auto_overdue_days"]),
+        DEFAULTS["auto_overdue_days"],
+    )
     return out
 
 def save_settings(partial: Dict[str, Any]) -> Dict[str, Any]:
@@ -166,6 +189,21 @@ def save_settings(partial: Dict[str, Any]) -> Dict[str, Any]:
         current["auto_backup_days"] = _normalize_days(
             partial.get("auto_backup_days"),
             current["auto_backup_days"],
+        )
+    if "auto_overdue_enabled" in partial:
+        current["auto_overdue_enabled"] = _normalize_bool(
+            partial.get("auto_overdue_enabled"),
+            current["auto_overdue_enabled"],
+        )
+    if "auto_overdue_time" in partial:
+        current["auto_overdue_time"] = _normalize_time(
+            partial.get("auto_overdue_time"),
+            current["auto_overdue_time"],
+        )
+    if "auto_overdue_days" in partial:
+        current["auto_overdue_days"] = _normalize_days(
+            partial.get("auto_overdue_days"),
+            current["auto_overdue_days"],
         )
     # atomic write
     path = get_settings_path()

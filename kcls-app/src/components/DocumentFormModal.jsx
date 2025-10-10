@@ -30,7 +30,7 @@ import {
 } from "@mui/material";
 import {
   Add, Edit as EditIcon, Save, Cancel, Delete, PictureAsPdf,
-  WarningAmber, CloudUpload, Close, Preview
+  WarningAmber, CloudUpload, Close, Preview, DocumentScanner
 } from "@mui/icons-material";
 import axios from "axios";
 import DocumentPDFViewer from "./DocumentPDFViewer"; // NEW
@@ -48,11 +48,106 @@ const conditionOptions = ["Good", "Fair", "Average", "Poor", "Bad"];
 
 function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locations = [] }) {
   const API_BASE = import.meta.env.VITE_API_BASE;
+  const SCANNER_BASE = (import.meta.env.VITE_SCANNER_BASE || "http://localhost:7070").replace(/\/$/, "");
   const fileInputRef = useRef();
-  // NEW: images → PDF
-  const imgInputRef = useRef(null);
-  const [imgConverting, setImgConverting] = useState(false);
-  const [convertForEdit, setConvertForEdit] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const isMountedRef = useRef(false);
+  const [scannerStatus, setScannerStatus] = useState({
+    checking: false,
+    checked: false,
+    available: false,
+    message: ""
+  });
+  const [scanDialogOpen, setScanDialogOpen] = useState(false);
+  const [scanPageCount, setScanPageCount] = useState("1");
+  const [scanDialogError, setScanDialogError] = useState("");
+  const [scanRequestPages, setScanRequestPages] = useState(null);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const checkScannerAvailability = useCallback(async () => {
+    if (!SCANNER_BASE) {
+      const result = {
+        checking: false,
+        checked: true,
+        available: false,
+        message: "Scanner client URL is not configured."
+      };
+      if (isMountedRef.current) setScannerStatus(result);
+      return result;
+    }
+
+    if (isMountedRef.current) {
+      setScannerStatus(prev => ({ ...prev, checking: true, checked: false }));
+    }
+
+    try {
+      const res = await fetch(`${SCANNER_BASE}/devices`, { method: "GET" });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `Scanner client error (${res.status})`);
+      }
+      const data = await res.json().catch(() => ({}));
+      const devices = Array.isArray(data?.devices) ? data.devices : [];
+      let message;
+      let available = false;
+      if (devices.length > 0) {
+        available = true;
+        const primary = devices[0] || {};
+        const extra = devices.length > 1 ? ` (+${devices.length - 1} more)` : "";
+        message = `${primary?.name || "Scanner"} connected${extra}.`;
+      } else {
+        message = "Scanner client online but no scanners detected.";
+      }
+      const result = { checking: false, checked: true, available, message };
+      if (isMountedRef.current) setScannerStatus(result);
+      return result;
+    } catch (err) {
+      const result = {
+        checking: false,
+        checked: true,
+        available: false,
+        message: err?.message || "Unable to reach scanner client."
+      };
+      if (isMountedRef.current) setScannerStatus(result);
+      return result;
+    }
+  }, [SCANNER_BASE]);
+
+  const openScanDialog = () => {
+    setScanDialogError("");
+    setScanPageCount(prev => {
+      const parsed = Number.parseInt(prev, 10);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return String(Math.min(parsed, 30));
+      }
+      return "1";
+    });
+    setScanDialogOpen(true);
+  };
+
+  const closeScanDialog = () => {
+    setScanDialogOpen(false);
+  };
+
+  const handleScanDialogConfirm = () => {
+    const parsed = Number.parseInt(scanPageCount, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setScanDialogError("Enter at least 1 page.");
+      return;
+    }
+    if (parsed > 30) {
+      setScanDialogError("Maximum is 30 pages per batch.");
+      return;
+    }
+    setScanDialogOpen(false);
+    handleScanToPdf(parsed);
+  };
 
   // NEW: preview state for converted PDF
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
@@ -158,6 +253,11 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
   useEffect(() => {
     initializeState();
   }, [initializeState]);
+
+  useEffect(() => {
+    if (!open) return;
+    checkScannerAvailability();
+  }, [open, checkScannerAvailability]);
 
   const openToast = (message, severity = "success") =>
     setSnackbar({ open: true, message, severity });
@@ -470,66 +570,86 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
     return label || `Location #${value}`;
   };
 
-  // NEW: choose images (in-modal)
-  const handleChooseImagesToPdf = (forEdit = false) => {
-    setConvertForEdit(!!forEdit);
-    if (imgInputRef.current) {
-      imgInputRef.current.value = "";
-      imgInputRef.current.click();
+  const handleScanToPdf = async (requestedPages) => {
+    if (!SCANNER_BASE) {
+      openToast("Scanner client URL is not configured.", "error");
+      return;
     }
-  };
 
-  // NEW: convert selected images to PDF and apply
-  const handleImagesSelectedToPdf = async (e) => {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
-    setImgConverting(true);
+    let statusInfo = scannerStatus;
+    if (!statusInfo.available) {
+      statusInfo = await checkScannerAvailability();
+    }
+    if (!statusInfo.available) {
+      openToast(statusInfo.message || "Scanner is not available.", "warning");
+      return;
+    }
+
+    let pages = Number.parseInt(requestedPages, 10);
+    if (!Number.isFinite(pages) || pages <= 0) pages = 1;
+    if (pages > 30) pages = 30;
+
+    setScanRequestPages(pages);
+    setScanning(true);
     try {
-      const form = new FormData();
-      files.forEach(f => form.append("images", f));
-      // Ask backend to return the merged PDF as a blob
-      const res = await fetch(`${API_BASE}/system/image-to-pdf?inline=1`, { method: "POST", body: form });
+      const res = await fetch(`${SCANNER_BASE}/scan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pages, dpi: 300, colorMode: "Color" })
+      });
       if (!res.ok) {
         const text = await res.text().catch(() => "");
-        throw new Error(text || "Image-to-PDF failed");
+        let message = text;
+        if (text) {
+          try {
+            const data = JSON.parse(text);
+            message = data?.error || data?.message || text;
+          } catch {
+            message = text;
+          }
+        }
+        if (!message) message = `Scanner service error (${res.status})`;
+        throw new Error(message);
       }
       const blob = await res.blob();
-      const filename = `images_${Date.now()}.pdf`;
-      // Create a File for upload compatibility
+      const headerName = res.headers.get("X-Scan-Filename");
+      const filename = headerName || `scan_${Date.now()}.pdf`;
       const pdfFile = new File([blob], filename, { type: "application/pdf" });
+      const scannedPages = parseInt(res.headers.get("X-Scan-Pages") || `${pages}`, 10) || pages;
 
-      if (convertForEdit && documentData) {
-        // Edit mode: upload immediately via existing replace endpoint
+      if (isEdit && documentData) {
         setFileUploading(true);
         setUploadProgress(0);
-        const fd = new FormData();
-        fd.append("file", pdfFile);
-        const uploadRes = await axios.put(`${API_BASE}/upload/edit/${documentData.Document_ID}`, fd, {
-          headers: { "Content-Type": "multipart/form-data" },
-          onUploadProgress: (pe) =>
-            setUploadProgress(Math.round((pe.loaded * 100) / (pe.total || 1)))
-        });
-        const uploadedPath = uploadRes?.data?.filePath || uploadRes?.data?.path || `/uploads/${filename}`;
-        setForm(prev => ({ ...prev, filePath: uploadedPath }));
-        await handleAnalyzePdf(pdfFile);
-        openToast("PDF replaced from images.");
-        setUnsaved(true);
-        setFileUploading(false);
-        setUploadProgress(0);
+        try {
+          const fd = new FormData();
+          fd.append("file", pdfFile);
+          const uploadRes = await axios.put(`${API_BASE}/upload/edit/${documentData.Document_ID}`, fd, {
+            headers: { "Content-Type": "multipart/form-data" },
+            onUploadProgress: (pe) =>
+              setUploadProgress(Math.round((pe.loaded * 100) / (pe.total || 1)))
+          });
+          const uploadedPath = uploadRes?.data?.filePath || uploadRes?.data?.path || `/uploads/${filename}`;
+          setForm(prev => ({ ...prev, filePath: uploadedPath }));
+          await handleAnalyzePdf(pdfFile);
+          openToast(`Replaced PDF with ${scannedPages} scanned page${scannedPages > 1 ? "s" : ""}.`);
+          setUnsaved(true);
+        } finally {
+          setFileUploading(false);
+          setUploadProgress(0);
+        }
       } else {
-        // Add mode: set as form file; will be sent on Save
         setForm(prev => ({ ...prev, file: pdfFile, filePath: filename }));
         await handleAnalyzePdf(pdfFile);
-        openToast("PDF created from images. Ready to save.", "info");
+        openToast(`Scanned ${scannedPages} page${scannedPages > 1 ? "s" : ""}. Ready to save.`, "info");
         setUnsaved(true);
       }
-      // Allow user to preview on demand
+
       openPreviewForFile(pdfFile);
     } catch (err) {
-      openToast(err?.message || "Failed converting images to PDF", "error");
+      openToast(err?.message || "Failed to scan document", "error");
     } finally {
-      setImgConverting(false);
-      if (imgInputRef.current) imgInputRef.current.value = "";
+      setScanRequestPages(null);
+      setScanning(false);
     }
   };
 
@@ -631,9 +751,6 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
                     {aiLoading && (
                       <Chip size="small" color="info" label="Analyzing PDF…" sx={{ fontWeight: 700, borderRadius: 1 }} />
                     )}
-                    {imgConverting && (
-                      <Chip size="small" color="warning" label="Converting images…" sx={{ fontWeight: 700, borderRadius: 1 }} />
-                    )}
                   </Stack>
                 </Stack>
               </Box>
@@ -683,13 +800,36 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
                           {aiLoading && (
                             <Chip size="small" color="info" label="Analyzing…" sx={{ fontWeight: 600, borderRadius: 1 }} />
                           )}
-                          {imgConverting && (
-                            <Chip size="small" color="warning" label="Converting images…" sx={{ fontWeight: 600, borderRadius: 1 }} />
+                          {scanning && (
+                            <Chip size="small" color="secondary" label="Scanning…" sx={{ fontWeight: 600, borderRadius: 1 }} />
                           )}
                         </Stack>
                         <Typography variant="body2" color="text.secondary">
                           Upload an existing PDF or merge multiple images. We’ll extract metadata automatically so you can fine-tune the catalog values in seconds.
                         </Typography>
+                        {(scannerStatus.checking || scannerStatus.checked) && (
+                          <Alert
+                            severity={scannerStatus.available ? "success" : scannerStatus.checking ? "info" : "warning"}
+                            icon={<DocumentScanner fontSize="inherit" />}
+                            action={
+                              !scannerStatus.available ? (
+                                <Button
+                                  color="inherit"
+                                  size="small"
+                                  onClick={checkScannerAvailability}
+                                  disabled={scannerStatus.checking}
+                                >
+                                  Retry
+                                </Button>
+                              ) : null
+                            }
+                            sx={{ borderRadius: 1.5, alignItems: "center" }}
+                          >
+                            {scannerStatus.checking
+                              ? "Checking scanner client…"
+                              : scannerStatus.message || "Scanner status unavailable."}
+                          </Alert>
+                        )}
                         <Stack direction="row" spacing={1} flexWrap="wrap">
                           {!isEdit ? (
                             <Button
@@ -706,7 +846,6 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
                                 name="file"
                                 accept="application/pdf"
                                 hidden
-                                required={!isEdit}
                                 onChange={handleChange}
                               />
                             </Button>
@@ -725,12 +864,12 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
                           <Button
                             variant="outlined"
                             size="small"
-                            startIcon={<PictureAsPdf />}
-                            onClick={() => handleChooseImagesToPdf(isEdit)}
-                            disabled={imgConverting || fileUploading}
+                            startIcon={<DocumentScanner />}
+                            onClick={openScanDialog}
+                            disabled={scanning || fileUploading || scannerStatus.checking}
                             sx={{ fontWeight: 600, minHeight: 40 }}
                           >
-                            {imgConverting ? "Converting…" : "Images → PDF"}
+                            {scanning ? "Scanning…" : "Scan to PDF"}
                           </Button>
                           <Button
                             variant="outlined"
@@ -743,14 +882,15 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
                             Preview
                           </Button>
                         </Stack>
-                        <input
-                          ref={imgInputRef}
-                          type="file"
-                          accept="image/*"
-                          multiple
-                          hidden
-                          onChange={handleImagesSelectedToPdf}
-                        />
+                        {scanning && (scanRequestPages || 1) > 1 && (
+                          <Alert
+                            severity="info"
+                            icon={<DocumentScanner fontSize="inherit" />}
+                            sx={{ borderRadius: 1.5, alignItems: "center" }}
+                          >
+                            Put the next page into the scanner.
+                          </Alert>
+                        )}
                         {isEdit && (
                           <input
                             ref={fileInputRef}
@@ -1129,6 +1269,74 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
           </DialogActions>
         </form>
       </Dialog>
+
+      {/* Scan Page Count */}
+      <MuiDialog
+        open={scanDialogOpen}
+        onClose={closeScanDialog}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 1,
+            border: t => `2px solid ${t.palette.divider}`
+          }
+        }}
+      >
+        <DialogTitle
+          sx={{
+            fontWeight: 800,
+            py: 1,
+            borderBottom: t => `1px solid ${t.palette.divider}`
+          }}
+        >
+          Scan Documents
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          <Stack spacing={2}>
+            <Typography variant="body2" color="text.secondary">
+              Enter how many pages you want to scan in this batch. Put the next page into the scanner between scans.
+            </Typography>
+            <TextField
+              label="Pages to Scan"
+              type="number"
+              size="small"
+              value={scanPageCount}
+              onChange={e => {
+                setScanDialogError("");
+                setScanPageCount(e.target.value.replace(/[^0-9]/g, ""));
+              }}
+              inputProps={{ min: 1, max: 30 }}
+              error={!!scanDialogError}
+              helperText={scanDialogError || "Maximum 30 pages per batch."}
+              onKeyDown={e => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleScanDialogConfirm();
+                }
+              }}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions
+          sx={{
+            borderTop: t => `1px solid ${t.palette.divider}`,
+            py: 1
+          }}
+        >
+          <Button variant="outlined" size="small" onClick={closeScanDialog}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={handleScanDialogConfirm}
+            startIcon={<DocumentScanner />}
+          >
+            Start Scan
+          </Button>
+        </DialogActions>
+      </MuiDialog>
 
       {/* Confirm Discard */}
       <MuiDialog

@@ -110,10 +110,11 @@ def upload_document():
         public_url
     ))
     conn.commit()
+    document_id = cursor.lastrowid
     cursor.close()
     conn.close()
 
-    return jsonify({'message': 'Document uploaded successfully'}), 201
+    return jsonify({'message': 'Document uploaded successfully', 'documentId': document_id}), 201
 
 # Serve uploaded PDF file
 @documents_bp.route('/uploads/<filename>')
