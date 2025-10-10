@@ -127,6 +127,100 @@ def serve_uploaded_file(filename):
         as_attachment=False  # 👈 this is key
     )
 
+
+# List files from the uploads directory with basic metadata
+@documents_bp.route('/documents/uploads', methods=['GET'])
+def list_uploaded_files():
+    upload_folder = current_app.config['UPLOAD_FOLDER']
+    os.makedirs(upload_folder, exist_ok=True)
+
+    def _parse_int(name: str, default: int) -> int:
+        try:
+            value = int(request.args.get(name, default))
+        except (TypeError, ValueError):
+            return default
+        return value
+
+    page = max(_parse_int('page', 1), 1)
+    per_page = max(1, min(_parse_int('per_page', 10), 100))
+
+    files = []
+    try:
+        for entry in os.scandir(upload_folder):
+            if not entry.is_file():
+                continue
+            stat = entry.stat()
+            files.append({
+                'file': entry.name,
+                'size': stat.st_size,
+                'mtime': int(stat.st_mtime),
+                'url': f"/uploads/{entry.name}"
+            })
+    except (FileNotFoundError, PermissionError):
+        return jsonify({
+            'files': [],
+            'total': 0,
+            'page': page,
+            'per_page': per_page,
+            'total_pages': 0
+        })
+
+    files.sort(key=lambda item: item['mtime'], reverse=True)
+
+    total = len(files)
+    total_pages = (total + per_page - 1) // per_page if total else 0
+    if total_pages:
+        if page > total_pages:
+            page = total_pages
+    else:
+        page = 1
+
+    start = (page - 1) * per_page
+    paged_files = files[start:start + per_page]
+
+    return jsonify({
+        'files': paged_files,
+        'total': total,
+        'page': page,
+        'per_page': per_page,
+        'total_pages': total_pages
+    })
+
+
+@documents_bp.route('/documents/uploads', methods=['POST'])
+def upload_file_to_uploads():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+
+    file = request.files['file']
+    filename = getattr(file, 'filename', '') or ''
+    if filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+
+    if not allowed_file(filename):
+        return jsonify({'error': 'File type not allowed. Only PDF supported.'}), 400
+
+    safe_name = secure_filename(filename)
+    unique_filename = f"{uuid.uuid4()}_{safe_name}"
+    upload_folder = current_app.config['UPLOAD_FOLDER']
+    os.makedirs(upload_folder, exist_ok=True)
+    save_path = os.path.join(upload_folder, unique_filename)
+
+    try:
+        file.save(save_path)
+        stat = os.stat(save_path)
+    except OSError as exc:
+        return jsonify({'error': f'Failed to store file: {exc}'}), 500
+
+    file_info = {
+        'file': unique_filename,
+        'size': stat.st_size,
+        'mtime': int(stat.st_mtime),
+        'url': f"/uploads/{unique_filename}"
+    }
+
+    return jsonify({'message': 'File uploaded.', 'file': file_info}), 201
+
 # API endpoint to change the file (PDF) of a document
 @documents_bp.route('/upload/edit/<int:doc_id>', methods=['PUT'])
 def update_document_file(doc_id):

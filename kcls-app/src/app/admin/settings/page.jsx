@@ -1,10 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box, Paper, Typography, Stack, TextField, Button, Divider,
   Alert, Snackbar, CircularProgress, Chip,
   Dialog, DialogTitle, DialogContent, DialogActions,
   Switch, FormGroup, FormControlLabel, Checkbox, FormHelperText, Tooltip,
-  Grid, Card, CardHeader, CardContent, CardActions, Avatar
+  Grid, Card, CardHeader, CardContent, CardActions, Avatar, Pagination
 } from '@mui/material';
 import {
   Save as SaveIcon,
@@ -14,7 +14,9 @@ import {
   Download as DownloadIcon,
   Settings as SettingsIcon,
   Storage as StorageIcon,
-  Schedule as ScheduleIcon
+  Schedule as ScheduleIcon,
+  PictureAsPdf as PictureAsPdfIcon,
+  CloudUpload as CloudUploadIcon
 } from '@mui/icons-material';
 import { useSystemSettings } from '../../../contexts/SystemSettingsContext.jsx';
 import { formatDateTime } from '../../../utils/date';
@@ -32,6 +34,7 @@ const DAY_LABELS = {
 };
 
 const sortDays = (days) => [...days].sort((a, b) => DAY_OPTIONS.indexOf(a) - DAY_OPTIONS.indexOf(b));
+const UPLOADS_PER_PAGE = 10;
 
 const SettingsPage = () => {
   const { settings: ctxSettings, loading: ctxLoading, save: saveCtx, refresh } = useSystemSettings();
@@ -89,6 +92,8 @@ const SettingsPage = () => {
   const handleReset = async () => {
     await refresh();
     await loadSchedule();
+    setUploadsPage(1);
+    await loadUploads(1);
     setMsg({ open: true, text: 'Settings reloaded from server.', severity: 'info' });
   };
 
@@ -101,6 +106,14 @@ const SettingsPage = () => {
   const [backupRunning, setBackupRunning] = useState(false);
   const [backupsError, setBackupsError] = useState('');
   const [missingDump, setMissingDump] = useState(false);
+  const [uploads, setUploads] = useState([]);
+  const [uploadsLoading, setUploadsLoading] = useState(false);
+  const [uploadsError, setUploadsError] = useState('');
+  const [uploadsPage, setUploadsPage] = useState(1);
+  const [uploadsTotal, setUploadsTotal] = useState(0);
+  const [uploadsTotalPages, setUploadsTotalPages] = useState(0);
+  const [uploading, setUploading] = useState(false);
+  const uploadInputRef = useRef(null);
 
   const humanSize = (n) => {
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -155,6 +168,97 @@ const SettingsPage = () => {
   useEffect(() => {
     loadBackups();
   }, [loadBackups]);
+
+  const resolveUploadUrl = useCallback((path) => {
+    if (!path || typeof path !== 'string') return '';
+    if (/^https?:/i.test(path)) return path;
+    const base = String(API_BASE || '').replace(/\/+$/, '');
+    const normalized = path.startsWith('/') ? path : `/${path}`;
+    if (!base) return normalized;
+    return `${base}${normalized}`;
+  }, [API_BASE]);
+
+  const loadUploads = useCallback(async (page = 1) => {
+    setUploadsLoading(true);
+    setUploadsError('');
+    try {
+      const res = await fetch(`${API_BASE}/documents/uploads?page=${page}&per_page=${UPLOADS_PER_PAGE}`);
+      if (!res.ok) throw new Error(`Failed: ${res.status}`);
+      const data = await res.json();
+      const files = Array.isArray(data?.files) ? data.files : Array.isArray(data) ? data : [];
+      const total = Number(data?.total ?? files.length);
+      const reportedPer = Number(data?.per_page ?? UPLOADS_PER_PAGE) || UPLOADS_PER_PAGE;
+      const totalPages = reportedPer > 0 ? Math.ceil(total / reportedPer) : 0;
+      const nextPage = Number(data?.page ?? page) || page;
+      setUploads(files);
+      setUploadsTotal(total);
+      setUploadsTotalPages(totalPages);
+      setUploadsPage(nextPage);
+    } catch (e) {
+      setUploadsError(e?.message || 'Failed to load uploaded files');
+    } finally {
+      setUploadsLoading(false);
+    }
+  }, [API_BASE]);
+
+  useEffect(() => {
+    loadUploads(1);
+  }, [loadUploads]);
+
+  const openUploadedFile = useCallback((path) => {
+    const url = resolveUploadUrl(path);
+    if (!url) {
+      setMsg({ open: true, text: 'Unable to resolve file path.', severity: 'error' });
+      return;
+    }
+    window.open(url, '_blank', 'noopener');
+  }, [resolveUploadUrl]);
+
+  const currentUploadsPage = useMemo(
+    () => (uploadsTotalPages > 0 ? Math.min(uploadsPage, uploadsTotalPages) : 1),
+    [uploadsPage, uploadsTotalPages]
+  );
+
+  const handleUploadsPageChange = useCallback((_, value) => {
+    setUploadsPage(value);
+    loadUploads(value);
+  }, [loadUploads]);
+
+  const uploadFileToServer = useCallback(async (file) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(`${API_BASE}/documents/uploads`, {
+        method: 'POST',
+        body: fd
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Upload failed.');
+      setMsg({ open: true, text: data?.message || 'File uploaded.', severity: 'success' });
+      setUploadsPage(1);
+      await loadUploads(1);
+    } catch (e) {
+      setMsg({ open: true, text: e?.message || 'Upload failed.', severity: 'error' });
+    } finally {
+      setUploading(false);
+    }
+  }, [API_BASE, loadUploads]);
+
+  const handleUploadChange = useCallback((event) => {
+    const file = event.target?.files?.[0];
+    if (file) {
+      uploadFileToServer(file);
+    }
+    if (event.target) {
+      event.target.value = '';
+    }
+  }, [uploadFileToServer]);
+
+  const handleUploadClick = useCallback(() => {
+    uploadInputRef.current?.click();
+  }, [uploadInputRef]);
 
   // Auto backup schedule state
   const [schedule, setSchedule] = useState({ enabled: false, time: '02:00', days: [...DAY_OPTIONS] });
@@ -495,6 +599,95 @@ const SettingsPage = () => {
                         />
                       </Tooltip>
                     </Stack>
+                  </Stack>
+                </Stack>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid item xs={12}>
+            <Card variant="outlined" sx={{ borderRadius: 2 }}>
+              <CardHeader
+                avatar={(<Avatar sx={{ bgcolor: 'error.main', color: 'error.contrastText' }}><PictureAsPdfIcon fontSize="small" /></Avatar>)}
+                titleTypographyProps={{ fontWeight: 800, fontSize: 16 }}
+                subheaderTypographyProps={{ fontSize: 12, fontWeight: 600, color: 'text.secondary' }}
+                title="Uploaded Document Files"
+                subheader="Browse the physical uploads directory and launch stored PDFs."
+                action={uploadsLoading ? <CircularProgress size={18} sx={{ mt: 1, mr: 1 }} /> : null}
+              />
+              <Divider />
+              <CardContent>
+                <Stack spacing={3}>
+                  <Stack spacing={1}>
+                    <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                      This list reflects the files currently stored on disk. Use the controls to refresh or open a document.
+                    </Typography>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                      <Button
+                        variant="contained"
+                        startIcon={<CloudUploadIcon />}
+                        onClick={handleUploadClick}
+                        disabled={uploading}
+                      >
+                        {uploading ? 'Uploading…' : 'Upload PDF'}
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        startIcon={<RefreshIcon />}
+                        onClick={() => loadUploads(currentUploadsPage)}
+                        disabled={uploadsLoading || uploading}
+                      >
+                        Refresh uploads
+                      </Button>
+                      {uploads?.[0]?.url && (
+                        <Button
+                          variant="text"
+                          startIcon={<PictureAsPdfIcon />}
+                          onClick={() => openUploadedFile(uploads[0].url)}
+                          disabled={uploading}
+                        >
+                          Open latest
+                        </Button>
+                      )}
+                      <Chip size="small" label={`Total: ${uploadsTotal}`} />
+                    </Stack>
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      hidden
+                      ref={uploadInputRef}
+                      onChange={handleUploadChange}
+                    />
+                  </Stack>
+
+                  {uploadsError && <Alert severity="error">{uploadsError}</Alert>}
+
+                  <Stack spacing={1.5}>
+                    {!uploadsLoading && (!uploads || uploads.length === 0) && (
+                      <Typography variant="caption" color="text.secondary">No files detected in uploads directory.</Typography>
+                    )}
+                    {uploads.map((file) => (
+                      <Paper key={file.file || file.url} variant="outlined" sx={{ p: 1.25, borderRadius: 1.5 }}>
+                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'flex-start', sm: 'center' }}>
+                          <Typography sx={{ fontWeight: 700 }} noWrap title={file.file}>{file.file}</Typography>
+                          <Chip size="small" label={humanSize(file.size)} />
+                          <Chip size="small" label={fmtTime(file.mtime)} />
+                          <Box sx={{ flexGrow: 1 }} />
+                          <Button size="small" startIcon={<PictureAsPdfIcon fontSize="inherit" />} onClick={() => openUploadedFile(file.url)}>
+                            Open
+                          </Button>
+                        </Stack>
+                      </Paper>
+                    ))}
+                    {uploadsTotalPages > 1 && (
+                      <Pagination
+                        count={uploadsTotalPages}
+                        page={currentUploadsPage}
+                        onChange={handleUploadsPageChange}
+                        color="primary"
+                        size="small"
+                      />
+                    )}
                   </Stack>
                 </Stack>
               </CardContent>

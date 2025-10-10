@@ -427,7 +427,7 @@ const BrowseLibraryPage = () => {
             elevation={0}
             sx={{
               position: 'relative',
-              borderRadius: 4,
+              borderRadius: 2,
               overflow: 'hidden',
               backgroundImage: theme => `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.9)}, ${alpha(theme.palette.secondary.main, 0.82)})`,
               color: 'common.white',
@@ -481,7 +481,7 @@ const BrowseLibraryPage = () => {
           <Card
             elevation={0}
             sx={{
-              borderRadius: 4,
+              borderRadius: 2,
               border: theme => `1px solid ${alpha(theme.palette.divider, 0.6)}`,
               backdropFilter: 'blur(8px)',
               backgroundColor: theme => alpha(theme.palette.background.paper, 0.92),

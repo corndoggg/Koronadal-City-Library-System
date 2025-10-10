@@ -30,7 +30,7 @@ import {
 } from "@mui/material";
 import {
   Add, Edit as EditIcon, Save, Cancel, Delete, PictureAsPdf,
-  WarningAmber, CloudUpload, Close, Preview, DocumentScanner
+  WarningAmber, CloudUpload, Close, Preview, DocumentScanner, Download
 } from "@mui/icons-material";
 import axios from "axios";
 import DocumentPDFViewer from "./DocumentPDFViewer"; // NEW
@@ -49,6 +49,10 @@ const conditionOptions = ["Good", "Fair", "Average", "Poor", "Bad"];
 function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locations = [] }) {
   const API_BASE = import.meta.env.VITE_API_BASE;
   const SCANNER_BASE = (import.meta.env.VITE_SCANNER_BASE || "http://localhost:7070").replace(/\/$/, "");
+  const scannerClientDownloadUrl = useMemo(() => {
+    const base = String(import.meta.env.BASE_URL ?? "/").replace(/\/+$/, "");
+    return `${base}/scanner-client.exe`;
+  }, []);
   const fileInputRef = useRef();
   const [scanning, setScanning] = useState(false);
   const isMountedRef = useRef(false);
@@ -880,6 +884,17 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
                             sx={{ fontWeight: 600, minHeight: 40 }}
                           >
                             Preview
+                          </Button>
+                          <Button
+                            variant="text"
+                            size="small"
+                            startIcon={<Download />}
+                            component="a"
+                            href={scannerClientDownloadUrl}
+                            download
+                            sx={{ fontWeight: 600, minHeight: 40 }}
+                          >
+                            Download Scanner Client
                           </Button>
                         </Stack>
                         {scanning && (scanRequestPages || 1) > 1 && (

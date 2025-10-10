@@ -11,3 +11,5 @@ psutil
 Pillow>=10.0.0
 pytesseract
 Flask-Mail
+Faker>=19.0.0
+fpdf2>=2.7.8
