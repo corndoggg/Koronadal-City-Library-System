@@ -245,6 +245,9 @@ const SettingsPage = () => {
     try {
       const fd = new FormData();
       pdfFiles.forEach((file) => fd.append('files', file));
+      if (pdfFiles.length === 1) {
+        fd.append('file', pdfFiles[0]);
+      }
 
       const res = await fetch(`${API_BASE}/documents/uploads`, {
         method: 'POST',
