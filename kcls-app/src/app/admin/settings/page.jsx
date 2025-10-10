@@ -224,19 +224,39 @@ const SettingsPage = () => {
     loadUploads(value);
   }, [loadUploads]);
 
-  const uploadFileToServer = useCallback(async (file) => {
-    if (!file) return;
+  const uploadFiles = useCallback(async (selectedFiles) => {
+    const fileList = Array.from(selectedFiles || []);
+    if (!fileList.length) {
+      setMsg({ open: true, text: 'No files selected.', severity: 'info' });
+      return;
+    }
+
+    const pdfFiles = fileList.filter((file) => (
+      file?.type === 'application/pdf' || /\.pdf$/i.test(file?.name || '')
+    ));
+    const skippedCount = fileList.length - pdfFiles.length;
+
+    if (!pdfFiles.length) {
+      setMsg({ open: true, text: 'Only PDF files can be uploaded.', severity: 'error' });
+      return;
+    }
+
     setUploading(true);
     try {
       const fd = new FormData();
-      fd.append('file', file);
+      pdfFiles.forEach((file) => fd.append('files', file));
+
       const res = await fetch(`${API_BASE}/documents/uploads`, {
         method: 'POST',
         body: fd
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || 'Upload failed.');
-      setMsg({ open: true, text: data?.message || 'File uploaded.', severity: 'success' });
+
+      const uploadedCount = Array.isArray(data?.files) ? data.files.length : pdfFiles.length;
+      const parts = [`Uploaded ${uploadedCount} file${uploadedCount === 1 ? '' : 's'}.`];
+      if (skippedCount > 0) parts.push(`${skippedCount} skipped (not PDF).`);
+      setMsg({ open: true, text: parts.join(' '), severity: 'success' });
       setUploadsPage(1);
       await loadUploads(1);
     } catch (e) {
@@ -247,14 +267,14 @@ const SettingsPage = () => {
   }, [API_BASE, loadUploads]);
 
   const handleUploadChange = useCallback((event) => {
-    const file = event.target?.files?.[0];
-    if (file) {
-      uploadFileToServer(file);
+    const files = event.target?.files;
+    if (files) {
+      uploadFiles(files);
     }
     if (event.target) {
       event.target.value = '';
     }
-  }, [uploadFileToServer]);
+  }, [uploadFiles]);
 
   const handleUploadClick = useCallback(() => {
     uploadInputRef.current?.click();
@@ -629,7 +649,7 @@ const SettingsPage = () => {
                         onClick={handleUploadClick}
                         disabled={uploading}
                       >
-                        {uploading ? 'Uploading…' : 'Upload PDF'}
+                        {uploading ? 'Uploading…' : 'Upload PDFs'}
                       </Button>
                       <Button
                         variant="outlined"
@@ -654,6 +674,7 @@ const SettingsPage = () => {
                     <input
                       type="file"
                       accept="application/pdf"
+                      multiple
                       hidden
                       ref={uploadInputRef}
                       onChange={handleUploadChange}

@@ -189,37 +189,55 @@ def list_uploaded_files():
 
 @documents_bp.route('/documents/uploads', methods=['POST'])
 def upload_file_to_uploads():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file part'}), 400
+    files = request.files.getlist('files')
+    if not files:
+        single = request.files.get('file')
+        if single is not None:
+            files = [single]
 
-    file = request.files['file']
-    filename = getattr(file, 'filename', '') or ''
-    if filename == '':
-        return jsonify({'error': 'No selected file'}), 400
+    valid_files = []
+    for f in files:
+        filename = getattr(f, 'filename', '') or ''
+        if not filename:
+            continue
+        if not allowed_file(filename):
+            return jsonify({'error': f'File type not allowed for "{filename}". Only PDF supported.'}), 400
+        valid_files.append((f, filename))
 
-    if not allowed_file(filename):
-        return jsonify({'error': 'File type not allowed. Only PDF supported.'}), 400
+    if not valid_files:
+        return jsonify({'error': 'No PDF files provided.'}), 400
 
-    safe_name = secure_filename(filename)
-    unique_filename = f"{uuid.uuid4()}_{safe_name}"
     upload_folder = current_app.config['UPLOAD_FOLDER']
     os.makedirs(upload_folder, exist_ok=True)
-    save_path = os.path.join(upload_folder, unique_filename)
 
-    try:
-        file.save(save_path)
-        stat = os.stat(save_path)
-    except OSError as exc:
-        return jsonify({'error': f'Failed to store file: {exc}'}), 500
+    saved_files = []
+    for file_obj, original_name in valid_files:
+        safe_name = secure_filename(original_name)
+        unique_filename = f"{uuid.uuid4()}_{safe_name}"
+        save_path = os.path.join(upload_folder, unique_filename)
 
-    file_info = {
-        'file': unique_filename,
-        'size': stat.st_size,
-        'mtime': int(stat.st_mtime),
-        'url': f"/uploads/{unique_filename}"
-    }
+        try:
+            file_obj.save(save_path)
+            stat = os.stat(save_path)
+        except OSError as exc:
+            # Cleanup any partially saved files from this batch
+            for saved in saved_files:
+                try:
+                    os.remove(os.path.join(upload_folder, saved['file']))
+                except OSError:
+                    pass
+            return jsonify({'error': f'Failed to store file "{original_name}": {exc}'}), 500
 
-    return jsonify({'message': 'File uploaded.', 'file': file_info}), 201
+        saved_files.append({
+            'file': unique_filename,
+            'original': original_name,
+            'size': stat.st_size,
+            'mtime': int(stat.st_mtime),
+            'url': f"/uploads/{unique_filename}"
+        })
+
+    message = f"Uploaded {len(saved_files)} file{'s' if len(saved_files) != 1 else ''}."
+    return jsonify({'message': message, 'files': saved_files}), 201
 
 # API endpoint to change the file (PDF) of a document
 @documents_bp.route('/upload/edit/<int:doc_id>', methods=['PUT'])
