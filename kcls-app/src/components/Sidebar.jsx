@@ -21,7 +21,8 @@ import {
   Users,
   BarChart3,
   Settings,
-  FileSearch
+  FileSearch,
+  BadgeDollarSign,
 } from 'lucide-react';
 import { TOPBAR_HEIGHT, DRAWER_WIDTH } from '../constants/layout'; // changed: import DRAWER_WIDTH
 import { useSidebar } from '../contexts/SidebarContext';
@@ -47,6 +48,7 @@ const navSectionsByRole = {
       title: 'Transactions',
       items: [
         { href: '/librarian/borrows', icon: ClipboardList, label: 'Borrows' },
+        { href: '/librarian/fines', icon: BadgeDollarSign, label: 'Fines' },
       ]
     }
   ],
@@ -67,7 +69,8 @@ const navSectionsByRole = {
     {
       title: 'Operations',
       items: [
-        { href: '/admin/borrows', icon: ClipboardList, label: 'Borrows' }
+        { href: '/admin/borrows', icon: ClipboardList, label: 'Borrows' },
+        { href: '/admin/fines', icon: BadgeDollarSign, label: 'Fines' }
       ]
     },
     {
@@ -79,7 +82,7 @@ const navSectionsByRole = {
         { href: '/admin/audit-logs', icon: FileSearch, label: 'Audit Logs' }
       ]
     }
-  ],
+  ]
 };
 
 const NavigationItem = ({ collapsed, href, icon, label, onNavigate }) => {

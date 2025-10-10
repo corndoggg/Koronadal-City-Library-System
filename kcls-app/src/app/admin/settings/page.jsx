@@ -3,9 +3,19 @@ import {
   Box, Paper, Typography, Stack, TextField, Button, Divider,
   Alert, Snackbar, CircularProgress, Chip,
   Dialog, DialogTitle, DialogContent, DialogActions,
-  Switch, FormGroup, FormControlLabel, Checkbox, FormHelperText, Tooltip
+  Switch, FormGroup, FormControlLabel, Checkbox, FormHelperText, Tooltip,
+  Grid, Card, CardHeader, CardContent, CardActions, Avatar
 } from '@mui/material';
-import { Save as SaveIcon, Restore as ResetIcon, Backup as BackupIcon, Refresh as RefreshIcon, Download as DownloadIcon } from '@mui/icons-material';
+import {
+  Save as SaveIcon,
+  Restore as ResetIcon,
+  Backup as BackupIcon,
+  Refresh as RefreshIcon,
+  Download as DownloadIcon,
+  Settings as SettingsIcon,
+  Storage as StorageIcon,
+  Schedule as ScheduleIcon
+} from '@mui/icons-material';
 import { useSystemSettings } from '../../../contexts/SystemSettingsContext.jsx';
 import { formatDateTime } from '../../../utils/date';
 import { loadBackupSchedule, saveBackupSchedule } from '../../../config/systemSettings';
@@ -222,221 +232,275 @@ const SettingsPage = () => {
   };
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', p: 2 }}>
-      <Box sx={{ maxWidth: 720, mx: 'auto' }}>
-        <Paper variant="outlined" sx={{ p: 2, borderRadius: 1 }}>
-          <Stack direction="row" alignItems="center" spacing={1}>
-            <Typography fontWeight={800} fontSize={18}>System Settings</Typography>
-            <Chip size="small" label={`Source: ${ctxSettings?._source || '—'}`} />
-            <Box sx={{ ml: 'auto' }} />
-            {ctxLoading && <CircularProgress size={18} />}
-          </Stack>
-          <Typography variant="caption" color="text.secondary" fontWeight={600}>
-            Change system-wide options. Fine is used when computing penalties.
-          </Typography>
-
-          <Divider sx={{ my: 2 }} />
-
-          <Stack spacing={2}>
-            <TextField
-              label="Fine per day"
-              type="number"
-              size="small"
-              value={fineInput === '' ? '' : fineValue}
-              onChange={(e) => {
-                const v = e.target.value;
-                setFineInput(v === '' ? '' : Math.max(0, Math.trunc(Number(v))));
-              }}
-              inputProps={{ min: 0, step: 1 }}
-              helperText={isFineValid ? `Current global fine: ${Number(ctxSettings?.fine ?? 5)}` : 'Enter a non-negative integer'}
-              error={!isFineValid}
-            />
-
-            <TextField
-              label="Borrow limit"
-              type="number"
-              size="small"
-              value={borrowInput === '' ? '' : borrowValue}
-              onChange={(e) => {
-                const v = e.target.value;
-                setBorrowInput(v === '' ? '' : Math.max(1, Math.trunc(Number(v))));
-              }}
-              inputProps={{ min: 1, step: 1 }}
-              helperText={isBorrowValid ? `Current borrow limit: ${Number(ctxSettings?.borrow_limit ?? 3)}` : 'Enter a positive integer'}
-              error={!isBorrowValid}
-            />
-
-            <Stack direction="row" spacing={1}>
-              <Button
-                variant="contained"
-                onClick={handleAttemptSave}
-                disabled={ctxLoading || saving || !isFineValid || !isBorrowValid}
-              >
-                {saving ? 'Saving…' : 'Save'}
-              </Button>
-              <Button
-                variant="outlined"
-                onClick={handleReset}
-                disabled={ctxLoading || saving}
-              >
-                Reset to server/public
-              </Button>
+    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', py: 4 }}>
+      <Box sx={{ maxWidth: 1200, mx: 'auto', px: { xs: 2, md: 4 } }}>
+        <Box
+          sx={{
+            mb: 4,
+            p: { xs: 3, md: 4 },
+            borderRadius: 2,
+            background: (theme) => `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 60%)`,
+            color: 'primary.contrastText'
+          }}
+        >
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} alignItems={{ xs: 'flex-start', sm: 'center' }}>
+            <Avatar sx={{ bgcolor: 'primary.light', color: 'primary.dark', width: 56, height: 56 }}>
+              <SettingsIcon />
+            </Avatar>
+            <Box>
+              <Typography variant="h5" fontWeight={800} sx={{ letterSpacing: 0.3 }}>System Administration</Typography>
+              <Typography variant="body2" sx={{ opacity: 0.9, mt: 0.5 }}>
+                Tune lending policies, automate backups, and safeguard collections from a single control pane.
+              </Typography>
+            </Box>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ ml: { sm: 'auto' } }}>
+              <Chip size="small" label={`Source: ${ctxSettings?._source || '—'}`} sx={{ bgcolor: 'primary.light', color: 'primary.dark' }} />
+              {ctxLoading && <CircularProgress size={18} color="inherit" />}
             </Stack>
           </Stack>
-        </Paper>
+        </Box>
 
-        {/* Database Backups */}
-        <Paper variant="outlined" sx={{ p: 2, borderRadius: 1, mt: 2 }}>
-          <Stack direction="row" alignItems="center" spacing={1}>
-            <Typography fontWeight={800} fontSize={18}>Database Backups</Typography>
-            <Box sx={{ ml: 'auto' }} />
-            {(backupsLoading || backupRunning) && <CircularProgress size={18} />}
-          </Stack>
-          <Typography variant="caption" color="text.secondary" fontWeight={600}>
-            Create on-demand backups and download existing snapshots.
-          </Typography>
+        <Grid container spacing={3} alignItems="stretch">
+          <Grid item xs={12} md={5}>
+            <Card variant="outlined" sx={{ height: '100%', display: 'flex', flexDirection: 'column', borderRadius: 2 }}>
+              <CardHeader
+                avatar={(<Avatar sx={{ bgcolor: 'primary.main', color: 'primary.contrastText' }}><SettingsIcon fontSize="small" /></Avatar>)}
+                titleTypographyProps={{ fontWeight: 800, fontSize: 16 }}
+                subheaderTypographyProps={{ fontSize: 12, fontWeight: 600, color: 'text.secondary' }}
+                title="Borrowing & Penalty Policy"
+                subheader="Adjust global penalties and lending thresholds."
+              />
+              <Divider />
+              <CardContent sx={{ flexGrow: 1 }}>
+                <Stack spacing={2.5}>
+                  <TextField
+                    label="Fine per day"
+                    type="number"
+                    size="small"
+                    value={fineInput === '' ? '' : fineValue}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setFineInput(v === '' ? '' : Math.max(0, Math.trunc(Number(v))));
+                    }}
+                    inputProps={{ min: 0, step: 1 }}
+                    helperText={isFineValid ? `Current global fine: ${Number(ctxSettings?.fine ?? 5)}` : 'Enter a non-negative integer'}
+                    error={!isFineValid}
+                    fullWidth
+                  />
 
-          <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-            <Button
-              variant="contained"
-              startIcon={<BackupIcon />}
-              onClick={triggerBackup}
-              disabled={backupRunning}
-            >
-              {backupRunning ? 'Creating…' : 'Create Backup'}
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={<RefreshIcon />}
-              onClick={loadBackups}
-              disabled={backupsLoading}
-            >
-              Refresh
-            </Button>
-            {backups?.[0]?.file && (
-              <Button
-                variant="text"
-                startIcon={<DownloadIcon />}
-                onClick={() => downloadBackup(backups[0].file)}
-              >
-                Download Latest
-              </Button>
-            )}
-          </Stack>
-
-          <Divider sx={{ my: 2 }} />
-          {missingDump && (
-            <Alert severity="warning" sx={{ mb: 2 }}>
-              mysqldump is not available. Install MySQL client tools and add the bin folder to PATH,
-              or set the MYSQLDUMP_PATH environment variable to mysqldump.exe, then restart the server.
-              Examples on Windows:
-              • MySQL Server: C:\Program Files\MySQL\MySQL Server 8.0\bin
-              • MariaDB: C:\Program Files\MariaDB\bin
-              • XAMPP: C:\xampp\mysql\bin
-            </Alert>
-          )}
-          {backupsError && <Alert severity="error" sx={{ mb: 2 }}>{backupsError}</Alert>}
-
-          {!backupsLoading && (!backups || backups.length === 0) && (
-            <Typography variant="caption" color="text.secondary">No backups yet.</Typography>
-          )}
-
-          <Stack spacing={1}>
-            {backups.map((b) => (
-              <Paper key={b.file} variant="outlined" sx={{ p: 1, borderRadius: 1 }}>
-                <Stack direction="row" alignItems="center" spacing={1}>
-                  <Typography sx={{ fontWeight: 700 }} noWrap title={b.file}>{b.file}</Typography>
-                  <Chip size="small" label={humanSize(b.size)} />
-                  <Chip size="small" label={fmtTime(b.mtime)} />
-                  <Box sx={{ ml: 'auto' }} />
-                  <Button size="small" startIcon={<DownloadIcon />} onClick={() => downloadBackup(b.file)}>
-                    Download
+                  <TextField
+                    label="Borrow limit"
+                    type="number"
+                    size="small"
+                    value={borrowInput === '' ? '' : borrowValue}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setBorrowInput(v === '' ? '' : Math.max(1, Math.trunc(Number(v))));
+                    }}
+                    inputProps={{ min: 1, step: 1 }}
+                    helperText={isBorrowValid ? `Current borrow limit: ${Number(ctxSettings?.borrow_limit ?? 3)}` : 'Enter a positive integer'}
+                    error={!isBorrowValid}
+                    fullWidth
+                  />
+                </Stack>
+              </CardContent>
+              <CardActions sx={{ px: 3, pb: 3, pt: 0 }}>
+                <Stack direction="row" spacing={1.5} sx={{ width: '100%' }}>
+                  <Button
+                    variant="contained"
+                    startIcon={<SaveIcon fontSize="small" />}
+                    onClick={handleAttemptSave}
+                    disabled={ctxLoading || saving || !isFineValid || !isBorrowValid}
+                    fullWidth
+                  >
+                    {saving ? 'Saving…' : 'Save updates'}
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    startIcon={<ResetIcon fontSize="small" />}
+                    onClick={handleReset}
+                    disabled={ctxLoading || saving}
+                    fullWidth
+                  >
+                    Reload settings
                   </Button>
                 </Stack>
-              </Paper>
-            ))}
-          </Stack>
+              </CardActions>
+            </Card>
+          </Grid>
 
-          <Divider sx={{ my: 2 }} />
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
-            <Typography fontWeight={800} fontSize={16}>Auto Backups</Typography>
-            {scheduleLoading && <CircularProgress size={18} />}
-          </Stack>
-          <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ mb: 1 }}>
-            Configure automatic daily backups. The server will create a backup on selected days at the scheduled time.
-          </Typography>
-
-          <Stack spacing={2}>
-            <FormControlLabel
-              control={(
-                <Switch
-                  checked={schedule.enabled}
-                  onChange={(e) => setSchedule((prev) => ({ ...prev, enabled: e.target.checked }))}
-                  disabled={scheduleLoading || scheduleSaving}
-                />
-              )}
-              label={schedule.enabled ? 'Automatic backups enabled' : 'Automatic backups disabled'}
-            />
-
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'stretch', sm: 'center' }}>
-              <TextField
-                label="Backup time"
-                type="time"
-                size="small"
-                value={schedule.time}
-                onChange={(e) => setSchedule((prev) => ({ ...prev, time: e.target.value }))}
-                InputLabelProps={{ shrink: true }}
-                inputProps={{ step: 60 }}
-                disabled={scheduleLoading || scheduleSaving}
-                error={!isValidTime}
-                helperText={isValidTime ? '24-hour format (HH:MM)' : 'Enter a time between 00:00 and 23:59'}
-                sx={{ maxWidth: { xs: '100%', sm: 180 } }}
+          <Grid item xs={12} md={7}>
+            <Card variant="outlined" sx={{ borderRadius: 2 }}>
+              <CardHeader
+                avatar={(<Avatar sx={{ bgcolor: 'secondary.main', color: 'secondary.contrastText' }}><StorageIcon fontSize="small" /></Avatar>)}
+                titleTypographyProps={{ fontWeight: 800, fontSize: 16 }}
+                subheaderTypographyProps={{ fontSize: 12, fontWeight: 600, color: 'text.secondary' }}
+                title="Database Backups"
+                subheader="Orchestrate on-demand and automated snapshots."
+                action={(backupsLoading || backupRunning) ? <CircularProgress size={18} sx={{ mt: 1, mr: 1 }} /> : null}
               />
+              <Divider />
+              <CardContent>
+                <Stack spacing={3}>
+                  <Stack spacing={1}>
+                    <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                      Create and download MySQL backup archives. Latest snapshots appear first.
+                    </Typography>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                      <Button
+                        variant="contained"
+                        startIcon={<BackupIcon />}
+                        onClick={triggerBackup}
+                        disabled={backupRunning}
+                      >
+                        {backupRunning ? 'Creating…' : 'Create Backup'}
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        startIcon={<RefreshIcon />}
+                        onClick={loadBackups}
+                        disabled={backupsLoading}
+                      >
+                        Refresh list
+                      </Button>
+                      {backups?.[0]?.file && (
+                        <Button
+                          variant="text"
+                          startIcon={<DownloadIcon />}
+                          onClick={() => downloadBackup(backups[0].file)}
+                        >
+                          Download latest
+                        </Button>
+                      )}
+                    </Stack>
+                  </Stack>
 
-              <Box>
-                <Typography variant="caption" fontWeight={700} color="text.secondary">Run on</Typography>
-                <FormGroup row sx={{ mt: 0.5 }}>
-                  {DAY_OPTIONS.map((day) => (
+                  {missingDump && (
+                    <Alert severity="warning">
+                      mysqldump is not available. Install MySQL client tools and add the bin folder to PATH,
+                      or set the MYSQLDUMP_PATH environment variable to mysqldump.exe, then restart the server.
+                      Examples on Windows:
+                      • MySQL Server: C:\Program Files\MySQL\MySQL Server 8.0\bin
+                      • MariaDB: C:\Program Files\MariaDB\bin
+                      • XAMPP: C:\xampp\mysql\bin
+                    </Alert>
+                  )}
+                  {backupsError && <Alert severity="error">{backupsError}</Alert>}
+
+                  <Stack spacing={1.5}>
+                    {!backupsLoading && (!backups || backups.length === 0) && (
+                      <Typography variant="caption" color="text.secondary">No backups yet.</Typography>
+                    )}
+                    {backups.map((b) => (
+                      <Paper key={b.file} variant="outlined" sx={{ p: 1.25, borderRadius: 1.5 }}>
+                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'flex-start', sm: 'center' }}>
+                          <Typography sx={{ fontWeight: 700 }} noWrap title={b.file}>{b.file}</Typography>
+                          <Chip size="small" label={humanSize(b.size)} />
+                          <Chip size="small" label={fmtTime(b.mtime)} />
+                          <Box sx={{ flexGrow: 1 }} />
+                          <Button size="small" startIcon={<DownloadIcon />} onClick={() => downloadBackup(b.file)}>
+                            Download
+                          </Button>
+                        </Stack>
+                      </Paper>
+                    ))}
+                  </Stack>
+
+                  <Divider sx={{ my: 1 }} />
+
+                  <Stack spacing={2.5}>
+                    <Stack direction="row" spacing={1.5} alignItems="center">
+                      <Avatar sx={{ bgcolor: 'secondary.light', color: 'secondary.dark', width: 36, height: 36 }}>
+                        <ScheduleIcon fontSize="small" />
+                      </Avatar>
+                      <Box>
+                        <Typography fontWeight={800} fontSize={15}>Auto Backup Planner</Typography>
+                        <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                          Schedule recurring dumps by weekday and 24-hour time.
+                        </Typography>
+                      </Box>
+                      {scheduleLoading && <CircularProgress size={18} sx={{ ml: 'auto' }} />}
+                    </Stack>
+
                     <FormControlLabel
-                      key={day}
                       control={(
-                        <Checkbox
-                          checked={schedule.days.includes(day)}
-                          onChange={() => toggleDay(day)}
+                        <Switch
+                          checked={schedule.enabled}
+                          onChange={(e) => setSchedule((prev) => ({ ...prev, enabled: e.target.checked }))}
                           disabled={scheduleLoading || scheduleSaving}
                         />
                       )}
-                      label={DAY_LABELS[day]}
+                      label={schedule.enabled ? 'Automatic backups enabled' : 'Automatic backups disabled'}
                     />
-                  ))}
-                </FormGroup>
-                {!hasDaysSelected && (
-                  <FormHelperText error>Select at least one day.</FormHelperText>
-                )}
-              </Box>
-            </Stack>
 
-            <Stack direction="row" spacing={1}>
-              <Button
-                variant="contained"
-                onClick={handleScheduleSave}
-                disabled={scheduleLoading || scheduleSaving || !isScheduleValid || !scheduleDirty}
-              >
-                {scheduleSaving ? 'Saving…' : 'Save Schedule'}
-              </Button>
-              <Button
-                variant="outlined"
-                onClick={handleScheduleReset}
-                disabled={scheduleLoading || scheduleSaving}
-              >
-                Reset
-              </Button>
-              <Tooltip title="Automatic backups run in server time.">
-                <Chip size="small" label={schedule.enabled ? `${schedule.time} · ${schedule.days.join(', ')}` : 'Disabled'} />
-              </Tooltip>
-            </Stack>
-          </Stack>
-        </Paper>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'stretch', sm: 'center' }}>
+                      <TextField
+                        label="Backup time"
+                        type="time"
+                        size="small"
+                        value={schedule.time}
+                        onChange={(e) => setSchedule((prev) => ({ ...prev, time: e.target.value }))}
+                        InputLabelProps={{ shrink: true }}
+                        inputProps={{ step: 60 }}
+                        disabled={scheduleLoading || scheduleSaving}
+                        error={!isValidTime}
+                        helperText={isValidTime ? '24-hour format (HH:MM)' : 'Enter a time between 00:00 and 23:59'}
+                        sx={{ maxWidth: { xs: '100%', sm: 200 } }}
+                      />
+
+                      <Box sx={{ flexGrow: 1 }}>
+                        <Typography variant="caption" fontWeight={700} color="text.secondary">Run on</Typography>
+                        <FormGroup row sx={{ mt: 0.5 }}>
+                          {DAY_OPTIONS.map((day) => (
+                            <FormControlLabel
+                              key={day}
+                              control={(
+                                <Checkbox
+                                  checked={schedule.days.includes(day)}
+                                  onChange={() => toggleDay(day)}
+                                  disabled={scheduleLoading || scheduleSaving}
+                                />
+                              )}
+                              label={DAY_LABELS[day]}
+                            />
+                          ))}
+                        </FormGroup>
+                        {!hasDaysSelected && (
+                          <FormHelperText error>Select at least one day.</FormHelperText>
+                        )}
+                      </Box>
+                    </Stack>
+
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'stretch', sm: 'center' }}>
+                      <Button
+                        variant="contained"
+                        startIcon={<SaveIcon fontSize="small" />}
+                        onClick={handleScheduleSave}
+                        disabled={scheduleLoading || scheduleSaving || !isScheduleValid || !scheduleDirty}
+                      >
+                        {scheduleSaving ? 'Saving…' : 'Save schedule'}
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        startIcon={<ResetIcon fontSize="small" />}
+                        onClick={handleScheduleReset}
+                        disabled={scheduleLoading || scheduleSaving}
+                      >
+                        Reset planner
+                      </Button>
+                      <Tooltip title="Automatic backups run in server time.">
+                        <Chip
+                          size="small"
+                          label={schedule.enabled ? `${schedule.time} · ${schedule.days.join(', ')}` : 'Automation disabled'}
+                        />
+                      </Tooltip>
+                    </Stack>
+                  </Stack>
+                </Stack>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
       </Box>
 
       <Snackbar

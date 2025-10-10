@@ -3,28 +3,37 @@ import { formatDate } from '../../../utils/date';
 import {
   Box, Paper, Typography, Tabs, Tab, Divider, Stack, IconButton, Tooltip,
   Button, TextField, MenuItem, Chip, Skeleton, Grid,
-  Dialog, DialogTitle, DialogContent, DialogActions, Pagination, FormControl, Select, InputLabel
+  Dialog, DialogTitle, DialogContent, DialogActions, Pagination
 } from '@mui/material';
-import { Download, RefreshCw, FileText, Printer, Filter, Eye } from 'lucide-react';
+import { alpha } from '@mui/material/styles';
+import { Download, RefreshCw, FileText, Printer, Eye } from 'lucide-react';
 import axios from 'axios';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Bar } from 'react-chartjs-2';
+import { Bar, Doughnut } from 'react-chartjs-2';
 import {
   Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip as ChartTooltip, Legend
 } from 'chart.js';
 ChartJS.register(CategoryScale, LinearScale, BarElement, ChartTooltip, Legend);
 import { nowDateTime } from '../../../utils/date';
 
+const surfacePaper = (extra = {}) => (theme) => ({
+  borderRadius: 1.75,
+  border: `1px solid ${alpha(theme.palette.divider, 0.4)}`,
+  background: `linear-gradient(135deg, ${alpha(theme.palette.background.paper, 0.98)}, ${alpha(theme.palette.primary.light, 0.12)})`,
+  boxShadow: `0 18px 40px ${alpha(theme.palette.common.black, 0.05)}`,
+  backdropFilter: 'blur(4px)',
+  ...extra
+});
+
 const REPORT_TYPES = [
-  { key:'borrow_activity', label:'Borrow Activity & Fines' },
-  { key:'top_borrowed_books', label:'Top Borrowed Books' },
-  { key:'top_borrowed_documents', label:'Top Borrowed Documents' },
-  { key:'general_storage', label:'General Storage' },
-  { key:'storage_capacity', label:'Storage Capacity' },
-  { key:'books_with_copies', label:'List of Books & Copies' },
-  { key:'documents_with_copies', label:'List of Documents & Copies' },
-  { key:'borrowings_full', label:'Borrowing Transactions' }
+  { key: 'book_borrowing', label: 'Book Borrowing Report' },
+  { key: 'document_retrieval', label: 'Document Retrieval Report' },
+  { key: 'preservation', label: 'Preservation Report' },
+  { key: 'book_inventory', label: 'Book Inventory Report' },
+  { key: 'pending_overdue', label: 'Pending Return & Overdue Summary' },
+  { key: 'loss_damage', label: 'Loss & Damage Accountability' },
+  { key: 'request_backlog', label: 'Number of Request Report' }
 ];
 
 const fullName = (u) => {
@@ -45,7 +54,6 @@ const ReportsPage = () => {
   const [documents, setDocuments] = useState([]);
   const [borrows, setBorrows] = useState([]);
   const [returnsTx, setReturnsTx] = useState([]); // ReturnTransactions with items
-  const [storages, setStorages] = useState([]); // Storage locations with Capacity
 
   const [bookInvMap, setBookInvMap] = useState({});
   const [docInvMap, setDocInvMap] = useState({});
@@ -53,6 +61,8 @@ const ReportsPage = () => {
   // NEW: maps for accurate lookups
   const [copyToBookMap, setCopyToBookMap] = useState({});
   const [borrowerNameMap, setBorrowerNameMap] = useState({});
+  const [borrowerMetaMap, setBorrowerMetaMap] = useState({});
+  const [userMetaMap, setUserMetaMap] = useState({});
   const [storageToDocumentMap, setStorageToDocumentMap] = useState({});
 
   // Filters
@@ -88,26 +98,48 @@ const ReportsPage = () => {
     setErr(null);
     try {
       // Fetch users too (for borrower names)
-      const [bRes, dRes, brRes, uRes, rtRes, sRes] = await Promise.all([
+      const [bRes, dRes, brRes, uRes, rtRes] = await Promise.all([
         axios.get(`${API_BASE}/books`),
         axios.get(`${API_BASE}/documents`),
         axios.get(`${API_BASE}/borrow`),
         axios.get(`${API_BASE}/users`),
-        axios.get(`${API_BASE}/return`),
-        axios.get(`${API_BASE}/storages`)
+        axios.get(`${API_BASE}/return`)
       ]);
       const bks = bRes.data || [];
       const docs = dRes.data || [];
       const brs = brRes.data || [];
   const users = uRes.data || [];
   const rts = rtRes.data || [];
-  const sts = sRes.data || [];
 
-      // Build borrower name map: BorrowerID -> Full Name
+      // Build borrower name map: BorrowerID -> Full Name and metadata for reporting
       const borrowerNames = {};
-      users
-        .filter(u => u.Role === 'Borrower' && u.borrower?.BorrowerID)
-        .forEach(u => { borrowerNames[u.borrower.BorrowerID] = fullName(u); });
+      const borrowerMeta = {};
+      const accountMeta = {};
+
+      users.forEach(u => {
+        const userId = Number(u.UserID);
+        const name = fullName(u);
+        const departmentCandidate = u.Department || u.department || u.Course || u.Program || u.borrower?.Course || u.borrower?.Department || u.staff?.Position;
+        const department = departmentCandidate && String(departmentCandidate).trim() ? String(departmentCandidate).trim() : 'Unspecified';
+        const meta = {
+          name,
+          department,
+          email: u.Email || u.email || '',
+          contact: u.ContactNumber || u.Contact || u.Phone || ''
+        };
+        if (Number.isFinite(userId)) {
+          accountMeta[userId] = meta;
+          borrowerNames[userId] = name;
+        }
+
+        if (u.Role === 'Borrower' && u.borrower?.BorrowerID) {
+          const borrowerId = Number(u.borrower.BorrowerID);
+          if (Number.isFinite(borrowerId)) {
+            borrowerNames[borrowerId] = name;
+            borrowerMeta[borrowerId] = meta;
+          }
+        }
+      });
 
       // Build inventories and CopyID -> Book_ID map
       const bookInventories = {};
@@ -149,13 +181,14 @@ const ReportsPage = () => {
       setBooks(bks);
       setDocuments(docs);
       setBorrows(brs);
-      setReturnsTx(rts);
-  setStorages(sts);
+    setReturnsTx(rts);
       setBookInvMap(bookInventories);
       setDocInvMap(docInventories);
       setDueMap(dueTemp);
       setCopyToBookMap(copyMap);
-      setBorrowerNameMap(borrowerNames);
+  setBorrowerNameMap(borrowerNames);
+  setBorrowerMetaMap(borrowerMeta);
+  setUserMetaMap(accountMeta);
       setStorageToDocumentMap(storageMap);
     } catch (e) {
       setErr(e.message || 'Failed loading');
@@ -166,6 +199,65 @@ const ReportsPage = () => {
 
   useEffect(()=>{ fetchAll(); },[fetchAll]);
 
+  const resolveBorrowerMeta = useCallback((borrowerId, userId) => {
+    const borrowerIdNum = Number(borrowerId);
+    const userIdNum = Number(userId);
+    const candidates = [
+      Number.isFinite(borrowerIdNum) ? borrowerMetaMap[borrowerIdNum] : null,
+      Number.isFinite(userIdNum) ? borrowerMetaMap[userIdNum] : null,
+      Number.isFinite(userIdNum) ? userMetaMap[userIdNum] : null,
+      Number.isFinite(borrowerIdNum) ? userMetaMap[borrowerIdNum] : null
+    ];
+    return candidates.find(Boolean) || {};
+  }, [borrowerMetaMap, userMetaMap]);
+
+  const resolveBorrowerName = useCallback((borrowerId, userId) => {
+    const borrowerIdNum = Number(borrowerId);
+    const userIdNum = Number(userId);
+    return (
+      (Number.isFinite(borrowerIdNum) && borrowerNameMap[borrowerIdNum])
+      || (Number.isFinite(userIdNum) && borrowerNameMap[userIdNum])
+      || (Number.isFinite(userIdNum) && userMetaMap[userIdNum]?.name)
+      || null
+    );
+  }, [borrowerNameMap, userMetaMap]);
+
+  const buildBorrowerDisplay = useCallback((borrowerId, userId, extras = {}) => {
+    const nameCandidates = [
+      resolveBorrowerName(borrowerId, userId),
+      extras.BorrowerName,
+      extras.BorrowerFullName,
+      extras.FullName,
+      extras.UserName,
+      extras.Username,
+      extras.Name
+    ].filter(val => typeof val === 'string' && val.trim());
+
+    let name = nameCandidates.length ? nameCandidates[0].trim() : null;
+    if (!name) {
+      if (borrowerId != null && borrowerId !== '') {
+        name = `Borrower #${borrowerId}`;
+      } else if (userId != null && userId !== '') {
+        name = `User #${userId}`;
+      } else {
+        name = 'Unknown borrower';
+      }
+    }
+
+    const meta = resolveBorrowerMeta(borrowerId, userId);
+    const deptCandidates = [
+      meta.department,
+      extras.BorrowerDepartment,
+      extras.Department,
+      extras.department,
+      extras.Program,
+      extras.Course
+    ].filter(val => typeof val === 'string' && val.trim() && val.trim() !== 'Unspecified');
+    const dept = deptCandidates.length ? deptCandidates[0].trim() : null;
+
+    return dept ? `${name}\n${dept}` : name;
+  }, [resolveBorrowerMeta, resolveBorrowerName]);
+
   const filteredBorrows = useMemo(() => {
     if (!fromDate && !toDate) return borrows;
     return borrows.filter(b => {
@@ -175,6 +267,88 @@ const ReportsPage = () => {
       return true;
     });
   }, [borrows, fromDate, toDate]);
+
+  const bookMap = useMemo(() => {
+    const map = {};
+    books.forEach(book => {
+      if (book?.Book_ID != null) {
+        map[Number(book.Book_ID)] = book;
+      }
+    });
+    return map;
+  }, [books]);
+
+  const documentMap = useMemo(() => {
+    const map = {};
+    documents.forEach(doc => {
+      if (doc?.Document_ID != null) {
+        map[Number(doc.Document_ID)] = doc;
+      }
+    });
+    return map;
+  }, [documents]);
+
+  const borrowMap = useMemo(() => {
+    const map = {};
+    borrows.forEach(tx => {
+      if (tx?.BorrowID != null) {
+        map[Number(tx.BorrowID)] = tx;
+      }
+    });
+    return map;
+  }, [borrows]);
+
+  const documentBorrowItems = useMemo(() => {
+    const items = [];
+    filteredBorrows.forEach(tx => {
+      (tx.items || []).forEach(item => {
+        if ((item.ItemType || '').toLowerCase() === 'document') {
+          items.push({ tx, item });
+        }
+      });
+    });
+    return items;
+  }, [filteredBorrows]);
+
+  const documentDepartmentStats = useMemo(() => {
+    const now = new Date();
+    const departments = {};
+    const overallTypeCounts = {};
+
+    documentBorrowItems.forEach(({ tx, item }) => {
+      const meta = resolveBorrowerMeta(tx.BorrowerID ?? item.BorrowerID, tx.UserID ?? item.UserID);
+      const deptRaw = meta.department;
+      const dept = deptRaw && String(deptRaw).trim() ? String(deptRaw).trim() : 'Unspecified';
+
+      if (!departments[dept]) {
+        departments[dept] = { total: 0, retrieved: 0, pending: 0, delayed: 0, typeCounts: {} };
+      }
+
+      const info = departments[dept];
+      info.total += 1;
+
+      const retrievalStatus = String(tx.RetrievalStatus || '').toLowerCase();
+      if (retrievalStatus === 'retrieved') {
+        info.retrieved += 1;
+      } else {
+        info.pending += 1;
+        const borrowDate = tx.BorrowDate ? new Date(tx.BorrowDate) : null;
+        if (borrowDate && ((now - borrowDate) / (1000 * 60 * 60 * 24)) > 3) {
+          info.delayed += 1;
+        }
+      }
+
+      const storageId = item.DocumentStorageID ?? item.StorageID ?? item.StorageLocationID;
+      const docId = storageId != null ? storageToDocumentMap[String(storageId)] : (item.DocumentID ?? item.Document_ID);
+      const doc = docId != null ? documentMap[Number(docId)] : undefined;
+      const typeRaw = doc?.Classification || doc?.Category || doc?.Type || item.DocumentType;
+      const type = typeRaw ? String(typeRaw).trim() : 'Unclassified';
+      info.typeCounts[type] = (info.typeCounts[type] || 0) + 1;
+      overallTypeCounts[type] = (overallTypeCounts[type] || 0) + 1;
+    });
+
+    return { departments, overallTypeCounts };
+  }, [documentBorrowItems, resolveBorrowerMeta, storageToDocumentMap, documentMap]);
 
   // Derived data per report
   // Helper: get returned items within date range, with parent ReturnDate
@@ -188,289 +362,687 @@ const ReportsPage = () => {
     (returnsTx || []).forEach(rt => {
   const rd = rt.ReturnDate ? formatDate(rt.ReturnDate) : '';
       if (!within(rd)) return;
-      (rt.items || []).forEach(it => items.push({ ...it, ReturnDate: rd }));
+  (rt.items || []).forEach(it => items.push({ ...it, ReturnDate: rd, ReturnDateRaw: rt.ReturnDate }));
     });
     return items;
   }, [returnsTx, fromDate, toDate]);
 
   const dataBuilders = {
-    borrow_activity: () => {
+    book_borrowing: () => {
       const now = new Date();
-      let pending=0, awaiting=0, active=0, returned=0, rejected=0, overdue=0;
+      let total = 0;
+      let pendingApproval = 0;
+      let active = 0;
+      let returnedCount = 0;
+      let overdue = 0;
+      const borrowerIds = new Set();
+      const bookCounts = {};
+
       filteredBorrows.forEach(tx => {
-        let status='';
-        if (tx.ReturnStatus === 'Returned'){ returned++; status='Returned'; }
-        else if (tx.ApprovalStatus === 'Rejected'){ rejected++; status='Rejected'; }
-        else if (tx.ApprovalStatus === 'Pending'){ pending++; status='Pending'; }
-        else if (tx.ApprovalStatus === 'Approved' && tx.RetrievalStatus !== 'Retrieved'){ awaiting++; status='Awaiting Pickup'; }
-        else if (tx.RetrievalStatus === 'Retrieved' && tx.ReturnStatus !== 'Returned'){ active++; status='Borrowed'; }
-        const due = dueMap[tx.BorrowID] ? new Date(dueMap[tx.BorrowID]) : null;
-        if (due && status !== 'Returned' && due < now) overdue++;
+        total += 1;
+        const borrowerId = tx.BorrowerID ?? tx.UserID;
+        if (borrowerId != null) {
+          borrowerIds.add(Number(borrowerId));
+        }
+
+        const approvalStatus = String(tx.ApprovalStatus || '').toLowerCase();
+        const retrievalStatus = String(tx.RetrievalStatus || '').toLowerCase();
+        const returnStatus = String(tx.ReturnStatus || '').toLowerCase();
+
+        if (returnStatus === 'returned') {
+          returnedCount += 1;
+        } else if (approvalStatus === 'pending') {
+          pendingApproval += 1;
+        } else if (approvalStatus === 'approved' && retrievalStatus === 'retrieved') {
+          active += 1;
+        }
+
+        const dueRaw = dueMap[tx.BorrowID];
+        if (dueRaw) {
+          const dueDate = new Date(dueRaw);
+          if (returnStatus !== 'returned' && dueDate < now) {
+            overdue += 1;
+          }
+        }
+
+        (tx.items || []).forEach(item => {
+          if (String(item.ItemType || '').toLowerCase() === 'book') {
+            const copyId = item.BookCopyID ?? item.CopyID ?? item.Copy_Id;
+            if (copyId != null) {
+              const bookId = copyToBookMap[String(copyId)];
+              if (bookId != null) {
+                bookCounts[bookId] = (bookCounts[bookId] || 0) + 1;
+              }
+            }
+          }
+        });
       });
 
-      // Fines and lost stats from returned items within date
-      const lostItems = returnedItemsFiltered.filter(it => (it.ReturnCondition||'') === 'Lost');
-      const lostPaid = lostItems.filter(it => (it.FinePaid||'No') === 'Yes');
-      const lostUnpaid = lostItems.filter(it => (it.FinePaid||'No') !== 'Yes');
-      const toNum = (v) => {
-        const n = parseFloat(v); return isNaN(n) ? 0 : n;
-      };
-      const totalFineCollected = returnedItemsFiltered.reduce((s,it)=> s + ((it.FinePaid==='Yes') ? toNum(it.Fine) : 0), 0);
-      const totalFineOutstanding = returnedItemsFiltered.reduce((s,it)=> s + ((it.FinePaid!=='Yes') ? toNum(it.Fine) : 0), 0);
+      const topBooks = Object.entries(bookCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, Math.max(1, limit))
+        .map(([bookId, count]) => {
+          const title = bookMap[Number(bookId)]?.Title || `Book #${bookId}`;
+          return `${title} (${count})`;
+        });
 
-      return {
-        title:'Borrow Activity & Fines',
-        headers:['Metric','Value'],
-        rows:[
-          ['Pending', pending],
-          ['Awaiting Pickup', awaiting],
-          ['Active (Borrowed)', active],
-          ['Overdue', overdue],
-          ['Returned', returned],
-          ['Rejected', rejected],
-          ['Total Transactions', filteredBorrows.length],
-          ['Lost Items (paid)', lostPaid.length],
-          ['Lost Items (unpaid)', lostUnpaid.length],
-          ['Total Fine Collected (₱)', totalFineCollected.toFixed(2)],
-          ['Outstanding Fine (₱)', totalFineOutstanding.toFixed(2)]
-        ]
-      };
-    },
-    top_borrowed_books: () => {
-      // Count by BookCopyID
-      const counts = {};
-      filteredBorrows.forEach(tx => (tx.items||[]).forEach(it => {
-        if (it.ItemType === 'Book' && it.BookCopyID != null) {
-          const key = String(it.BookCopyID);
-          counts[key] = (counts[key] || 0) + 1;
-        }
-      }));
-      const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0, limit);
-      const rows = sorted.map(([copyId, c]) => {
-        // Use copyToBookMap for accurate title lookup
-        const bookId = copyToBookMap[copyId];
-        const title = books.find(b => b.Book_ID === Number(bookId))?.Title
-          || (() => {
-               // Fallback: search by inventory if map missing
-               const found = Object.entries(bookInvMap).find(([,inv]) =>
-                 inv.some(i => String(i.Copy_ID ?? i.CopyID) === String(copyId)));
-               return found ? (books.find(b => b.Book_ID === Number(found[0]))?.Title) : null;
-             })()
-          || 'Unknown';
-        return [copyId, title, c];
-      });
-      return {
-        title:`Top Borrowed Books (limit ${limit})`,
-        headers:['Book Copy ID','Book Title','Borrow Count'],
-        rows
-      };
-    },
-    top_borrowed_documents: () => {
-      const counts = {};
-      filteredBorrows.forEach(tx => (tx.items||[]).forEach(it => {
-        if (it.ItemType === 'Document' && it.DocumentStorageID != null) {
-          const key = String(it.DocumentStorageID);
-          counts[key] = (counts[key] || 0) + 1;
-        }
-      }));
-      const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0, limit);
-      const rows = sorted.map(([storageId, c]) => {
-        const docId = storageToDocumentMap[String(storageId)]
-          || (() => {
-            const docEntry = Object.entries(docInvMap).find(([,inv]) =>
-              inv.some(i => String(i.Storage_ID ?? i.StorageID ?? i.storage_id ?? i.storageId) === String(storageId))
-            );
-            return docEntry ? Number(docEntry[0]) : null;
-          })();
-        const title = documents.find(d => d.Document_ID === docId)?.Title || 'Unknown';
-        return [storageId, title, c];
-      });
-      return {
-        title:`Top Borrowed Documents (limit ${limit})`,
-        headers:['Storage ID','Document Title','Borrow Count'],
-        rows
-      };
-    },
-    general_storage: () => {
-      // Aggregate availability across both books and documents
-      const summarize = (invMap) => {
-        const lists = Object.values(invMap);
-        const total = lists.reduce((a,v)=>a+v.length,0);
-        const by = (s) => lists.reduce((a,v)=>a+v.filter(i => (i.availability||i.Availability)===s).length,0);
-        return { total, available: by('Available'), borrowed: by('Borrowed'), reserved: by('Reserved'), lost: by('Lost') };
-      };
-      const bk = summarize(bookInvMap);
-      const dc = summarize(docInvMap);
       const rows = [
-        ['Books', bk.total, bk.available, bk.borrowed, bk.reserved, bk.lost],
-        ['Documents', dc.total, dc.available, dc.borrowed, dc.reserved, dc.lost],
-        ['Grand Total', bk.total+dc.total, bk.available+dc.available, bk.borrowed+dc.borrowed, bk.reserved+dc.reserved, bk.lost+dc.lost]
+        ['Reporting Period', (fromDate || toDate) ? `${fromDate || '—'} to ${toDate || '—'}` : 'All activity'],
+        ['Total Borrowings', total],
+        ['Returned', returnedCount],
+        ['Active (On Loan)', active],
+        ['Pending Approval', pendingApproval],
+        ['Overdue', overdue],
+        ['Overdue Rate', total ? `${((overdue / total) * 100).toFixed(1)}%` : '0%'],
+        ['Unique Borrowers', borrowerIds.size],
+        ['Popular Books', topBooks.length ? topBooks.join('\n') : 'No borrowing activity']
       ];
+
       return {
-        title:'General Storage Availability (Books + Documents)',
-        headers:['Group','Total','Available','Borrowed','Reserved','Lost'],
+        title: 'Book Borrowing Report',
+        headers: ['Metric', 'Value'],
+        rows,
+        chart: total ? {
+          type: 'bar',
+          data: {
+            labels: ['Returned', 'Active', 'Pending Approval', 'Overdue'],
+            datasets: [{
+              label: 'Borrowings',
+              data: [returnedCount, active, pendingApproval, overdue],
+              backgroundColor: ['#2e7d32', '#0288d1', '#ffa000', '#d32f2f'],
+              borderRadius: 6,
+              maxBarThickness: 40
+            }]
+          }
+        } : null,
+        meta: { total, returnedCount, active, pendingApproval, overdue }
+      };
+    },
+    document_retrieval: () => {
+      const entries = Object.entries(documentDepartmentStats.departments || {})
+        .map(([dept, stats]) => {
+          const typeEntries = Object.entries(stats.typeCounts || {});
+          const topType = typeEntries.sort((a, b) => b[1] - a[1])[0]?.[0] || '—';
+          return {
+            dept,
+            total: stats.total || 0,
+            retrieved: stats.retrieved || 0,
+            pending: stats.pending || 0,
+            delayed: stats.delayed || 0,
+            topType
+          };
+        })
+        .sort((a, b) => b.total - a.total || a.dept.localeCompare(b.dept));
+
+      let rows;
+      let chart = null;
+
+      if (!entries.length) {
+        rows = [['No departmental activity', '—', '—', '—', '—', '—']];
+      } else {
+        rows = entries.map(entry => [
+          entry.dept,
+          entry.total,
+          entry.retrieved,
+          entry.pending,
+          entry.delayed,
+          entry.topType
+        ]);
+
+        const totalRequests = entries.reduce((sum, entry) => sum + entry.total, 0);
+        const totalRetrieved = entries.reduce((sum, entry) => sum + entry.retrieved, 0);
+        const totalPending = entries.reduce((sum, entry) => sum + entry.pending, 0);
+        const totalDelayed = entries.reduce((sum, entry) => sum + entry.delayed, 0);
+        const topDemand = Object.entries(documentDepartmentStats.overallTypeCounts || {})
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 3)
+          .map(([type, count]) => `${type} (${count})`)
+          .join(', ') || '—';
+
+        rows.push(['All Departments', totalRequests, totalRetrieved, totalPending, totalDelayed, topDemand]);
+
+        chart = {
+          type: 'bar',
+          data: {
+            labels: entries.map(entry => entry.dept),
+            datasets: [
+              {
+                label: 'Pending',
+                data: entries.map(entry => entry.pending),
+                backgroundColor: '#0288d1',
+                borderRadius: 6,
+                maxBarThickness: 32
+              },
+              {
+                label: 'Delayed',
+                data: entries.map(entry => entry.delayed),
+                backgroundColor: '#d32f2f',
+                borderRadius: 6,
+                maxBarThickness: 32
+              }
+            ]
+          }
+        };
+      }
+
+      return {
+        title: 'Document Retrieval Report',
+        headers: ['Department', 'Requests', 'Retrieved', 'Pending', 'Delayed >3d', 'Top Document Type'],
+        rows,
+        chart,
+        meta: { entries }
+      };
+    },
+    preservation: () => {
+      const flattenCopies = (invMap) => Object.values(invMap || {}).reduce((acc, list) => {
+        if (Array.isArray(list)) {
+          acc.push(...list);
+        }
+        return acc;
+      }, []);
+
+      const CONDITION_BUCKETS = ['Good', 'Fair', 'Average', 'Poor', 'Bad', 'Lost'];
+
+      const mapConditionBucket = (raw) => {
+        const str = String(raw ?? '').trim();
+        if (!str) return 'Unknown';
+        const lower = str.toLowerCase();
+        const directMatch = CONDITION_BUCKETS.find((bucket) => bucket.toLowerCase() === lower);
+        if (directMatch) return directMatch;
+        if (lower.includes('good') || lower.includes('excellent') || lower.includes('new')) return 'Good';
+        if (lower.includes('fair') || lower.includes('usable')) return 'Fair';
+        if (lower.includes('average')) return 'Average';
+        if (lower.includes('poor') || lower.includes('fragile')) return 'Poor';
+        if (lower.includes('bad') || lower.includes('damage') || lower.includes('broken')) return 'Bad';
+        if (lower.includes('lost') || lower.includes('missing')) return 'Lost';
+        return 'Unknown';
+      };
+
+      const mapDigitizationBucket = (raw) => {
+        if (raw === null || raw === undefined) return null;
+        if (typeof raw === 'boolean') return raw ? 'digitized' : 'notDigitized';
+        if (typeof raw === 'number') {
+          if (raw === 1) return 'digitized';
+          if (raw === 0) return 'notDigitized';
+        }
+        const str = String(raw).trim().toLowerCase();
+        if (!str) return null;
+        if (str.includes('progress') || str.includes('pending') || str.includes('sched') || str.includes('processing') || str.includes('ongoing')) {
+          return 'inProgress';
+        }
+        if (str.includes('digitized') || str.includes('digitised') || str.includes('complete') || str === 'yes' || str === 'true' || str === '1' || str.includes('done')) {
+          return 'digitized';
+        }
+        if (str.includes('not') || str === 'no' || str === 'false' || str === '0') {
+          return 'notDigitized';
+        }
+        return 'unknown';
+      };
+
+      const summarizeCopies = (copies) => {
+        const conditionCounts = CONDITION_BUCKETS.reduce((acc, bucket) => ({ ...acc, [bucket]: 0 }), {});
+        let unknownConditions = 0;
+
+        let digitized = 0;
+        let inProgress = 0;
+        let notDigitized = 0;
+        let unknownDigitization = 0;
+        let trackedDigitization = 0;
+
+        copies.forEach(copy => {
+          const conditionBucket = mapConditionBucket(copy.condition || copy.BookCondition || copy.Condition || copy.PreservationStatus || copy.ConditionStatus);
+          if (CONDITION_BUCKETS.includes(conditionBucket)) {
+            conditionCounts[conditionBucket] += 1;
+          } else {
+            unknownConditions += 1;
+          }
+
+          const digitizationBucket = mapDigitizationBucket(
+            copy.DigitizationStatus ?? copy.Digitized ?? copy.isDigitized ?? copy.Digitization ?? copy.digitized ?? copy.DigitizedStatus
+          );
+          if (digitizationBucket === null) {
+            return; // not tracked on this record
+          }
+          if (digitizationBucket === 'digitized') {
+            digitized += 1;
+            trackedDigitization += 1;
+          } else if (digitizationBucket === 'inProgress') {
+            inProgress += 1;
+            trackedDigitization += 1;
+          } else if (digitizationBucket === 'notDigitized') {
+            notDigitized += 1;
+            trackedDigitization += 1;
+          } else {
+            unknownDigitization += 1;
+            trackedDigitization += 1;
+          }
+        });
+
+        const conditionSummaryParts = CONDITION_BUCKETS
+          .map(bucket => (conditionCounts[bucket] ? `${bucket}: ${conditionCounts[bucket]}` : null))
+          .filter(Boolean);
+        if (unknownConditions) {
+          conditionSummaryParts.push(`Unknown: ${unknownConditions}`);
+        }
+
+        const digitizationParts = [];
+        if (trackedDigitization) {
+          if (digitized) digitizationParts.push(`${digitized} digitized`);
+          if (inProgress) digitizationParts.push(`${inProgress} in progress`);
+          if (notDigitized) digitizationParts.push(`${notDigitized} pending`);
+          if (unknownDigitization) digitizationParts.push(`${unknownDigitization} unknown`);
+        }
+
+        const needsAttention = (conditionCounts.Poor || 0) + (conditionCounts.Bad || 0) + (conditionCounts.Lost || 0);
+
+        return {
+          total: copies.length,
+          summary: conditionSummaryParts.length ? conditionSummaryParts.join(' • ') : 'No records available',
+          digitizationText: digitizationParts.length ? digitizationParts.join(' • ') : 'Not tracked',
+          needsAttention
+        };
+      };
+
+      const bookCopies = flattenCopies(bookInvMap);
+      const documentCopies = flattenCopies(docInvMap);
+      const bookSummary = summarizeCopies(bookCopies);
+      const documentSummary = summarizeCopies(documentCopies);
+
+      const rows = [
+        [
+          'Books',
+          `${bookSummary.total} copies`,
+          bookSummary.summary,
+          bookSummary.digitizationText,
+          bookSummary.needsAttention ? `${bookSummary.needsAttention} items flagged for preservation` : 'Stable'
+        ],
+        [
+          'Archival Documents',
+          `${documentSummary.total} records`,
+          documentSummary.summary,
+          documentSummary.digitizationText,
+          documentSummary.needsAttention ? `${documentSummary.needsAttention} items require intervention` : 'Stable'
+        ]
+      ];
+
+      return {
+        title: 'Preservation Report',
+        headers: ['Collection', 'Items', 'Condition Overview', 'Digitization', 'Alerts'],
         rows
       };
     },
-
-    storage_capacity: () => {
-      // Combine book and document inventory usage per storage ID and compare against Storages.Capacity
-      const usageByStorage = {};
-      const addUsage = (locId) => {
-        if (!locId && locId !== 0) return;
-        const key = String(locId);
-        usageByStorage[key] = (usageByStorage[key] || 0) + 1;
-      };
-
-      Object.values(bookInvMap).forEach(list => (list||[]).forEach(i => {
-        const avail = i.availability || i.Availability;
-        if (avail === 'Lost') return; // exclude lost from occupying storage
-        addUsage(i.location || i.StorageLocation);
-      }));
-      Object.values(docInvMap).forEach(list => (list||[]).forEach(i => {
-        const avail = i.availability || i.Availability;
-        if (avail === 'Lost') return;
-        addUsage(i.StorageLocation || i.location);
-      }));
-
-      const rows = (storages || []).map(s => {
-        const id = s.ID ?? s.Id ?? s.id;
-        const name = s.Name || s.name || `Storage #${id}`;
-        const cap = Number(s.Capacity ?? s.capacity ?? 0) || 0;
-        const used = usageByStorage[String(id)] || 0;
-        const free = Math.max(0, cap - used);
-        const pct = cap > 0 ? ((used / cap) * 100).toFixed(1) + '%' : '—';
-        return [name, cap, used, free, pct];
-      }).sort((a,b)=> (b[2]/(b[1]||1)) - (a[2]/(a[1]||1))); // sort by utilization desc
-
-      return {
-        title:'Storage Capacity & Utilization',
-        headers:['Storage','Capacity','Used (copies)','Free','Utilization'],
-        rows
-      };
-    },
-    books_with_copies: () => {
-      const sortedBooks = [...books].sort((a, b) => (a.Title || '').localeCompare(b.Title || ''));
-      const rows = sortedBooks.map(book => {
+    book_inventory: () => {
+      const rows = books.map(book => {
         const copies = bookInvMap[book.Book_ID] || [];
-        const copyDetails = copies.length
-          ? copies.map(copy => {
-              const copyId = copy.Copy_ID ?? copy.CopyID ?? copy.copy_id ?? copy.copyId ?? '—';
-              const availability = copy.availability || copy.Availability || 'Unknown';
-              const condition = copy.condition || copy.BookCondition || 'Unknown';
-              const location = copy.location || copy.StorageLocation || copy.Location || '—';
-              return `• Copy #${copyId} • ${availability}${condition ? ` • ${condition}` : ''}${location ? ` • ${location}` : ''}`;
-            }).join('\n')
-          : 'No copies recorded';
+        let available = 0;
+        let loaned = 0;
+        let reserved = 0;
+        let lost = 0;
+        let damaged = 0;
+        let missing = 0;
+
+        copies.forEach(copy => {
+          const availability = String(copy.availability || copy.Availability || '').toLowerCase();
+          if (availability === 'available') available += 1;
+          else if (availability === 'borrowed' || availability === 'on loan') loaned += 1;
+          else if (availability === 'reserved' || availability === 'on hold') reserved += 1;
+          else if (availability === 'lost') lost += 1;
+          else if (availability === 'missing') missing += 1;
+          else if (availability.includes('damage') || availability === 'damaged') damaged += 1;
+        });
+
+        const total = copies.length;
+        const lossDamage = lost + damaged;
+        const lossText = (lossDamage || missing)
+          ? `${lossDamage} loss/damage${missing ? ` | Missing: ${missing}` : ''}`
+          : '0';
+
         return [
           book.Title || 'Untitled',
-          book.Author || book.Author_Name || '—',
-          book.Subject || book.Genre || '—',
-          copies.length,
-          copyDetails
+          total,
+          available,
+          loaned,
+          reserved,
+          lossText
         ];
+      }).sort((a, b) => {
+        const byLoan = Number(b[3] || 0) - Number(a[3] || 0);
+        if (byLoan !== 0) return byLoan;
+        return String(a[0] || '').localeCompare(String(b[0] || ''));
       });
-      return {
-        title:'Books & Copy Details',
-        headers:['Title','Author','Subject','Total Copies','Copy Details'],
-        rows
-      };
-    },
-    documents_with_copies: () => {
-      const sortedDocs = [...documents].sort((a, b) => (a.Title || '').localeCompare(b.Title || ''));
-      const rows = sortedDocs.map(doc => {
-        const copies = docInvMap[doc.Document_ID] || [];
-        const copyDetails = copies.length
-          ? copies.map(copy => {
-              const storageId = copy.Storage_ID ?? copy.StorageID ?? copy.storage_id ?? copy.storageId ?? '—';
-              const availability = copy.availability || copy.Availability || 'Unknown';
-              const condition = copy.Condition || copy.condition || 'Unknown';
-              const location = copy.StorageLocation || copy.location || '—';
-              return `• Storage #${storageId} • ${availability}${condition ? ` • ${condition}` : ''}${location ? ` • ${location}` : ''}`;
-            }).join('\n')
-          : 'No copies recorded';
-        return [
-          doc.Title || 'Untitled',
-          doc.Classification || '—',
-          doc.Category || doc.CategoryName || '—',
-          copies.length,
-          copyDetails
-        ];
-      });
-      return {
-        title:'Documents & Copy Details',
-        headers:['Title','Type','Category','Total Copies','Copy Details'],
-        rows
-      };
-    },
-    borrowings_full: () => {
-      const sortedBorrows = [...filteredBorrows].sort((a, b) => {
-        const aDate = a.BorrowDate ? new Date(a.BorrowDate) : new Date(0);
-        const bDate = b.BorrowDate ? new Date(b.BorrowDate) : new Date(0);
-        return bDate - aDate;
-      });
-      const rows = sortedBorrows.map(tx => {
-        const borrowerId = tx.BorrowerID ?? tx.UserID;
-        const borrower = borrowerNameMap[Number(borrowerId)] || tx.BorrowerName || `Borrower #${borrowerId || '—'}`;
-        const borrowDate = tx.BorrowDate ? formatDate(tx.BorrowDate) : '—';
-        const dueDate = dueMap[tx.BorrowID] ? formatDate(dueMap[tx.BorrowID]) : '—';
-        const returnDate = tx.ReturnDate ? formatDate(tx.ReturnDate) : '—';
-        const statuses = [
-          `Approval: ${tx.ApprovalStatus || '—'}`,
-          `Retrieval: ${tx.RetrievalStatus || '—'}`,
-          `Return: ${tx.ReturnStatus || '—'}`
-        ];
-        if (tx.FineStatus) statuses.push(`Fine: ${tx.FineStatus}`);
-        const items = (tx.items || []).map(item => {
-          if (item.ItemType === 'Book') {
-            const copyId = item.BookCopyID ?? item.CopyID;
-            const bookId = copyToBookMap[String(copyId)] || null;
-            const bookTitle = books.find(b => b.Book_ID === Number(bookId))?.Title || 'Unknown Book';
-            const invList = bookId ? (bookInvMap[bookId] || []) : [];
-            const copyRow = invList.find(row => String(row.Copy_ID ?? row.CopyID ?? row.copy_id ?? row.copyId) === String(copyId));
-            const availability = copyRow ? (copyRow.availability || copyRow.Availability || 'Unknown') : null;
-            const condition = copyRow ? (copyRow.condition || copyRow.BookCondition || 'Unknown') : item.ReturnCondition || null;
-            const fineValue = parseFloat(item.Fine ?? 0);
-            const fineText = !isNaN(fineValue) && fineValue > 0
-              ? ` • Fine: ₱${fineValue.toFixed(2)} (${item.FinePaid === 'Yes' ? 'Paid' : 'Unpaid'})`
-              : '';
-            const conditionText = condition ? ` • Condition: ${condition}` : '';
-            const availabilityText = availability ? ` • Status: ${availability}` : '';
-            return `• Book: ${bookTitle} (Copy #${copyId || '—'})${availabilityText}${conditionText}${fineText}`;
-          }
-          if (item.ItemType === 'Document') {
-            const storageId = item.DocumentStorageID ?? item.StorageID;
-            const docId = storageToDocumentMap[String(storageId)] || null;
-            const docTitle = documents.find(d => d.Document_ID === Number(docId))?.Title || 'Unknown Document';
-            const fineValue = parseFloat(item.Fine ?? 0);
-            const fineText = !isNaN(fineValue) && fineValue > 0
-              ? ` • Fine: ₱${fineValue.toFixed(2)} (${item.FinePaid === 'Yes' ? 'Paid' : 'Unpaid'})`
-              : '';
-            const conditionText = item.ReturnCondition ? ` • Condition: ${item.ReturnCondition}` : '';
-            return `• Document: ${docTitle} (Storage #${storageId || '—'})${conditionText}${fineText}`;
-          }
-          return `• Item: ${item.ItemType || 'Unknown'} (ID ${item.BorrowedItemID || '—'})`;
-        }).join('\n') || '• No items recorded';
 
-        return [
-          `#${tx.BorrowID}`,
-          borrower,
-          borrowDate,
-          dueDate,
-          returnDate,
-          statuses.join('\n'),
-          items
-        ];
-      });
+      if (!rows.length) {
+        rows.push(['No books available', '—', '—', '—', '—', '—']);
+      }
+
       return {
-        title:'Borrowing Transactions (Full Details)',
-        headers:['Borrow ID','Borrower','Borrow Date','Due Date','Return Date','Statuses','Items & Notes'],
+        title: 'Book Inventory Report',
+        headers: ['Title', 'Copies', 'Available', 'On Loan', 'Reserved', 'Loss/Damage'],
         rows
+      };
+    },
+    pending_overdue: () => {
+      const now = new Date();
+      const msPerDay = 1000 * 60 * 60 * 24;
+      const detailRows = [];
+
+      filteredBorrows.forEach(tx => {
+        const returnStatus = String(tx.ReturnStatus || '').toLowerCase();
+        if (returnStatus === 'returned') return;
+
+        const borrowerMeta = resolveBorrowerMeta(tx.BorrowerID, tx.UserID);
+        const borrowerLabel = buildBorrowerDisplay(
+          tx.BorrowerID,
+          tx.UserID,
+          {
+            BorrowerName: tx.BorrowerName,
+            Department: borrowerMeta.department,
+            Program: tx.Program,
+            Course: tx.Course
+          }
+        );
+        const dueRaw = dueMap[tx.BorrowID];
+        const dueDisplay = dueRaw ? formatDate(dueRaw) : '—';
+        const dueObj = dueRaw ? new Date(dueRaw) : null;
+        const isOverdue = dueObj ? now > dueObj : false;
+        const daysOverdue = isOverdue ? Math.max(1, Math.floor((now - dueObj) / msPerDay)) : 0;
+
+        const fineStatus = tx.FineStatus
+          || ((tx.items || []).some(item => parseFloat(item.Fine || 0) > 0)
+            ? ((tx.items || []).some(item => String(item.FinePaid || '').toLowerCase() === 'yes') ? 'Fine settled' : 'Outstanding fine')
+            : 'No fine');
+
+        const itemsSummary = (tx.items || []).map(item => {
+          const itemType = String(item.ItemType || '').toLowerCase();
+          if (itemType === 'book') {
+            const copyId = item.BookCopyID ?? item.CopyID;
+            const bookId = copyId != null ? copyToBookMap[String(copyId)] : null;
+            const title = bookId != null ? (bookMap[Number(bookId)]?.Title || `Book #${bookId}`) : 'Book';
+            return `Book: ${title}${copyId != null ? ` (Copy #${copyId})` : ''}`;
+          }
+          if (itemType === 'document') {
+            const storageId = item.DocumentStorageID ?? item.StorageID;
+            const docId = storageId != null ? storageToDocumentMap[String(storageId)] : (item.DocumentID ?? item.Document_ID);
+            const title = docId != null ? (documentMap[Number(docId)]?.Title || `Document #${docId}`) : 'Document';
+            return `Document: ${title}`;
+          }
+          return item.ItemType || 'Item';
+        }).join('\n') || 'No items recorded';
+
+        detailRows.push({
+          sortKey: daysOverdue,
+          values: [
+            `#${tx.BorrowID}`,
+            borrowerLabel,
+            dueDisplay,
+            daysOverdue,
+            fineStatus,
+            itemsSummary
+          ]
+        });
+      });
+
+      detailRows.sort((a, b) => b.sortKey - a.sortKey);
+
+      const rows = detailRows.length ? detailRows.map(entry => entry.values) : [['No pending returns', '—', '—', '—', '—', '—']];
+
+      const overdueCount = detailRows.filter(entry => entry.sortKey > 0).length;
+      const totalPending = detailRows.length;
+
+      return {
+        title: 'Pending Return & Overdue Summary',
+        headers: ['Borrow ID', 'Borrower', 'Due Date', 'Days Overdue', 'Fine Status', 'Items'],
+        rows,
+        chart: detailRows.length ? {
+          type: 'bar',
+          data: {
+            labels: ['Pending Returns', 'Overdue'],
+            datasets: [{
+              label: 'Loans',
+              data: [totalPending - overdueCount, overdueCount],
+              backgroundColor: ['#ffa000', '#d32f2f'],
+              borderRadius: 6,
+              maxBarThickness: 48
+            }]
+          }
+        } : null,
+        meta: { overdueCount, totalPending }
+      };
+    },
+    loss_damage: () => {
+      const detailRows = [];
+
+      returnedItemsFiltered.forEach(item => {
+        const conditionRaw = String(item.ReturnCondition || item.Condition || '').toLowerCase();
+        if (!conditionRaw) return;
+        const isLost = conditionRaw.includes('lost') || conditionRaw.includes('missing');
+        const isDamaged = conditionRaw.includes('damaged') || conditionRaw.includes('damage') || conditionRaw.includes('broken');
+        if (!isLost && !isDamaged) return;
+
+        const borrowId = Number(item.BorrowID ?? item.borrow_id ?? item.Borrow_Id ?? item.ReturnBorrowID);
+        const borrow = borrowId ? borrowMap[borrowId] : undefined;
+        const borrowerMeta = resolveBorrowerMeta(
+          borrow?.BorrowerID ?? item.BorrowerID,
+          borrow?.UserID ?? item.UserID
+        );
+        const borrowerLabel = buildBorrowerDisplay(
+          borrow?.BorrowerID ?? item.BorrowerID,
+          borrow?.UserID ?? item.UserID,
+          {
+            BorrowerName: item.BorrowerName,
+            BorrowerFullName: item.BorrowerFullName,
+            Department: borrowerMeta.department,
+            Program: item.Program,
+            Course: item.Course
+          }
+        );
+
+        const itemType = String(item.ItemType || '').toLowerCase();
+        let itemLabel = item.ItemType || 'Item';
+        if (itemType === 'book') {
+          const copyId = item.BookCopyID ?? item.CopyID;
+          const bookId = copyId != null ? copyToBookMap[String(copyId)] : null;
+          const title = bookId != null ? (bookMap[Number(bookId)]?.Title || `Book #${bookId}`) : 'Book';
+          itemLabel = `${title}${copyId != null ? ` (Copy #${copyId})` : ''}`;
+        } else if (itemType === 'document') {
+          const storageId = item.DocumentStorageID ?? item.StorageID;
+          const docId = storageId != null ? storageToDocumentMap[String(storageId)] : (item.DocumentID ?? item.Document_ID);
+          const title = docId != null ? (documentMap[Number(docId)]?.Title || `Document #${docId}`) : 'Document';
+          itemLabel = `${title}${storageId != null ? ` (Storage #${storageId})` : ''}`;
+        }
+
+        const rawFine = parseFloat(item.Fine ?? borrow?.FineAmount ?? 0) || 0;
+        const finePaid = String(item.FinePaid || borrow?.FineStatus || '').toLowerCase();
+        const resolution = rawFine
+          ? (finePaid.includes('yes') || finePaid.includes('paid') ? 'Fine settled' : 'Fine pending')
+          : 'Assess preservation action';
+
+  const returnDateDisplay = item.ReturnDate ? item.ReturnDate : (borrow?.ReturnDate ? formatDate(borrow.ReturnDate) : '—');
+  const sortKey = item.ReturnDateRaw ? new Date(item.ReturnDateRaw).getTime() : (borrow?.ReturnDate ? new Date(borrow.ReturnDate).getTime() : 0);
+
+        detailRows.push({
+          sortKey,
+          values: [
+            returnDateDisplay,
+            borrowerLabel,
+            itemLabel,
+            isLost ? 'Lost' : 'Damaged',
+            rawFine ? `₱${rawFine.toFixed(2)}` : 'No fine',
+            resolution
+          ]
+        });
+      });
+
+      detailRows.sort((a, b) => b.sortKey - a.sortKey);
+
+      const rows = detailRows.length ? detailRows.map(entry => entry.values) : [['No loss/damage recorded', '—', '—', '—', '—', '—']];
+
+      return {
+        title: 'Loss and Damage Accountability Report',
+        headers: ['Return Date', 'Borrower', 'Item', 'Issue', 'Fine', 'Resolution Status'],
+        rows
+      };
+    },
+    request_backlog: () => {
+      const now = new Date();
+      const msPerDay = 1000 * 60 * 60 * 24;
+      const activeTransactions = filteredBorrows.filter(tx => String(tx.ReturnStatus || '').toLowerCase() !== 'returned');
+      const approvalPending = filteredBorrows.filter(tx => String(tx.ApprovalStatus || '').toLowerCase() === 'pending');
+      const retrievalPending = filteredBorrows.filter(tx => {
+        const approvalStatus = String(tx.ApprovalStatus || '').toLowerCase();
+        const retrievalStatus = String(tx.RetrievalStatus || '').toLowerCase();
+        return approvalStatus === 'approved' && retrievalStatus !== 'retrieved' && String(tx.ReturnStatus || '').toLowerCase() !== 'returned';
+      });
+      const overdueReturns = activeTransactions.filter(tx => {
+        const dueRaw = dueMap[tx.BorrowID];
+        if (!dueRaw) return false;
+        const dueDate = new Date(dueRaw);
+        return dueDate < now;
+      });
+
+      const agingDays = activeTransactions.map(tx => {
+        if (!tx.BorrowDate) return 0;
+        const borrowDate = new Date(tx.BorrowDate);
+        return Math.max(0, (now - borrowDate) / msPerDay);
+      }).filter(value => Number.isFinite(value) && value > 0);
+
+      const avgAge = agingDays.length ? (agingDays.reduce((sum, value) => sum + value, 0) / agingDays.length) : 0;
+
+      const backlogThreshold = 3;
+      const approvalBacklog = approvalPending.filter(tx => {
+        if (!tx.BorrowDate) return false;
+        const borrowDate = new Date(tx.BorrowDate);
+        return ((now - borrowDate) / msPerDay) > backlogThreshold;
+      });
+      const retrievalBacklog = retrievalPending.filter(tx => {
+        if (!tx.BorrowDate) return false;
+        const borrowDate = new Date(tx.BorrowDate);
+        return ((now - borrowDate) / msPerDay) > backlogThreshold;
+      });
+
+      const delayedDocuments = Object.values(documentDepartmentStats.departments || {}).reduce((sum, stats) => sum + (stats.delayed || 0), 0);
+      const topDelayedDepartments = Object.entries(documentDepartmentStats.departments || {})
+        .map(([dept, stats]) => ({ dept, delayed: stats.delayed || 0 }))
+        .filter(entry => entry.delayed > 0)
+        .sort((a, b) => b.delayed - a.delayed || a.dept.localeCompare(b.dept))
+        .slice(0, 3)
+        .map(entry => `${entry.dept} (${entry.delayed})`)
+        .join(', ') || '—';
+
+      const rows = [
+        ['Reporting Period', (fromDate || toDate) ? `${fromDate || '—'} to ${toDate || '—'}` : 'All activity'],
+        ['Active Requests', activeTransactions.length],
+        ['Pending Approval', `${approvalPending.length} (Backlog: ${approvalBacklog.length})`],
+        ['Awaiting Retrieval', `${retrievalPending.length} (Backlog: ${retrievalBacklog.length})`],
+        ['Overdue Returns', overdueReturns.length],
+        ['Average Request Age (days)', avgAge.toFixed(1)],
+        ['Document Requests Delayed >3d', delayedDocuments],
+        ['Top Backlogged Departments', topDelayedDepartments]
+      ];
+
+      return {
+        title: 'Number of Request Report',
+        headers: ['Metric', 'Value'],
+        rows,
+        chart: {
+          type: 'bar',
+          data: {
+            labels: ['Active', 'Pending Approval', 'Awaiting Retrieval', 'Overdue Returns'],
+            datasets: [{
+              label: 'Requests',
+              data: [
+                activeTransactions.length,
+                approvalPending.length,
+                retrievalPending.length,
+                overdueReturns.length
+              ],
+              backgroundColor: ['#0288d1', '#ffa000', '#7b1fa2', '#d32f2f'],
+              borderRadius: 6,
+              maxBarThickness: 48
+            }]
+          }
+        },
+        meta: {
+          active: activeTransactions.length,
+          pending: approvalPending.length,
+          retrieval: retrievalPending.length,
+          overdue: overdueReturns.length,
+          averageAge: avgAge,
+          approvalBacklog: approvalBacklog.length,
+          retrievalBacklog: retrievalBacklog.length
+        }
       };
     }
   };
 
   const currentReport = dataBuilders[reportType]();
+
+  const summaryMetrics = useMemo(() => {
+    const meta = currentReport.meta || {};
+    const baseRange = (fromDate || toDate) ? `${fromDate || '—'} to ${toDate || '—'}` : 'All activity';
+    const rowsCount = currentReport.rows.length;
+
+    if (reportType === 'book_borrowing') {
+      const {
+        total = 0,
+        returnedCount = 0,
+        active = 0,
+        pendingApproval = 0,
+        overdue = 0
+      } = meta;
+      return [
+        { label: 'Total Borrowings', value: total },
+        { label: 'Active Loans', value: active, subtitle: `${returnedCount} returned` },
+        { label: 'Pending Approval', value: pendingApproval },
+        { label: 'Overdue Loans', value: overdue, subtitle: baseRange }
+      ];
+    }
+
+    if (reportType === 'document_retrieval') {
+      const entries = meta.entries || [];
+      const totalRequests = entries.reduce((sum, item) => sum + (item.total || 0), 0);
+      const delayed = entries.reduce((sum, item) => sum + (item.delayed || 0), 0);
+      return [
+        { label: 'Total Requests', value: totalRequests },
+        { label: 'Departments', value: entries.length },
+        { label: 'Delayed >3 days', value: delayed },
+        { label: 'Coverage', value: baseRange }
+      ];
+    }
+
+    if (reportType === 'pending_overdue') {
+      const { totalPending = 0, overdueCount = 0 } = meta;
+      return [
+        { label: 'Pending Returns', value: totalPending },
+        { label: 'Overdue Items', value: overdueCount },
+        { label: 'Rows Rendered', value: rowsCount },
+        { label: 'Coverage', value: baseRange }
+      ];
+    }
+
+    if (reportType === 'request_backlog') {
+      const {
+        active = 0,
+        pending = 0,
+        retrieval = 0,
+        overdue = 0,
+        averageAge = 0,
+        approvalBacklog = 0,
+        retrievalBacklog = 0
+      } = meta;
+      return [
+        { label: 'Active Requests', value: active },
+        { label: 'Pending Approval', value: `${pending} (Backlog ${approvalBacklog})` },
+        { label: 'Awaiting Retrieval', value: `${retrieval} (Backlog ${retrievalBacklog})` },
+        { label: 'Overdue Returns', value: overdue, subtitle: `Avg age ${averageAge.toFixed(1)}d` }
+      ];
+    }
+
+    return [
+      { label: 'Rows Rendered', value: rowsCount },
+      { label: 'Coverage', value: baseRange }
+    ];
+  }, [currentReport, fromDate, reportType, toDate]);
 
   // Reset page on data change
   useEffect(() => {
@@ -485,26 +1057,7 @@ const ReportsPage = () => {
   const pagedRows = currentReport.rows.slice(startIdx, endIdx);
 
   // Chart (for selected report types)
-  const chartData = useMemo(() => {
-    if (reportType !== 'borrow_activity') return null;
-    return {
-      type:'bar',
-      data:{
-        labels: currentReport.rows
-          .filter(r=>!String(r[0]).toLowerCase().includes('fine') && !String(r[0]).toLowerCase().includes('total'))
-          .map(r=>r[0]),
-        datasets:[{
-          label:'Count',
-          data: currentReport.rows
-            .filter(r=>!String(r[0]).toLowerCase().includes('fine') && !String(r[0]).toLowerCase().includes('total'))
-            .map(r=>r[1]),
-          backgroundColor:['#ffb300','#0288d1','#7b1fa2','#d32f2f','#2e7d32','#757575'],
-          borderRadius:6,
-          maxBarThickness:40
-        }]
-      }
-    };
-  }, [reportType, currentReport]);
+  const chartData = currentReport.chart || null;
 
   const exportCSV = () => {
     const rows = exportScope === 'page' ? pagedRows : currentReport.rows;
@@ -611,291 +1164,394 @@ const ReportsPage = () => {
   };
 
   return (
-    <Box p={3} sx={{ bgcolor:'background.default', minHeight:'100vh' }}>
-      <Paper
-        sx={{
-          p:2, mb:3, display:'flex', flexWrap:'wrap', gap:2, alignItems:'center',
-          border: theme=>`2px solid ${theme.palette.divider}`, borderRadius:1
-        }}
-      >
-        <Box>
-          <Typography fontWeight={800} fontSize={18}>Reports & Exports</Typography>
-          <Typography variant="caption" color="text.secondary" fontWeight={600}>
-            Generate, visualize & export library data
-          </Typography>
-        </Box>
-        <Box ml="auto" display="flex" gap={1}>
-          <Tooltip title="Refresh data">
-            <IconButton size="small" onClick={fetchAll} disabled={loading}
-              sx={{ border: t=>`1.5px solid ${t.palette.divider}`, borderRadius:1 }}>
-              <RefreshCw size={16} />
-            </IconButton>
-          </Tooltip>
-        </Box>
-      </Paper>
-
-      <Paper
-        sx={{
-          p:1.5, mb:2, border: t=>`2px solid ${t.palette.divider}`, borderRadius:1
-        }}
-      >
-        <Tabs
-          value={tab}
-          onChange={(_,v)=>setTab(v)}
-          variant="scrollable"
-          allowScrollButtonsMobile
-          sx={{
-            '& .MuiTabs-indicator':{ display:'none' },
-            '& .MuiTab-root':{
-              textTransform:'none',
-              fontWeight:600,
-              mr:1,
-              border: t=>`1px solid ${t.palette.divider}`,
-              borderRadius:.75,
-              minHeight:40
-            },
-            '& .Mui-selected':{
-              bgcolor:'primary.main !important',
-              color:'primary.contrastText !important'
-            }
-          }}
+    <Box
+      sx={{
+        px: { xs: 2, md: 3.5 },
+        py: { xs: 2.5, md: 4 },
+        minHeight: '100vh',
+        background: (theme) => `linear-gradient(160deg, ${alpha(theme.palette.background.default, 0.96)}, ${alpha(theme.palette.primary.light, 0.08)})`
+      }}
+    >
+      <Stack spacing={3.5}>
+        <Paper
+          sx={surfacePaper({
+            p: { xs: 2.5, md: 3 },
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: { xs: 1.5, md: 2.5 }
+          })}
         >
-          {REPORT_TYPES.map(r=>(
-            <Tab key={r.key} label={r.label} onClick={()=>setReportType(r.key)} />
-          ))}
-        </Tabs>
-      </Paper>
-
-      <Paper
-        sx={{
-          p:2, mb:2, display:'flex', flexWrap:'wrap', gap:1.5,
-          alignItems:'center', border: t=>`2px solid ${t.palette.divider}`, borderRadius:1
-        }}
-      >
-        <FileText size={18} />
-        <TextField
-          label="Report"
-          size="small"
-          value={reportType}
-          onChange={e=>setReportType(e.target.value)}
-          select
-          sx={{ minWidth:200 }}
+          <Stack spacing={0.5}>
+            <Typography fontWeight={800} fontSize={18}>Reports &amp; Exports</Typography>
+            <Typography variant="caption" color="text.secondary" fontWeight={600}>
+              Generate, visualize &amp; export library data
+            </Typography>
+          </Stack>
+          <Chip
+            label={REPORT_TYPES.find(r => r.key === reportType)?.label || '—'}
+            color="primary"
+            variant="outlined"
+            size="small"
+            sx={{ fontWeight: 600, ml: { xs: 0, md: 'auto' } }}
+          />
+          <Stack direction="row" spacing={1} sx={{ ml: { xs: 0, md: 'auto' } }}>
+            <Tooltip title="Refresh data">
+              <IconButton
+                size="small"
+                onClick={fetchAll}
+                disabled={loading}
+                sx={{
+                  border: (theme) => `1.5px solid ${alpha(theme.palette.divider, 0.6)}`,
+                  borderRadius: 1,
+                  backgroundColor: (theme) => alpha(theme.palette.background.paper, 0.6)
+                }}
+              >
+                <RefreshCw size={16} />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+        </Paper>
+        <Paper
+          sx={surfacePaper({
+            p: { xs: 1.5, md: 2 },
+            overflow: 'hidden'
+          })}
         >
-          {REPORT_TYPES.map(r=>(
-            <MenuItem key={r.key} value={r.key}>{r.label}</MenuItem>
-          ))}
-        </TextField>
-        <TextField
-          label="From"
+          <Tabs
+            value={tab}
+            onChange={(_, v) => setTab(v)}
+            variant="scrollable"
+            allowScrollButtonsMobile
+            sx={{
+              '& .MuiTabs-indicator': { display: 'none' },
+              '& .MuiTab-root': {
+                textTransform: 'none',
+                fontWeight: 600,
+                mr: 1,
+                borderRadius: 0.75,
+                minHeight: 40,
+                transition: 'all .15s ease',
+                backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.05)
+              },
+              '& .MuiTab-root:hover': {
+                backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.12)
+              },
+              '& .Mui-selected': {
+                backgroundColor: 'primary.main !important',
+                color: 'primary.contrastText !important',
+                boxShadow: (theme) => `0 12px 24px ${alpha(theme.palette.primary.main, 0.2)}`
+              }
+            }}
+          >
+            {REPORT_TYPES.map((r) => (
+              <Tab key={r.key} label={r.label} onClick={() => setReportType(r.key)} />
+            ))}
+          </Tabs>
+        </Paper>
+
+        <Paper
+          sx={surfacePaper({
+            p: { xs: 2, md: 2.5 },
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 1.5,
+            alignItems: 'center'
+          })}
+        >
+          <Box
+            sx={{
+              height: 38,
+              width: 38,
+              borderRadius: 1,
+              display: 'grid',
+              placeItems: 'center',
+              background: (theme) => alpha(theme.palette.primary.main, 0.12),
+              color: 'primary.main'
+            }}
+          >
+            <FileText size={18} />
+          </Box>
+          <TextField
+            label="Report"
+            size="small"
+            value={reportType}
+            onChange={(e) => setReportType(e.target.value)}
+            select
+            sx={{ minWidth: 200 }}
+          >
+            {REPORT_TYPES.map((r) => (
+              <MenuItem key={r.key} value={r.key}>{r.label}</MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            label="From"
             type="date"
             size="small"
             value={fromDate}
-            onChange={e=>setFromDate(e.target.value)}
-            InputLabelProps={{ shrink:true }}
-        />
-        <TextField
-          label="To"
-          type="date"
-          size="small"
-          value={toDate}
-          onChange={e=>setToDate(e.target.value)}
-          InputLabelProps={{ shrink:true }}
-        />
-  {(reportType==='top_borrowed_books' || reportType==='top_borrowed_documents') && (
-          <TextField
-            label="Limit"
-            size="small"
-            type="number"
-            value={limit}
-            onChange={e=>setLimit(Math.max(1, parseInt(e.target.value)||5))}
-            sx={{ width:100 }}
-            InputLabelProps={{ shrink:true }}
+            onChange={(e) => setFromDate(e.target.value)}
+            InputLabelProps={{ shrink: true }}
           />
-        )}
-        <Box ml="auto" display="flex" gap={1}>
-          <Button
+          <TextField
+            label="To"
+            type="date"
             size="small"
-            variant="outlined"
-            startIcon={<Download size={14} />}
-            onClick={exportCSV}
-            disabled={loading}
-            sx={{ fontWeight:600 }}
-          >
-            CSV
-          </Button>
-          <Button
-            size="small"
-            variant="contained"
-            startIcon={<Eye size={14} />}
-            onClick={previewPDF}   // changed from exportPDF
-            disabled={loading}
-            sx={{ fontWeight:700 }}
-          >
-            Preview PDF
-          </Button>
-        </Box>
-      </Paper>
-
-      {err && (
-        <Paper
-          sx={{
-            p:2, mb:2, border: t=>`2px solid ${t.palette.error.main}`, borderRadius:1,
-            bgcolor: t=> t.palette.error.light+'22'
-          }}
-        >
-          <Typography variant="body2" fontWeight={600} color="error.main">{err}</Typography>
-        </Paper>
-      )}
-
-      <Grid container spacing={2.5}>
-        <Grid item xs={12} md={chartData ? 7 : 12}>
-          <Paper
-            sx={{
-              p:2, border: t=>`2px solid ${t.palette.divider}`, borderRadius:1,
-              display:'flex', flexDirection:'column', gap:1
-            }}
-          >
-            <Typography fontWeight={800} fontSize={15}>
-              {currentReport.title}
-            </Typography>
-            <Divider />
-            {loading ? (
-              <Stack spacing={1}>
-                {Array.from({ length:6 }).map((_,i)=>(
-                  <Skeleton key={i} variant="rounded" height={34} />
-                ))}
-              </Stack>
-            ) : (
-              <>
-                <Box
-                  sx={{
-                    overflow:'auto',
-                    border: t=>`1px solid ${t.palette.divider}`,
-                    borderRadius:1
-                  }}
-                >
-                  <table
-                    style={{
-                      borderCollapse:'collapse', width:'100%', fontSize:13
-                    }}
-                  >
-                    <thead style={{ background:'#f5f5f5' }}>
-                      <tr>
-                        {currentReport.headers.map(h=>(
-                          <th
-                            key={h}
-                            style={{
-                              textAlign:'left', padding:'6px 8px',
-                              borderBottom:'1px solid #ddd', fontWeight:700,
-                              position:'sticky', top:0, background:'#f5f5f5', zIndex:1
-                            }}
-                          >
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pagedRows.map((r,idx)=>(
-                        <tr key={idx} style={{ background: ((startIdx+idx)%2)? 'rgba(0,0,0,0.02)' : 'transparent' }}>
-                          {r.map((c,i)=>(
-                            <td
-                              key={i}
-                              style={{
-                                padding:'6px 8px',
-                                borderBottom:'1px solid #eee',
-                                fontWeight: i===0 ? 600 : 500,
-                                whiteSpace:'pre-wrap',
-                                lineHeight:1.35
-                              }}
-                            >
-                              {c}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                      {!pagedRows.length && (
-                        <tr>
-                          <td colSpan={currentReport.headers.length} style={{ padding:10, textAlign:'center' }}>
-                            <Typography variant="caption" color="text.secondary">
-                              No data for current filters.
-                            </Typography>
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </Box>
-
-                {/* Pagination bar */}
-                <Stack direction="row" alignItems="center" spacing={1} mt={1}>
-                  <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                    Showing {totalRows ? startIdx + 1 : 0} - {endIdx} of {totalRows}
-                  </Typography>
-                  <Box ml="auto" />
-                  <Pagination
-                    count={totalPages}
-                    page={page}
-                    onChange={(_,v)=>setPage(v)}
-                    size="small"
-                    siblingCount={0}
-                    boundaryCount={1}
-                  />
-                </Stack>
-              </>
-            )}
-            {(!loading && (fromDate || toDate)) && (
-              <Typography variant="caption" color="text.secondary" mt={1}>
-                Date range applied: {fromDate || '—'} to {toDate || '—'}
-              </Typography>
-            )}
-          </Paper>
-        </Grid>
-
-        {chartData && (
-          <Grid item xs={12} md={5}>
-            <Paper
-              sx={{
-                p:2, border: t=>`2px solid ${t.palette.divider}`, borderRadius:1,
-                display:'flex', flexDirection:'column', height:'100%'
-              }}
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+          />
+          {reportType === 'book_borrowing' && (
+            <TextField
+              label="Top Books Limit"
+              size="small"
+              type="number"
+              value={limit}
+              onChange={(e) => setLimit(Math.max(1, parseInt(e.target.value, 10) || 5))}
+              sx={{ width: 120 }}
+              InputLabelProps={{ shrink: true }}
+            />
+          )}
+          <Stack direction="row" spacing={1} sx={{ ml: { xs: 0, md: 'auto' } }}>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<Download size={14} />}
+              onClick={exportCSV}
+              disabled={loading}
+              sx={{ fontWeight: 600 }}
             >
-              <Typography fontWeight={800} fontSize={15}>Visualization</Typography>
-              <Divider sx={{ my:1 }} />
-              {loading ? (
-                <Skeleton variant="rounded" height={320} />
-              ) : (
-                <Box sx={{ flexGrow:1, minHeight:320 }}>
-                  {chartData.type === 'bar' && (
-                    <Bar
-                      data={chartData.data}
-                      options={{
-                        responsive:true,
-                        maintainAspectRatio:false,
-                        plugins:{ legend:{ display:false } },
-                        scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } }
-                      }}
-                    />
-                  )}
-                  {chartData.type === 'doughnut' && (
-                    <Doughnut
-                      data={chartData.data}
-                      options={{
-                        responsive:true,
-                        maintainAspectRatio:false,
-                        plugins:{ legend:{ position:'bottom' } }
-                      }}
-                    />
-                  )}
-                </Box>
-              )}
-              <Typography variant="caption" color="text.secondary" mt={1}>
-                Auto‑generated chart for faster insight.
-              </Typography>
-            </Paper>
+              CSV
+            </Button>
+            <Button
+              size="small"
+              variant="contained"
+              startIcon={<Eye size={14} />}
+              onClick={previewPDF} // changed from exportPDF
+              disabled={loading}
+              sx={{ fontWeight: 700 }}
+            >
+              Preview PDF
+            </Button>
+          </Stack>
+        </Paper>
+
+        {summaryMetrics.length > 0 && (
+          <Grid container spacing={2}>
+            {summaryMetrics.map((metric) => (
+              <Grid item xs={12} sm={6} md={3} key={metric.label}>
+                <Paper
+                  sx={surfacePaper({
+                    p: { xs: 1.75, md: 2 },
+                    height: '100%'
+                  })}
+                >
+                  <Stack spacing={0.75}>
+                    <Typography variant="caption" color="text.secondary" fontWeight={700}>
+                      {metric.label}
+                    </Typography>
+                    <Typography variant="h6" fontWeight={800}>
+                      {metric.value}
+                    </Typography>
+                    {metric.subtitle && (
+                      <Typography variant="caption" color="text.secondary">
+                        {metric.subtitle}
+                      </Typography>
+                    )}
+                  </Stack>
+                </Paper>
+              </Grid>
+            ))}
           </Grid>
         )}
-      </Grid>
+
+        {err && (
+          <Paper
+            sx={surfacePaper({
+              p: { xs: 2, md: 2.25 },
+              border: (theme) => `1px solid ${alpha(theme.palette.error.main, 0.5)}`,
+              background: (theme) => alpha(theme.palette.error.light, 0.18),
+              color: 'error.main'
+            })}
+          >
+            <Typography variant="body2" fontWeight={600}>{err}</Typography>
+          </Paper>
+        )}
+
+        <Grid container spacing={2.5}>
+          <Grid item xs={12} md={chartData ? 7 : 12}>
+            <Paper
+              sx={surfacePaper({
+                p: { xs: 2, md: 2.5 },
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 1.25
+              })}
+            >
+              <Stack direction="row" alignItems="center" spacing={1}>
+                <Typography fontWeight={800} fontSize={15}>
+                  {currentReport.title}
+                </Typography>
+                <Chip
+                  label={`${pagedRows.length} of ${totalRows}`}
+                  size="small"
+                  variant="outlined"
+                  sx={{ ml: 'auto', fontWeight: 600 }}
+                />
+              </Stack>
+              <Divider sx={{ borderColor: (theme) => alpha(theme.palette.divider, 0.6) }} />
+              {loading ? (
+                <Stack spacing={1}>
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <Skeleton key={i} variant="rounded" height={34} />
+                  ))}
+                </Stack>
+              ) : (
+                <>
+                  <Box
+                    sx={{
+                      overflow: 'auto',
+                      borderRadius: 1,
+                      border: (theme) => `1px solid ${alpha(theme.palette.divider, 0.6)}`,
+                      background: (theme) => alpha(theme.palette.background.paper, 0.6)
+                    }}
+                  >
+                    <table
+                      style={{
+                        borderCollapse: 'collapse',
+                        width: '100%',
+                        fontSize: 13
+                      }}
+                    >
+                      <thead style={{ background: 'rgba(25, 118, 210, 0.1)' }}>
+                        <tr>
+                          {currentReport.headers.map((h) => (
+                            <th
+                              key={h}
+                              style={{
+                                textAlign: 'left',
+                                padding: '10px 12px',
+                                borderBottom: '1px solid rgba(0,0,0,0.08)',
+                                fontWeight: 700,
+                                position: 'sticky',
+                                top: 0,
+                                backdropFilter: 'blur(4px)',
+                                background: 'rgba(25, 118, 210, 0.12)',
+                                zIndex: 1
+                              }}
+                            >
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pagedRows.map((r, idx) => (
+                          <tr
+                            key={idx}
+                            style={{
+                              background: (idx % 2 === 0) ? 'rgba(255,255,255,0.6)' : 'rgba(25,118,210,0.04)'
+                            }}
+                          >
+                            {r.map((c, i) => (
+                              <td
+                                key={i}
+                                style={{
+                                  padding: '10px 12px',
+                                  borderBottom: '1px solid rgba(0,0,0,0.05)',
+                                  fontWeight: i === 0 ? 600 : 500,
+                                  whiteSpace: 'pre-wrap',
+                                  lineHeight: 1.4
+                                }}
+                              >
+                                {c}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                        {!pagedRows.length && (
+                          <tr>
+                            <td colSpan={currentReport.headers.length} style={{ padding: 14, textAlign: 'center' }}>
+                              <Typography variant="caption" color="text.secondary">
+                                No data for current filters.
+                              </Typography>
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </Box>
+
+                  <Stack direction="row" alignItems="center" spacing={1} mt={1}>
+                    <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                      Showing {totalRows ? startIdx + 1 : 0} - {endIdx} of {totalRows}
+                    </Typography>
+                    <Box ml="auto" />
+                    <Pagination
+                      count={totalPages}
+                      page={page}
+                      onChange={(_, v) => setPage(v)}
+                      size="small"
+                      siblingCount={0}
+                      boundaryCount={1}
+                    />
+                  </Stack>
+                </>
+              )}
+              {(!loading && (fromDate || toDate)) && (
+                <Typography variant="caption" color="text.secondary" mt={1}>
+                  Date range applied: {fromDate || '—'} to {toDate || '—'}
+                </Typography>
+              )}
+            </Paper>
+          </Grid>
+
+          {chartData && (
+            <Grid item xs={12} md={5}>
+              <Paper
+                sx={surfacePaper({
+                  p: { xs: 2, md: 2.5 },
+                  display: 'flex',
+                  flexDirection: 'column',
+                  height: '100%'
+                })}
+              >
+                <Typography fontWeight={800} fontSize={15}>Visualization</Typography>
+                <Divider sx={{ my: 1 }} />
+                {loading ? (
+                  <Skeleton variant="rounded" height={320} />
+                ) : (
+                  <Box sx={{ flexGrow: 1, minHeight: 320 }}>
+                    {chartData.type === 'bar' && (
+                      <Bar
+                        data={chartData.data}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          plugins: { legend: { display: false } },
+                          scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+                        }}
+                      />
+                    )}
+                    {chartData.type === 'doughnut' && (
+                      <Doughnut
+                        data={chartData.data}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          plugins: { legend: { position: 'bottom' } }
+                        }}
+                      />
+                    )}
+                  </Box>
+                )}
+                <Typography variant="caption" color="text.secondary" mt={1}>
+                  Auto-generated chart for faster insight.
+                </Typography>
+              </Paper>
+            </Grid>
+          )}
+        </Grid>
+      </Stack>
 
       {/* Footer removed to keep page focused on requested reports only */}
 

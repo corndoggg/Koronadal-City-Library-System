@@ -1,8 +1,13 @@
+# pyright: reportGeneralTypeIssues=false
+
 from flask import Blueprint, request, jsonify
 from app.db import get_db_connection
 from app.services.notifications import (
     notify_submit, notify_approved, notify_rejected, notify_retrieved, notify_return_recorded
 )
+from app.services.audit import log_event  # NEW
+from decimal import Decimal, InvalidOperation  # NEW
+from datetime import datetime  # NEW
 import logging  # NEW
 
 borrowreturn_bp = Blueprint('borrowreturn', __name__)
@@ -511,6 +516,169 @@ def list_return_transactions():
     finally:
         cursor.close()
         conn.close()
+
+
+@borrowreturn_bp.route('/return/<int:return_id>/items/<int:returned_item_id>/pay', methods=['POST'])
+def record_fine_payment(return_id, returned_item_id):  # NEW
+    payload = request.get_json(silent=True) or {}
+
+    raw_amount = payload.get('amount')
+    if raw_amount is None:
+        return jsonify({'error': 'Payment amount is required.'}), 400
+
+    try:
+        amount = Decimal(str(raw_amount))
+        amount = amount.quantize(Decimal('0.01'))
+    except (InvalidOperation, TypeError):
+        return jsonify({'error': 'Invalid payment amount.'}), 400
+
+    if amount <= 0:
+        return jsonify({'error': 'Payment amount must be greater than zero.'}), 400
+
+    reference = str(payload.get('reference') or '').strip()
+    if len(reference) > 120:
+        return jsonify({'error': 'Reference must be 120 characters or fewer.'}), 400
+
+    note = str(payload.get('note') or '').strip()
+    if len(note) > 1000:
+        return jsonify({'error': 'Note must be 1000 characters or fewer.'}), 400
+
+    staff_id_value = payload.get('receivedByStaffId')
+    staff_id = None
+    staff_user_id = None
+    if staff_id_value is not None:
+        try:
+            staff_id = int(staff_id_value)
+        except (TypeError, ValueError):
+            return jsonify({'error': 'receivedByStaffId must be a whole number.'}), 400
+        if staff_id <= 0:
+            return jsonify({'error': 'receivedByStaffId must be positive.'}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        conn.start_transaction()
+
+        cursor.execute(
+            """
+            SELECT
+                ri.ReturnedItemID,
+                ri.ReturnID,
+                ri.BorrowedItemID,
+                ri.Fine,
+                ri.FinePaid,
+                rt.BorrowID,
+                rt.ReceivedByStaffID,
+                rt.Remarks
+            FROM ReturnedItems ri
+            JOIN ReturnTransactions rt ON rt.ReturnID = ri.ReturnID
+            WHERE ri.ReturnID = %s AND ri.ReturnedItemID = %s
+            FOR UPDATE
+            """,
+            (return_id, returned_item_id)
+        )
+        record = cursor.fetchone()
+        if not record:
+            conn.rollback()
+            return jsonify({'error': 'Fine record not found for the provided identifiers.'}), 404
+
+        fine_amount = Decimal(str(record.get('Fine') or '0'))
+        fine_amount = fine_amount.quantize(Decimal('0.01'))
+        if fine_amount <= 0:
+            conn.rollback()
+            return jsonify({'error': 'This fine has no outstanding balance.'}), 400
+
+        if amount != fine_amount:
+            conn.rollback()
+            return jsonify({'error': f'Payment must match the outstanding fine of {fine_amount}.'}), 400
+
+        if str(record.get('FinePaid', '')).lower() == 'yes':
+            conn.rollback()
+            return jsonify({'error': 'This fine is already marked as paid.'}), 409
+
+        if staff_id is not None:
+            cursor.execute("SELECT StaffID, UserID FROM Staff WHERE StaffID=%s", (staff_id,))
+            staff_row = cursor.fetchone()
+            if not staff_row:
+                conn.rollback()
+                return jsonify({'error': 'Provided staff member was not found.'}), 400
+            staff_user_id = staff_row.get('UserID')
+
+        cursor.execute(
+            "INSERT IGNORE INTO ActionTypes (ActionCode, Description) VALUES (%s, %s)",
+            ('BORROW_FINE_PAID', 'Fine payment recorded')
+        )
+
+        cursor.execute(
+            "UPDATE ReturnedItems SET FinePaid='Yes' WHERE ReturnID=%s AND ReturnedItemID=%s",
+            (return_id, returned_item_id)
+        )
+
+        updates = []
+        params = []
+        if staff_id is not None and record.get('ReceivedByStaffID') != staff_id:
+            updates.append('ReceivedByStaffID=%s')
+            params.append(staff_id)
+
+        timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+        remark_parts = [f'Fine paid PHP {amount} on {timestamp}']
+        if reference:
+            remark_parts.append(f'reference: {reference}')
+        if staff_id is not None:
+            remark_parts.append(f'staffId: {staff_id}')
+        if note:
+            remark_parts.append(f'note: {note}')
+
+        addition = ' | '.join(remark_parts)
+        existing_remarks = (record.get('Remarks') or '').strip()
+        combined_remarks = f"{existing_remarks}\n{addition}" if existing_remarks else addition
+        updates.append('Remarks=%s')
+        params.append(combined_remarks)
+
+        if updates:
+            params.append(return_id)
+            cursor.execute(
+                f"UPDATE ReturnTransactions SET {', '.join(updates)} WHERE ReturnID=%s",
+                tuple(params)
+            )
+
+        conn.commit()
+
+        response = {
+            'message': 'Fine payment recorded.',
+            'returnId': return_id,
+            'returnedItemId': returned_item_id,
+            'amount': float(amount),
+            'reference': reference or None,
+            'note': note or None,
+            'receivedByStaffId': staff_id or record.get('ReceivedByStaffID')
+        }
+    except Exception as exc:
+        conn.rollback()
+        logger.exception('Failed to record fine payment return_id=%s returned_item_id=%s', return_id, returned_item_id)
+        return jsonify({'error': str(exc)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+    try:
+        log_event(
+            action_code='BORROW_FINE_PAID',
+            user_id=staff_user_id,
+            target_type='BorrowItem',
+            target_id=record.get('BorrowedItemID') if record else None,
+            details={
+                'returnId': return_id,
+                'returnedItemId': returned_item_id,
+                'amount': float(amount),
+                'reference': reference or None,
+                'note': note or None
+            }
+        )
+    except Exception:
+        logger.warning('Audit logging for fine payment failed', exc_info=True)
+
+    return jsonify(response), 200
 
 # --- Mark borrowed item(s) as LOST (no return condition) ---
 @borrowreturn_bp.route('/lost', methods=['POST'])

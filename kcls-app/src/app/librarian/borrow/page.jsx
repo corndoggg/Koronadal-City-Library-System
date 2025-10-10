@@ -17,7 +17,6 @@ import {
   DialogTitle,
   Divider,
   FormControl,
-  FormControlLabel,
   Grid,
   IconButton,
   InputAdornment,
@@ -277,7 +276,7 @@ const LibrarianBorrowPage = () => {
     const baseFine = calcFineForBorrow(tx.BorrowID, dueDates);
     const data = {};
     (tx.items || []).forEach(item => {
-      data[item.BorrowedItemID] = { condition: "Good", fine: baseFine, finePaid: false, lost: false };
+      data[item.BorrowedItemID] = { condition: "Good", fine: baseFine, lost: false };
     });
     setReturnData(data);
     // reset remarks when opening
@@ -309,8 +308,7 @@ const LibrarianBorrowPage = () => {
           borrowId: returnTx.BorrowID,
           items: lostItems.map(i => ({
             borrowedItemId: i.BorrowedItemID,
-            fine: parseFloat(returnData[i.BorrowedItemID]?.fine) || 0,
-            finePaid: returnData[i.BorrowedItemID]?.finePaid ? 'Yes' : 'No'
+            fine: parseFloat(returnData[i.BorrowedItemID]?.fine) || 0
           })),
           remarks: returnRemarks || undefined
         });
@@ -321,7 +319,6 @@ const LibrarianBorrowPage = () => {
           borrowedItemId: item.BorrowedItemID,
           returnCondition: returnData[item.BorrowedItemID].condition,
           fine: parseFloat(returnData[item.BorrowedItemID].fine) || 0,
-          finePaid: returnData[item.BorrowedItemID].finePaid ? "Yes" : "No",
         }));
         await axios.post(`${API_BASE}/return`, {
           borrowId: returnTx.BorrowID,
@@ -494,14 +491,6 @@ const LibrarianBorrowPage = () => {
                   return next;
                 });
               }} sx={{ maxWidth: 180 }} />
-            <FormControlLabel sx={{ m: 0 }} control={<Checkbox onChange={(e) => {
-              const checked = e.target.checked;
-              setReturnData(prev => {
-                const next = { ...prev };
-                Object.keys(next).forEach(k => { next[k] = { ...next[k], finePaid: checked }; });
-                return next;
-              });
-            }} />} label="Mark all fine paid" />
             <Button size="small" variant="outlined" onClick={() => {
               const dueRaw = dueDates[returnTx.BorrowID];
               const today = startOfDay(new Date());
@@ -527,8 +516,7 @@ const LibrarianBorrowPage = () => {
                   <TableCell>Title</TableCell>
                   <TableCell width={160}>Condition</TableCell>
                   <TableCell width={80} align="center">Lost</TableCell>
-                  <TableCell width={120}>Fine</TableCell>
-                  <TableCell width={100} align="center">Paid</TableCell>
+                  <TableCell width={180}>Fine</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -570,7 +558,7 @@ const LibrarianBorrowPage = () => {
                           onChange={e => handleReturnChange(id, 'lost', e.target.checked)}
                         />
                       </TableCell>
-                      <TableCell>
+                      <TableCell sx={{ minWidth: 160 }}>
                         <TextField
                           size="small"
                           type="number"
@@ -578,12 +566,7 @@ const LibrarianBorrowPage = () => {
                           onChange={e => handleReturnChange(id, 'fine', e.target.value)}
                           inputProps={{ min: 0, step: '0.01' }}
                           fullWidth
-                        />
-                      </TableCell>
-                      <TableCell align="center">
-                        <Checkbox
-                          checked={!!rd.finePaid}
-                          onChange={e => handleReturnChange(id, 'finePaid', e.target.checked)}
+                          sx={{ '& input': { textAlign: 'right' } }}
                         />
                       </TableCell>
                     </TableRow>

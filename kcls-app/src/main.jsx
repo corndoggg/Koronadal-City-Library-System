@@ -27,6 +27,7 @@ import ReportsPage from './app/admin/reports/page.jsx';
 import DocumentApprovalPage from './app/admin/borrow/page.jsx';
 import SettingsPage from './app/admin/settings/page.jsx';
 import AuditLogsPage from './app/admin/audit/page.jsx';
+import CommonFinesPage from './app/common/fines/page.jsx';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -49,6 +50,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
                   <Route path="books" element={<BookManagementPage />} />
                   <Route path="documents" element={<DocumentManagementPage />} />
                   <Route path="borrows" element={<DocumentApprovalPage />} />
+                  <Route path="fines" element={<CommonFinesPage />} />
                   <Route path="users" element={<UserManagementPage />} />
                   <Route path="reports" element={<ReportsPage />} />
                   <Route path="audit-logs" element={<AuditLogsPage />} />
@@ -64,6 +66,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
                   <Route path="documents" element={<DocumentManagementPage />} />
                   <Route path="storage" element={<StorageManagementPage />} />
                   <Route path="borrows" element={<LibrarianBorrowPage />} />
+                  <Route path="fines" element={<CommonFinesPage />} />
                 </Route>
               </Route>
               {/* Borrower routes */}

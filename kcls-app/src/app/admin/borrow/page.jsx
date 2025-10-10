@@ -18,7 +18,6 @@ import {
   DialogTitle,
   Divider,
   FormControl,
-  FormControlLabel,
   Grid,
   IconButton,
   InputAdornment,
@@ -954,7 +953,7 @@ const DocumentApprovalPage = () => {
     const baseFine = calcFineForBorrow(tx.BorrowID); // uses context-backed fine
     const data = {};
     (tx.items || []).forEach(i => {
-      data[i.BorrowedItemID] = { condition: "Good", fine: baseFine, finePaid: false, lost: false };
+      data[i.BorrowedItemID] = { condition: "Good", fine: baseFine, lost: false };
     });
     setReturnData(data);
     setReturnRemarks("");
@@ -986,8 +985,7 @@ const DocumentApprovalPage = () => {
           borrowId: returnTx.BorrowID,
           items: lostItems.map(i => ({
             borrowedItemId: i.BorrowedItemID,
-            fine: parseFloat(returnData[i.BorrowedItemID]?.fine) || 0,
-            finePaid: returnData[i.BorrowedItemID]?.finePaid ? 'Yes' : 'No'
+            fine: parseFloat(returnData[i.BorrowedItemID]?.fine) || 0
           })),
           remarks: returnRemarks || undefined
         });
@@ -998,8 +996,7 @@ const DocumentApprovalPage = () => {
         const items = keptItems.map(i => ({
           borrowedItemId: i.BorrowedItemID,
           returnCondition: returnData[i.BorrowedItemID]?.condition || 'Good',
-          fine: parseFloat(returnData[i.BorrowedItemID]?.fine) || 0,
-          finePaid: returnData[i.BorrowedItemID]?.finePaid ? 'Yes' : 'No'
+          fine: parseFloat(returnData[i.BorrowedItemID]?.fine) || 0
         }));
         await axios.post(`${API_BASE}/return`, {
           borrowId: returnTx.BorrowID,
@@ -1177,18 +1174,6 @@ const DocumentApprovalPage = () => {
                 }}
                 sx={{ maxWidth: 200 }}
               />
-              <FormControlLabel
-                sx={{ m: 0 }}
-                control={<Checkbox onChange={(e) => {
-                  const checked = e.target.checked;
-                  setReturnData(prev => {
-                    const next = { ...prev };
-                    Object.keys(next).forEach(k => { next[k] = { ...next[k], finePaid: checked }; });
-                    return next;
-                  });
-                }} />}
-                label="Mark fines paid"
-              />
               <Button
                 size="small"
                 variant="outlined"
@@ -1219,8 +1204,7 @@ const DocumentApprovalPage = () => {
                     <TableCell>Title</TableCell>
                     <TableCell width={180}>Condition</TableCell>
                     <TableCell width={80} align="center">Lost</TableCell>
-                    <TableCell width={120}>Fine</TableCell>
-                    <TableCell width={90} align="center">Paid</TableCell>
+                    <TableCell width={180}>Fine</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1260,7 +1244,7 @@ const DocumentApprovalPage = () => {
                           onChange={e => handleReturnChange(item.BorrowedItemID, 'lost', e.target.checked)}
                         />
                       </TableCell>
-                      <TableCell>
+                      <TableCell sx={{ minWidth: 160 }}>
                         <TextField
                           label="Fine"
                           type="number"
@@ -1269,12 +1253,7 @@ const DocumentApprovalPage = () => {
                           onChange={e => handleReturnChange(item.BorrowedItemID, 'fine', e.target.value)}
                           inputProps={{ min: 0, step: '0.01' }}
                           fullWidth
-                        />
-                      </TableCell>
-                      <TableCell align="center">
-                        <Checkbox
-                          checked={!!returnData[item.BorrowedItemID]?.finePaid}
-                          onChange={e => handleReturnChange(item.BorrowedItemID, 'finePaid', e.target.checked)}
+                          sx={{ '& input': { textAlign: 'right' } }}
                         />
                       </TableCell>
                     </TableRow>
