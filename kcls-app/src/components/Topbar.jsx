@@ -110,6 +110,8 @@ const Topbar = () => {
         sx={{
           position: 'sticky',
           top: 0,
+          left: 0,
+          right: 0,
           zIndex: 1200,
           height: TOPBAR_HEIGHT,
           backdropFilter: 'blur(12px)',
