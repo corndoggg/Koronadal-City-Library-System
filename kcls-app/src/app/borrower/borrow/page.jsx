@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import {
   Box,
@@ -8,10 +8,13 @@ import {
   Divider,
   CircularProgress,
   Paper,
+  Card,
+  CardContent,
   IconButton,
   Tooltip,
   Avatar,
   Button,
+  Pagination,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -52,6 +55,7 @@ const BorrowerBorrowPage = () => {
   const [docMetaById, setDocMetaById] = useState({}); // added: digital docs by DocumentID
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false); // added
   const [pdfUrl, setPdfUrl] = useState(""); // added
+  const [page, setPage] = useState(1);
 
   // fetch transactions
   useEffect(() => {
@@ -117,7 +121,9 @@ const BorrowerBorrowPage = () => {
           const invData = Array.isArray(invRes.data) ? invRes.data[0] : invRes.data;
           const bRes = await axios.get(`${API_BASE}/books/${invData?.Book_ID || id}`);
           if (bRes.data?.Title) bInfo[id] = { ...bRes.data, ...invData };
-        } catch {}
+        } catch (err) {
+          void err;
+        }
       }
 
       const dInfo = {};
@@ -127,7 +133,9 @@ const BorrowerBorrowPage = () => {
           const invData = Array.isArray(invRes.data) ? invRes.data[0] : invRes.data;
           const dRes = await axios.get(`${API_BASE}/documents/${invData?.Document_ID || sid}`);
           if (dRes.data?.Title) dInfo[sid] = { ...dRes.data, ...invData };
-        } catch {}
+        } catch (err) {
+          void err;
+        }
       }
 
       const dById = {};
@@ -135,7 +143,9 @@ const BorrowerBorrowPage = () => {
         try {
           const r = await axios.get(`${API_BASE}/documents/${did}`);
           if (r.data?.Title) dById[did] = r.data;
-        } catch {}
+        } catch (err) {
+          void err;
+        }
       }
 
       setBookDetails(bInfo);
@@ -145,17 +155,12 @@ const BorrowerBorrowPage = () => {
   }, [transactions, API_BASE]);
 
   // Helpers: Digital/Physical detection (no DocType; digital if no DocumentStorageID)
-  const isDigitalDocItem = (item) => item.ItemType === "Document" && !item.DocumentStorageID; // added
   const isDigitalOnlyTx = (tx) => {
     const items = tx?.items || [];
     return items.length > 0 && items.every(i => i.ItemType === "Document" && !i.DocumentStorageID);
   }; // changed
-  const hasAnyPhysical = (tx) => (tx?.items || []).some(i =>
-    (i.ItemType === "Book") || (i.ItemType === "Document" && !!i.DocumentStorageID)
-  ); // changed
-
   // status derivation: treat digital 'Returned' as Expired and hide PDF button
-  const deriveStatus = (tx) => {
+  const deriveStatus = useCallback((tx) => {
     const dueRaw = dueDates[tx.BorrowID];
     const due = dueRaw ? new Date(dueRaw) : null;
     const today = new Date();
@@ -187,7 +192,7 @@ const BorrowerBorrowPage = () => {
       return { label: "Borrowed", color: "secondary", tone: "secondary" };
     }
     return { label: tx.ApprovalStatus || "Unknown", color: "default", tone: "default" };
-  };
+  }, [dueDates]);
 
   const StatusChip = ({ tx }) => {
     const s = deriveStatus(tx);
@@ -226,22 +231,45 @@ const BorrowerBorrowPage = () => {
   });
 
   const sorted = [...filtered].sort((a, b) => statusOrder(a) - statusOrder(b));
+  const ITEMS_PER_PAGE = 10;
+  const totalPages = Math.max(1, Math.ceil(sorted.length / ITEMS_PER_PAGE));
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  const paginated = useMemo(() => {
+    const start = (page - 1) * ITEMS_PER_PAGE;
+    return sorted.slice(start, start + ITEMS_PER_PAGE);
+  }, [sorted, page]);
 
   // summaries
-  const count = (fn) => transactions.filter(fn).length;
-  const summary = useMemo(
-    () => [
-      { label: "Pending", value: count((t) => deriveStatus(t).label === "Pending Approval"), color: "warning.main" },
-      { label: "Approved", value: count((t) => {
-          const l = deriveStatus(t).label;
-          return l === "Approved" || l === "Active (Digital)";
-        }), color: "info.main" },
-      { label: "Borrowed", value: count((t) => deriveStatus(t).label === "Borrowed"), color: "secondary.main" },
-      { label: "Overdue", value: count((t) => deriveStatus(t).label.startsWith("Overdue") || deriveStatus(t).label === "Expired"), color: "error.main" },
-      { label: "Returned", value: count((t) => deriveStatus(t).label === "Returned"), color: "success.main" }
-    ],
-    [transactions, dueDates]
-  );
+  const summary = useMemo(() => {
+    const totals = {
+      pending: 0,
+      approved: 0,
+      borrowed: 0,
+      overdue: 0,
+      returned: 0
+    };
+
+    transactions.forEach((transaction) => {
+      const label = deriveStatus(transaction).label;
+      if (label === "Pending Approval") totals.pending += 1;
+      if (label === "Approved" || label === "Active (Digital)") totals.approved += 1;
+      if (label === "Borrowed") totals.borrowed += 1;
+      if (label.startsWith("Overdue") || label === "Expired") totals.overdue += 1;
+      if (label === "Returned") totals.returned += 1;
+    });
+
+    return [
+      { label: "Pending", value: totals.pending, color: "warning.main" },
+      { label: "Approved", value: totals.approved, color: "info.main" },
+      { label: "Borrowed", value: totals.borrowed, color: "secondary.main" },
+      { label: "Overdue", value: totals.overdue, color: "error.main" },
+      { label: "Returned", value: totals.returned, color: "success.main" }
+    ];
+  }, [transactions, deriveStatus]);
 
   const openDetail = (tx) => {
     setSelectedTx(tx);
@@ -268,102 +296,121 @@ const BorrowerBorrowPage = () => {
 
   return (
     <Box p={{ xs: 2, md: 3 }} sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
-      <Paper
+      <Card
         elevation={0}
         sx={{
           mb: 3,
-            p: 2,
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 1.25,
-            alignItems: "center",
-            border: (t) => `2px solid ${t.palette.divider}`,
-            borderRadius: 1,
-            bgcolor: "background.paper"
+          borderRadius: 2,
+          border: (theme) => `1px solid ${alpha(theme.palette.primary.main, 0.28)}`,
+          background: (theme) =>
+            theme.palette.mode === "dark"
+              ? `linear-gradient(135deg, ${alpha(theme.palette.primary.dark, 0.2)} 0%, ${alpha(theme.palette.primary.main, 0.85)} 100%)`
+              : `linear-gradient(135deg, ${alpha(theme.palette.primary.dark, 0.92)} 0%, ${theme.palette.primary.main} 85%)`,
+          color: (theme) => {
+            const base = theme.palette.mode === "dark" ? theme.palette.primary.dark : theme.palette.primary.main;
+            return theme.palette.getContrastText(base);
+          },
+          overflow: "hidden",
+          position: "relative"
         }}
       >
-        <Box>
-          <Typography fontWeight={800} fontSize={18} lineHeight={1}>
-            My Borrow Transactions
-          </Typography>
-          <Typography variant="caption" color="text.secondary" fontWeight={600}>
-            Track requests, borrowed and returned items
-          </Typography>
-        </Box>
-        <TextField
-          size="small"
-          placeholder="Search ID / purpose / date / status"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <Search fontSize="small" />
-              </InputAdornment>
-            )
-          }}
-          sx={{
-            ml: { xs: 0, md: "auto" },
-            width: { xs: "100%", md: 340 },
-            "& .MuiOutlinedInput-root": { borderRadius: 1 }
-          }}
-        />
-        <Tooltip title="Refresh">
-          <IconButton
-            size="small"
-            onClick={fetchTransactions}
-            sx={{
-              borderRadius: 1,
-              border: (t) => `1.5px solid ${t.palette.divider}`,
-              "&:hover": { bgcolor: "action.hover" }
-            }}
+        <CardContent sx={{ p: { xs: 2.5, md: 3 } }}>
+          <Stack
+            direction={{ xs: "column", md: "row" }}
+            spacing={{ xs: 2, md: 2.5 }}
+            alignItems={{ xs: "flex-start", md: "center" }}
           >
-            <Refresh fontSize="small" />
-          </IconButton>
-        </Tooltip>
-      </Paper>
+            <Box sx={{ flexGrow: 1 }}>
+            <Typography variant="overline" color="inherit" sx={{ letterSpacing: 0.6, fontWeight: 700, opacity: 0.85 }}>
+              Borrowing activity
+            </Typography>
+            <Typography fontWeight={800} fontSize={20} color="inherit">
+              My Borrow Transactions
+            </Typography>
+            <Typography variant="caption" color="inherit" sx={{ opacity: 0.9, fontWeight: 600 }}>
+              Track requests, borrowed items, and digital access in real time.
+            </Typography>
+            </Box>
+            <Box
+              sx={{
+                minWidth: { xs: "100%", md: 280 },
+                display: "flex",
+                gap: 1,
+                alignItems: "center",
+                justifyContent: { xs: "flex-start", md: "flex-end" },
+                flexWrap: "wrap"
+              }}
+            >
+              <TextField
+                size="small"
+                placeholder="Search ID / purpose / date / status"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Search fontSize="small" />
+                    </InputAdornment>
+                  )
+                }}
+                sx={{
+                  flexGrow: 0,
+                  width: { xs: "100%", md: 260 },
+                  "& .MuiOutlinedInput-root": {
+                    borderRadius: 1.25,
+                    bgcolor: theme => alpha(theme.palette.background.paper, 0.85)
+                  }
+                }}
+              />
+              <Tooltip title="Refresh">
+                <IconButton
+                  size="small"
+                  onClick={fetchTransactions}
+                  sx={{
+                    borderRadius: 1.5,
+                    border: theme => `1px solid ${alpha(theme.palette.common.white, 0.6)}`,
+                    color: theme => theme.palette.common.white
+                  }}
+                >
+                  <Refresh fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Box>
+          </Stack>
+        </CardContent>
+      </Card>
 
       {/* Summaries */}
-      <Stack
-        direction="row"
-        flexWrap="wrap"
-        gap={1.25}
-        sx={{ mb: 2 }}
-      >
-        {summary.map((s) => (
-          <Paper
-            key={s.label}
-            elevation={0}
-            sx={{
-              px: 1.5,
-              py: 1,
-              minWidth: 115,
-              border: (t) => `1.5px solid ${alpha(t.palette.getContrastText("#fff"), 0.08)}`,
-              borderColor: (t) => alpha(t.palette.getContrastText("#fff"), 0.09),
-              bgcolor: (t) => {
-                const parts = (s.color || "").split(".");
-                let baseColor = s.color;
-                if (parts.length === 2 && t.palette[parts[0]] && t.palette[parts[0]][parts[1]]) {
-                  baseColor = t.palette[parts[0]][parts[1]];
-                } else if (parts.length === 1 && t.palette[parts[0]] && t.palette[parts[0]].main) {
-                  baseColor = t.palette[parts[0]].main;
-                }
-                return alpha(baseColor || t.palette.primary.main, 0.08);
-              },
-              borderRadius: 1,
-              display: "flex",
-              flexDirection: "column",
-              gap: 0.25
-            }}
-          >
-            <Typography variant="caption" fontWeight={600} color="text.secondary">
-              {s.label}
-            </Typography>
-            <Typography fontWeight={800} fontSize={18} lineHeight={1}>
-              {s.value}
-            </Typography>
-          </Paper>
-        ))}
+      <Stack sx={{ mb: 2.5 }}>
+        <Stack direction="row" spacing={1} alignItems="center" mb={1}>
+          <Typography variant="caption" fontWeight={700} color="text.secondary">
+            Snapshot
+          </Typography>
+          <Divider flexItem orientation="horizontal" sx={{ borderColor: theme => alpha(theme.palette.divider, 0.6) }} />
+        </Stack>
+        <Stack direction="row" flexWrap="wrap" gap={1.25}>
+          {summary.map((s) => (
+            <Card
+              key={s.label}
+              elevation={0}
+              sx={{
+                minWidth: 140,
+                borderRadius: 1.5,
+                border: theme => `1px solid ${alpha(theme.palette.getContrastText("#fff"), 0.04)}`,
+                flex: "1 1 140px"
+              }}
+            >
+              <CardContent sx={{ py: 1.5 }}>
+                <Typography variant="caption" fontWeight={600} color="text.secondary">
+                  {s.label}
+                </Typography>
+                <Typography fontWeight={800} fontSize={20} lineHeight={1.2} sx={{ mt: 0.5 }}>
+                  {s.value}
+                </Typography>
+              </CardContent>
+            </Card>
+          ))}
+        </Stack>
       </Stack>
 
       {/* Content */}
@@ -424,198 +471,220 @@ const BorrowerBorrowPage = () => {
         </Paper>
       )}
 
-      <Stack spacing={1.75}>
-        {sorted.map((tx) => {
-          const st = deriveStatus(tx);
+      <Stack spacing={2.25}>
+        {paginated.map((tx) => {
+          const status = deriveStatus(tx);
+          const items = tx.items || [];
           const due = dueDates[tx.BorrowID];
-          const digitalOnly = isDigitalOnlyTx(tx);
-          const digitalActive = digitalOnly && st.label === "Active (Digital)"; // NEW
+          const dueText = due ? formatDate(due) : "—";
+          const borrowedText = tx.BorrowDate ? formatDate(tx.BorrowDate) : "—";
+          const digitalItems = items.filter((item) => item.ItemType === "Document" && !item.DocumentStorageID);
+          const physicalItems = items.filter((item) => item.ItemType === "Book" || (item.ItemType === "Document" && item.DocumentStorageID));
+          const digitalOnly = digitalItems.length > 0 && physicalItems.length === 0;
+          const digitalActive = digitalOnly && status.label === "Active (Digital)";
+          const docAccessLabel = digitalOnly
+            ? "Digital access"
+            : digitalItems.length && physicalItems.length
+              ? "Mixed access"
+              : physicalItems.length
+                ? "Physical copies"
+                : "Items";
+          const visibleItems = items.slice(0, 4);
+          const extraCount = items.length - visibleItems.length;
+          const dueIsPast = due ? new Date(due) < new Date() : false;
+
           return (
-            <Paper
+            <Card
               key={tx.BorrowID}
               elevation={0}
               sx={{
-                p: 1.5,
-                border: (t) => `2px solid ${alpha(
-                  st.tone === "default"
-                    ? t.palette.divider
-                    : (t.palette[st.tone] && t.palette[st.tone].main) || t.palette.divider,
-                  0.55
-                )}`,
-                borderRadius: 1,
-                display: "flex",
-                flexDirection: "column",
-                gap: 1,
-                bgcolor: "background.paper"
+                borderRadius: 1.75,
+                border: (theme) => {
+                  const paletteEntry = status.tone ? theme.palette[status.tone] : undefined;
+                  const base = typeof paletteEntry === "object" ? paletteEntry?.main : paletteEntry;
+                  return `1px solid ${alpha(base || theme.palette.divider, 0.45)}`;
+                },
+                boxShadow: (theme) => `0 14px 36px ${alpha(theme.palette.common.black, 0.08)}`,
+                backgroundColor: (theme) => alpha(theme.palette.background.paper, 0.9),
+                width: "100%",
+                maxWidth: { xs: "100%", lg: 840 }
               }}
             >
-              <Stack direction="row" alignItems="center" spacing={1.25}>
-                <StatusChip tx={tx} />
-                <Typography fontSize={13} fontWeight={700}>
-                  Borrow #{tx.BorrowID}
-                </Typography>
-                <Divider flexItem orientation="vertical" />
-                <Typography variant="caption" fontWeight={600} color="text.secondary">
-                  Borrowed: {tx.BorrowDate ? formatDate(tx.BorrowDate) : "—"}
-                </Typography>
-                <Typography
-                  variant="caption"
-                  fontWeight={700}
-                  color={
-                    due && !st.label.startsWith("Returned") && new Date(due) < new Date()
-                      ? "error.main"
-                      : "text.secondary"
-                  }
-                >
-                  {digitalOnly ? "Expires" : "Due"}: {due ? formatDate(due) : "—"}
-                </Typography>
-                <Box ml="auto" />
-                <Tooltip title="View details">
-                  <IconButton
-                    size="small"
-                    onClick={() => openDetail(tx)}
-                    sx={{
-                      border: (t) => `1px solid ${t.palette.divider}`,
-                      borderRadius: 0.75,
-                      "&:hover": { bgcolor: "action.hover" }
-                    }}
-                  >
-                    <Visibility fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </Stack>
-
-              <Divider />
-
-              {/* Item chips */}
-              <Stack direction="row" gap={1} flexWrap="wrap">
-                {(tx.items || []).slice(0, 4).map((item) => {
-                  const isBook = item.ItemType === "Book";
-                  const isDigital = !isBook && !item.DocumentStorageID;
-                  const did = isDigital ? getDocumentId(item) : null;
-                  const meta = isBook
-                    ? bookDetails[item.BookCopyID]
-                    : (item.DocumentStorageID
-                        ? docDetails[item.DocumentStorageID]
-                        : (did && docMetaById[did]));
-                  const title =
-                    (meta && meta.Title) ||
-                    (isBook
-                      ? `Book Copy #${item.BookCopyID}`
-                      : (isDigital ? `Doc #${did}` : `Doc Storage #${item.DocumentStorageID}`));
-                  return (
-                    <Tooltip key={item.BorrowedItemID} title={title}>
-                      <Chip
+              <CardContent sx={{ display: "flex", flexDirection: "column", gap: 1.75, p: { xs: 2, md: 2.5 } }}>
+                <Stack direction={{ xs: "column", md: "row" }} spacing={1.25} alignItems={{ md: "center" }} flexWrap="wrap">
+                  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                    <StatusChip tx={tx} />
+                    <Typography fontWeight={700} fontSize={14}>
+                      Borrow #{tx.BorrowID}
+                    </Typography>
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      label={`${items.length} item${items.length === 1 ? "" : "s"}`}
+                      sx={{ borderRadius: 0.75, fontWeight: 600 }}
+                    />
+                    <Chip
+                      size="small"
+                      label={docAccessLabel}
+                      color={digitalOnly ? "info" : physicalItems.length ? "secondary" : "default"}
+                      sx={{ borderRadius: 0.75, fontWeight: 600 }}
+                    />
+                  </Stack>
+                  <Box flexGrow={1} />
+                  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                    <Typography variant="caption" fontWeight={600} color="text.secondary">
+                      Borrowed: {borrowedText}
+                    </Typography>
+                    <Typography
+                      variant="caption"
+                      fontWeight={700}
+                      color={dueIsPast && status.label !== "Returned" ? "error.main" : "text.secondary"}
+                    >
+                      {digitalOnly ? "Expires" : "Due"}: {dueText}
+                    </Typography>
+                    <Tooltip title="View details">
+                      <IconButton
                         size="small"
-                        avatar={
+                        onClick={() => openDetail(tx)}
+                        sx={{
+                          borderRadius: 1,
+                          border: (theme) => `1px solid ${alpha(theme.palette.divider, 0.7)}`,
+                          "&:hover": { bgcolor: "action.hover" }
+                        }}
+                      >
+                        <Visibility fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Stack>
+                </Stack>
+                <Divider />
+                <Stack direction="row" spacing={1} flexWrap="wrap">
+                  {visibleItems.map((item) => {
+                    const isBook = item.ItemType === "Book";
+                    const isDigital = !isBook && !item.DocumentStorageID;
+                    const docId = isDigital ? getDocumentId(item) : null;
+                    const meta = isBook
+                      ? bookDetails[item.BookCopyID]
+                      : item.DocumentStorageID
+                        ? docDetails[item.DocumentStorageID]
+                        : docId
+                          ? docMetaById[docId]
+                          : undefined;
+                    const label =
+                      meta?.Title ||
+                      (isBook
+                        ? `Book Copy #${item.BookCopyID}`
+                        : isDigital
+                          ? `Doc #${docId}`
+                          : `Doc Storage #${item.DocumentStorageID}`);
+                    return (
+                      <Chip
+                        key={item.BorrowedItemID}
+                        size="small"
+                        avatar={(
                           <Avatar
                             sx={{
                               bgcolor: isBook ? "primary.main" : "secondary.main",
-                              color: "#fff",
-                              width: 28,
-                              height: 28,
-                              borderRadius: 1
+                              color: "common.white",
+                              width: 26,
+                              height: 26,
+                              borderRadius: 0.75
                             }}
                           >
-                            {isBook ? <Book fontSize="small" /> : <Article fontSize="small" />}
+                            {isBook ? <Book fontSize="inherit" /> : <Article fontSize="inherit" />}
                           </Avatar>
-                        }
-                        label={title}
+                        )}
+                        label={label}
                         variant="outlined"
                         sx={{
-                          fontWeight: 600,
                           borderRadius: 0.75,
-                          pl: 0.5,
+                          fontWeight: 600,
+                          px: 0.5,
                           maxWidth: 220,
-                          '& .MuiChip-label': {
-                            display: 'block',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap'
+                          "& .MuiChip-label": {
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap"
                           }
                         }}
                       />
-                    </Tooltip>
-                  );
-                })}
-                {(tx.items || []).filter(it => it.ItemType === "Document").slice(0, 1).map(it => (
-                  <Chip
-                    key={`${tx.BorrowID}-doctype`}
-                    size="small"
-                    variant="outlined"
-                    label={`Docs: ${isDigitalOnlyTx(tx) ? "Digital" : (hasAnyPhysical(tx) ? "Physical/Mixed" : "Digital")}`}
-                    sx={{ borderRadius: 0.75 }}
-                  />
-                ))}
-                {(tx.items || []).length > 4 && (
-                  <Chip
-                    size="small"
-                    label={`+${(tx.items || []).length - 4} more`}
-                    sx={{ fontWeight: 600, borderRadius: 0.75 }}
-                  />
-                )}
-              </Stack>
-
-              {/* NEW: Inline metadata + View PDF for digital items */}
-              {(() => {
-                const st = deriveStatus(tx);
-                const digitalActive = st.label === "Active (Digital)"; // will be false if Returned->Expired
-                const digitalItems = (tx.items || []).filter(i => i.ItemType === "Document" && !i.DocumentStorageID);
-                if (!digitalItems.length) return null;
-                return (
-                  <Stack spacing={0.5} sx={{ px: 0.5 }}>
-                    {digitalItems.map((it) => {
-                      const did = getDocumentId(it);
-                      const meta = did && docMetaById[did];
+                    );
+                  })}
+                  {extraCount > 0 && (
+                    <Chip
+                      size="small"
+                      label={`+${extraCount} more`}
+                      sx={{ borderRadius: 0.75, fontWeight: 600 }}
+                    />
+                  )}
+                </Stack>
+                {digitalItems.length > 0 && (
+                  <Stack spacing={0.5} sx={{ pt: 0.5 }}>
+                    {digitalItems.map((item) => {
+                      const docId = getDocumentId(item);
+                      const meta = docId ? docMetaById[docId] : undefined;
                       const filePath = meta?.File_Path || meta?.file_path || meta?.FilePath;
                       return (
-                        <Stack key={`${tx.BorrowID}-${did}`} direction="row" alignItems="center" spacing={1}>
-                          <Typography variant="caption" sx={{ fontWeight: 700 }}>
-                            {meta?.Title || `Doc #${did}`}
+                        <Stack key={`${tx.BorrowID}-${docId}`} direction="row" spacing={1} alignItems="center">
+                          <Typography variant="caption" fontWeight={700}>
+                            {meta?.Title || `Doc #${docId}`}
                           </Typography>
                           {meta?.Author && (
                             <Typography variant="caption" color="text.secondary">
                               by {meta.Author}
                             </Typography>
                           )}
-                          <Box sx={{ ml: "auto" }} />
-                          {digitalActive && filePath && (
+                          <Box flexGrow={1} />
+                          {filePath && (
                             <Button
                               size="small"
                               variant="outlined"
                               onClick={() => handleViewPdf(filePath)}
+                              disabled={!digitalActive}
                               sx={{ borderRadius: 0.75, fontWeight: 600 }}
                             >
-                              View PDF
+                              {digitalActive ? "View PDF" : "Access expired"}
                             </Button>
                           )}
                         </Stack>
                       );
                     })}
                   </Stack>
-                );
-              })()}
-
-              {tx.Purpose && (
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{
-                    px: 1,
-                    py: 0.5,
-                    border: (t) => `1px dashed ${t.palette.divider}`,
-                    borderRadius: 1,
-                    bgcolor: "background.default",
-                    fontWeight: 500
-                  }}
-                >
-                  Purpose: {tx.Purpose}
-                </Typography>
-              )}
-            </Paper>
+                )}
+                {tx.Purpose && (
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{
+                      px: 1.25,
+                      py: 0.75,
+                      border: (theme) => `1px dashed ${alpha(theme.palette.divider, 0.8)}`,
+                      borderRadius: 1,
+                      bgcolor: "background.default",
+                      fontWeight: 500
+                    }}
+                  >
+                    Purpose: {tx.Purpose}
+                  </Typography>
+                )}
+              </CardContent>
+            </Card>
           );
         })}
       </Stack>
+
+      {sorted.length > ITEMS_PER_PAGE && (
+        <Box mt={3} display="flex" justifyContent="center">
+          <Pagination
+            count={totalPages}
+            page={page}
+            onChange={(_, value) => setPage(value)}
+            color="primary"
+            shape="rounded"
+            size="small"
+          />
+        </Box>
+      )}
 
       {/* Detail Modal */}
       <Dialog

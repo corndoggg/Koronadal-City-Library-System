@@ -528,12 +528,14 @@ const DashboardPage = () => {
     plugins: {
       legend: {
         position: 'bottom',
+        align: 'center',
         labels: {
           usePointStyle: true,
           padding: 16,
           boxWidth: 10,
           font: { size: 11, weight: 600 },
-          color: theme.palette.text.secondary
+          color: theme.palette.text.secondary,
+          textAlign: 'center'
         }
       },
       tooltip: {
@@ -575,18 +577,24 @@ const DashboardPage = () => {
     },
     scales:{
       x: {
+        offset: true,
         grid: { display: false },
         ticks: {
-          autoSkip: true,
-          autoSkipPadding: 12,
+          autoSkip: false,
+          autoSkipPadding: 16,
           maxRotation: 0,
+          align: 'center',
+          crossAlign: 'center',
+          padding: 15,
+          labelOffset: 10,
           font: { size: 11, weight: 600 },
           color: theme.palette.text.secondary,
           callback(value) {
             const raw = typeof value === 'string' ? value : BORROW_STATUS_LABELS[value] || value;
-            const label = String(raw);
-            if (!label.includes(' ')) return label;
-            return label.split(' ').join('\n');
+            return String(raw)
+              .split(' ')
+              .map((segment) => segment.trim())
+              .filter(Boolean);
           }
         }
       },
@@ -635,38 +643,45 @@ const DashboardPage = () => {
   return (
     <Box p={{ xs: 2, md: 3 }} sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
       <Paper
-        sx={surfacePaper({
-          mb: 3,
-          px: { xs: 2.5, md: 3.25 },
-          py: { xs: 2, md: 2.75 },
-          display: 'flex',
-          flexDirection: { xs: 'column', xl: 'row' },
-          gap: { xs: 2, md: 2.75 },
-          alignItems: { xs: 'flex-start', xl: 'center' }
-        })}
+        sx={(theme) => {
+          const base = surfacePaper({
+            mb: 3,
+            px: { xs: 2.5, md: 3.25 },
+            py: { xs: 2, md: 2.75 },
+            display: 'flex',
+            flexDirection: { xs: 'column', xl: 'row' },
+            gap: { xs: 2, md: 2.75 },
+            alignItems: { xs: 'flex-start', xl: 'center' }
+          })(theme);
+          return {
+            ...base,
+            background: `linear-gradient(135deg, ${alpha(theme.palette.primary.light, 0.25)} 0%, ${alpha(theme.palette.primary.main, 0.85)} 100%)`,
+            color: theme.palette.getContrastText(theme.palette.primary.main)
+          };
+        }}
       >
         <Stack spacing={1} flexGrow={1} pr={{ xs: 0, xl: 3 }}>
-          <Typography fontWeight={800} fontSize={22}>Dashboard Overview</Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography fontWeight={800} fontSize={22} color="inherit">Dashboard Overview</Typography>
+          <Typography variant="body2" sx={{ color: 'inherit', opacity: 0.85 }}>
             Visual metrics designed with Devias polish and shadcn-inspired charts to keep tabs on the library pulse.
           </Typography>
           <Stack direction="row" spacing={1} flexWrap="wrap">
             <Chip
               size="small"
               label={`${number(metrics.active)} active loans`}
-              sx={theme => ({
+              sx={(theme) => ({
                 fontWeight: 600,
-                backgroundColor: alpha(theme.palette.info.main, 0.12),
-                color: theme.palette.info.main
+                backgroundColor: alpha(theme.palette.common.white, 0.18),
+                color: theme.palette.common.white
               })}
             />
             <Chip
               size="small"
               label={`${number(metrics.overdue)} overdue cases`}
-              sx={theme => ({
+              sx={(theme) => ({
                 fontWeight: 600,
-                backgroundColor: alpha(theme.palette.error.main, 0.14),
-                color: theme.palette.error.main
+                backgroundColor: alpha(theme.palette.common.white, 0.18),
+                color: theme.palette.common.white
               })}
             />
           </Stack>
@@ -684,10 +699,10 @@ const DashboardPage = () => {
             <Chip
               size="small"
               label={`Updated ${lastUpdated.toLocaleTimeString()}`}
-              sx={theme => ({
+              sx={(theme) => ({
                 fontWeight: 600,
-                backgroundColor: alpha(theme.palette.success.main, 0.12),
-                color: theme.palette.success.main
+                backgroundColor: alpha(theme.palette.common.white, 0.14),
+                color: theme.palette.common.white
               })}
             />
           )}
@@ -782,7 +797,11 @@ const DashboardPage = () => {
             <Divider sx={{ my:1 }} />
             {loading ? <Skeleton variant="rounded" height={220} /> : (
               dueSoon.length ? (
-                <List dense disablePadding sx={{ py: 0, maxHeight: { xs: 280, md: 256 }, overflowY: 'auto' }}>
+                <List
+                  dense
+                  disablePadding
+                  sx={{ py: 0, maxHeight: { xs: 280, md: 256 }, overflowY: 'auto', flexGrow: 1 }}
+                >
                   {dueSoon.map(item => {
                     const style = statusChipStyle(item.status);
                     return (

@@ -16,6 +16,7 @@ try:  # pragma: no cover - platform specific
     import win32con  # type: ignore
     import win32gui  # type: ignore
     import win32gui_struct  # type: ignore
+    import win32print  # type: ignore
     from win32com import client as win32_client  # type: ignore
 except ImportError as exc:  # pragma: no cover - platform specific
     pythoncom = None  # type: ignore
@@ -24,6 +25,7 @@ except ImportError as exc:  # pragma: no cover - platform specific
     win32con = None  # type: ignore
     win32gui = None  # type: ignore
     win32gui_struct = None  # type: ignore
+    win32print = None  # type: ignore
     IMPORT_ERROR = exc
 else:
     IMPORT_ERROR = None
@@ -492,6 +494,50 @@ def _json_error(message: str, status: int = 400):
     return jsonify(payload), status
 
 
+def _send_text_to_printer(content: str, *, printer_name: Optional[str] = None, copies: int = 1, job_name: str = "Library Receipt") -> Dict[str, Any]:
+    if win32print is None:
+        raise ScannerError("Printing is unavailable on this platform (win32print missing).")
+    text = (content or "").strip("\r\n")
+    if not text:
+        raise ScannerError("Receipt content is empty.")
+
+    try:
+        printer = (printer_name or "").strip() or win32print.GetDefaultPrinter()
+    except Exception as exc:  # noqa: BLE001
+        raise ScannerError("Unable to determine a printer device.") from exc
+
+    if not printer:
+        raise ScannerError("No printer specified and no default printer is configured.")
+
+    if copies < 1 or copies > 5:
+        raise ScannerError("Copies must be between 1 and 5.")
+
+    encoded = "\r\n".join(line.rstrip() for line in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"))
+    data = (encoded + "\r\n\f").encode("utf-8")
+
+    try:
+        handle = win32print.OpenPrinter(printer)
+    except Exception as exc:  # noqa: BLE001
+        raise ScannerError(f"Failed to open printer '{printer}': {exc}") from exc
+
+    try:
+        win32print.StartDocPrinter(handle, 1, (job_name or "Library Receipt", "", "RAW"))
+        for _ in range(copies):
+            win32print.StartPagePrinter(handle)
+            win32print.WritePrinter(handle, data)
+            win32print.EndPagePrinter(handle)
+        win32print.EndDocPrinter(handle)
+    except Exception as exc:  # noqa: BLE001
+        raise ScannerError(f"Printer error: {exc}") from exc
+    finally:
+        try:
+            win32print.ClosePrinter(handle)
+        except Exception:  # noqa: BLE001
+            pass
+
+    return {"printer": printer, "copies": copies}
+
+
 @app.get("/health")
 def health():
     return jsonify({"status": "ok", "timestamp": datetime.utcnow().isoformat()})
@@ -555,6 +601,47 @@ def scan():
     except Exception as exc:  # noqa: BLE001
         logger.exception("Unexpected error while scanning")
         return _json_error("Scanner service fault: " + str(exc), status=500)
+
+
+@app.post("/print-receipt")
+def print_receipt():
+    try:
+        payload = request.get_json(silent=True) or {}
+        content = payload.get("content")
+        if not isinstance(content, str):
+            return _json_error("Receipt content must be provided as a string.", status=400)
+
+        job_name = str(payload.get("jobName") or "Library Receipt")
+        printer_value = payload.get("printerName")
+        if printer_value is not None and not isinstance(printer_value, str):
+            return _json_error("Printer name must be a string when provided.", status=400)
+
+        try:
+            copies = int(payload.get("copies") or 1)
+        except Exception:  # noqa: BLE001
+            return _json_error("Copies must be an integer.", status=400)
+
+        metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+
+        result = _send_text_to_printer(
+            content,
+            printer_name=printer_value,
+            copies=copies,
+            job_name=job_name,
+        )
+
+        response = {
+            "status": "queued",
+            "jobName": job_name,
+            "metadata": metadata,
+            **result,
+        }
+        return jsonify(response)
+    except ScannerError as exc:
+        return _json_error(str(exc), status=400)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Unexpected error while printing receipt")
+        return _json_error("Printer service fault: " + str(exc), status=500)
 
 
 @app.get("/scans")

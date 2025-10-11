@@ -8,9 +8,11 @@ import {
   Card,
   CardContent,
   CardHeader,
+  Checkbox,
   Chip,
   Container,
   Divider,
+  FormControlLabel,
   Grid,
   InputAdornment,
   Paper,
@@ -46,9 +48,10 @@ import {
 } from "@mui/icons-material";
 import { alpha } from "@mui/material/styles";
 import { useSystemSettings } from "../../../contexts/SystemSettingsContext.jsx";
-import { formatDate } from "../../../utils/date";
+import { formatDate, formatDateTime } from "../../../utils/date";
 
 const API_BASE = import.meta.env.VITE_API_BASE;
+const SCANNER_BASE = (import.meta.env.VITE_SCANNER_BASE || "http://localhost:7070").replace(/\/$/, "");
 
 const statusFilters = [
   { value: "all", label: "All fines", predicate: () => true },
@@ -108,8 +111,10 @@ const FinesPage = () => {
     row: null,
     amount: "",
     submitting: false,
-    error: ""
+    error: "",
+    printAfter: true
   });
+  const [printingState, setPrintingState] = useState({ rowId: null, loading: false });
 
   const refreshData = useCallback(async () => {
     setLoading(true);
@@ -121,6 +126,109 @@ const FinesPage = () => {
     }
     setLoading(false);
   }, []);
+
+  const buildReceiptPayload = useCallback(
+    row => {
+      if (!row) return null;
+      const receiptNumber = `${row.returnId || ""}-${row.returnedItemId || row.borrowedItemId || ""}`.replace(/(^-|-$)/g, "") || `${row.returnId || "return"}`;
+      const printedAt = formatDateTime(new Date());
+      const returnDateText = row.returnDate ? formatDateTime(row.returnDate) : "Pending";
+      const borrowDateText = row.borrowDate ? formatDateTime(row.borrowDate) : "—";
+      const libraryName = (String(settings?.library_name || settings?.libraryName || "Koronadal City Library").trim() || "Koronadal City Library");
+
+      const lines = [
+        libraryName,
+        "Fine Payment Receipt",
+        "----------------------------------------",
+        `Receipt #: ${receiptNumber}`,
+        `Printed: ${printedAt}`,
+        "",
+        `Borrower: ${row.borrowerName || "Unknown"}`,
+        `Borrow #: ${row.borrowId || "—"}`,
+        `Borrowed on: ${borrowDateText}`,
+        `Item: ${row.itemLabel || "Library item"}`,
+        `Return date: ${returnDateText}`,
+        "",
+        `Fine amount: ${formatCurrency(row.fine)}`,
+        `Status: Paid`,
+        "",
+        `Received by: ${row.receivedBy ? `Staff ${row.receivedBy}` : "—"}`,
+        `Remarks: ${row.remarks || "None"}`,
+        "",
+        "Thank you for settling your balance.",
+        ""
+      ];
+
+      return {
+        content: lines.join("\r\n"),
+        jobName: `FineReceipt-${receiptNumber}`,
+        copies: 1,
+        metadata: {
+          receiptNumber,
+          borrowId: row.borrowId,
+          returnId: row.returnId,
+          returnedItemId: row.returnedItemId || row.borrowedItemId,
+          borrowerId: row.borrowerId,
+          borrowerName: row.borrowerName,
+          amount: row.fine,
+          printedAt
+        }
+      };
+    },
+    [settings]
+  );
+
+  const sendReceiptToScanner = useCallback(
+    async row => {
+      if (!SCANNER_BASE) {
+        throw new Error("Scanner client URL is not configured.");
+      }
+      const payload = buildReceiptPayload(row);
+      if (!payload) {
+        throw new Error("Receipt details are missing.");
+      }
+
+      const response = await fetch(`${SCANNER_BASE}/print-receipt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        let message = `Printer responded with status ${response.status}`;
+        try {
+          const data = await response.json();
+          if (data?.error) {
+            message = data.error;
+          }
+        } catch {
+          const text = await response.text().catch(() => "");
+          if (text) message = text;
+        }
+        throw new Error(message);
+      }
+
+      return response.json().catch(() => null);
+    },
+    [buildReceiptPayload]
+  );
+
+  const handlePrintReceipt = useCallback(
+    async row => {
+      if (!row) return;
+      setPrintingState({ rowId: row.id, loading: true });
+      try {
+        await sendReceiptToScanner({ ...row, finePaid: true });
+        setSnackbar({ open: true, message: "Receipt sent to printer.", severity: "success" });
+      } catch (error) {
+        const message = error?.message || "Failed to print receipt.";
+        setSnackbar({ open: true, message, severity: "error" });
+      } finally {
+        setPrintingState({ rowId: null, loading: false });
+      }
+    },
+    [sendReceiptToScanner, setSnackbar]
+  );
 
   useEffect(() => { refreshData(); }, [refreshData]);
 
@@ -381,7 +489,8 @@ const FinesPage = () => {
       row,
       amount: row.fine ? row.fine.toFixed(2) : "",
       submitting: false,
-      error: ""
+      error: "",
+      printAfter: true
     });
   };
 
@@ -395,7 +504,8 @@ const FinesPage = () => {
         row: null,
         amount: "",
         submitting: false,
-        error: ""
+        error: "",
+        printAfter: true
       };
     });
   };
@@ -438,14 +548,31 @@ const FinesPage = () => {
         `${API_BASE}/return/${paymentDialog.row.returnId}/items/${paymentDialog.row.returnedItemId}/pay`,
         payload
       );
+
+      const receiptRow = paymentDialog.printAfter ? { ...paymentDialog.row, finePaid: true } : null;
+      let snackbarSeverity = "success";
+      let snackbarMessage = "Fine payment recorded.";
+
+      if (paymentDialog.printAfter && receiptRow) {
+        try {
+          await sendReceiptToScanner(receiptRow);
+          snackbarMessage = "Fine payment recorded. Receipt sent to printer.";
+        } catch (printError) {
+          const errMessage = printError?.message || "Receipt printing failed.";
+          snackbarSeverity = "warning";
+          snackbarMessage = `Fine payment recorded but printing failed: ${errMessage}`;
+        }
+      }
+
       setPaymentDialog({
         open: false,
         row: null,
         amount: "",
         submitting: false,
-        error: ""
+        error: "",
+        printAfter: true
       });
-      setSnackbar({ open: true, message: "Fine payment recorded.", severity: "success" });
+      setSnackbar({ open: true, message: snackbarMessage, severity: snackbarSeverity });
       await refreshData();
     } catch (error) {
       const message = error?.response?.data?.error || "Unable to record payment.";
@@ -757,8 +884,11 @@ const FinesPage = () => {
                       "& td": { borderBottom: `1px solid ${theme.palette.divider}` }
                     }}
                   >
-                    {filteredRows.map(row => (
-                      <TableRow key={row.id} hover>
+                    {filteredRows.map(row => {
+                      const isPrintingRow = printingState.loading && printingState.rowId === row.id;
+                      const printingLocked = printingState.loading && printingState.rowId !== null && printingState.rowId !== row.id;
+                      return (
+                        <TableRow key={row.id} hover>
                         <TableCell>
                           <Stack spacing={0.75}>
                             <Chip
@@ -825,6 +955,18 @@ const FinesPage = () => {
                               Record payment
                             </Button>
                           )}
+                          {row.finePaid && row.fine > 0 && (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              startIcon={<ReceiptLong fontSize="small" />}
+                              disabled={printingLocked || isPrintingRow}
+                              onClick={() => handlePrintReceipt(row)}
+                              sx={{ mt: 1, borderRadius: 1, fontWeight: 600 }}
+                            >
+                              {isPrintingRow ? "Printing…" : "Print receipt"}
+                            </Button>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Stack spacing={0.5}>
@@ -843,8 +985,9 @@ const FinesPage = () => {
                             {row.remarks || "—"}
                           </Typography>
                         </TableCell>
-                      </TableRow>
-                    ))}
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </TableContainer>
@@ -913,6 +1056,16 @@ const FinesPage = () => {
                     required
                     size="small"
                     fullWidth
+                  />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={Boolean(paymentDialog.printAfter)}
+                        onChange={e => updatePaymentField("printAfter", e.target.checked)}
+                        disabled={paymentDialog.submitting}
+                      />
+                    }
+                    label="Print receipt after saving"
                   />
                 </Stack>
 

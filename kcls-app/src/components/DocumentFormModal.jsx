@@ -42,6 +42,7 @@ const initialForm = {
 const initialInventory = { availability: "", condition: "", location: "", locationName: "", Storage_ID: null };
 const categories = ["Thesis", "Research", "Case Study", "Feasibility Study", "Capstone", "N/A"];
 const sensitivities = ["Public", "Restricted", "Confidential"];
+const classificationOptions = ["Public Resource", "Government Document", "Historical File"];
 const availabilityOptions = ["Available", "Borrowed", "Reserved", "Lost"];
 // NEW: 6-level condition scale from Good to Lost
 const conditionOptions = ["Good", "Fair", "Average", "Poor", "Bad"];
@@ -947,7 +948,7 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
                         { label: "Author", name: "author" },
                         { label: "Category", name: "category", select: true, options: categories },
                         { label: "Department", name: "department" },
-                        { label: "Classification", name: "classification" },
+                        { label: "Classification", name: "classification", select: true, options: classificationOptions },
                         { label: "Year", name: "year", type: "number" },
                         { label: "Sensitivity", name: "sensitivity", select: true, options: sensitivities }
                       ].map(field => (
