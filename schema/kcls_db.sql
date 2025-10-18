@@ -169,10 +169,10 @@ CREATE TABLE `BorrowTransactions` (
   `BorrowerID` int(11) NOT NULL,
   `Purpose` text DEFAULT NULL,
   `ApprovalStatus` enum('Pending','Approved','Rejected') NOT NULL DEFAULT 'Pending',
-  `ApprovedByStaffID` int(11) DEFAULT NULL,
   `RetrievalStatus` enum('Pending','Retrieved','Returned') NOT NULL DEFAULT 'Pending',
   `ReturnStatus` enum('Returned','Not Returned') NOT NULL DEFAULT 'Not Returned',
   `BorrowDate` date DEFAULT NULL
+  `Remarks` text DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 
 -- --------------------------------------------------------

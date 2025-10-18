@@ -17,7 +17,6 @@ import DocumentPDFViewer from '../../../components/DocumentPDFViewer';
 import { useSystemSettings } from '../../../contexts/SystemSettingsContext.jsx';
 
 const DEFAULT_ROWS_PER_PAGE = 8;
-const today = () => formatDate(new Date());
 
 const SEARCHABLE_KEYS_BY_TYPE = {
   Book: ["Title", "Author", "Publisher", "ISBN", "Category", "Edition", "Description"],
@@ -58,7 +57,7 @@ const BrowseLibraryPage = () => {
 
   // Borrow form
   const [purpose, setPurpose] = useState("");
-  const [returnDate, setReturnDate] = useState(null);
+  const [returnDays, setReturnDays] = useState('');
 
   // Doc type selection
   const [docTypeDialogOpen, setDocTypeDialogOpen] = useState(false);
@@ -233,7 +232,16 @@ const BrowseLibraryPage = () => {
     if (!borrowerId) return notify("Login required.", "error");
     if (!cart.length) return notify("Cart is empty.", "warning");
     if (!purpose.trim()) return notify("Enter purpose.", "warning");
-    if (!returnDate) return notify("Select return date.", "warning");
+    if (!returnDays) return notify("Enter number of days for return.", "warning");
+    const daysNumeric = Number(returnDays);
+    if (!Number.isFinite(daysNumeric) || daysNumeric <= 0) {
+      return notify("Return days must be a positive number.", "warning");
+    }
+    if (daysNumeric > 7) {
+      return notify("Return days cannot exceed 7.", "warning");
+    }
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + Math.trunc(daysNumeric));
     if (borrowLimit && overCapacity) {
       return notify(
         `Borrow limit exceeded. Limit is ${borrowLimit} item${borrowLimit === 1 ? '' : 's'} (active + queued). Remove items from your queue.`,
@@ -261,10 +269,10 @@ const BrowseLibraryPage = () => {
         purpose,
         items,
         borrowDate: formatDate(new Date()),
-        returnDate: formatDate(new Date(returnDate))
+        returnDate: formatDate(dueDate)
       });
       notify("Borrow request submitted.", "success");
-      setCart([]); setPurpose(""); setReturnDate(null);
+      setCart([]); setPurpose(""); setReturnDays('');
       fetchBorrowed();
       setCartOpen(false);
     } catch {
@@ -414,8 +422,17 @@ const BrowseLibraryPage = () => {
   );
 
   const MetaLine = ({ label, value }) => value ? (
-    <Typography variant="caption" sx={{ display:'block', lineHeight:1.2 }}>
-      <b>{label}:</b> {value}
+    <Typography
+      variant="caption"
+      sx={{
+        display: 'block',
+        lineHeight: 1.2,
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis'
+      }}
+    >
+      <Box component="span" sx={{ fontWeight: 600 }}>{label}:</Box> {value}
     </Typography>
   ) : null;
 
@@ -426,50 +443,43 @@ const BrowseLibraryPage = () => {
           <Paper
             elevation={0}
             sx={{
-              position: 'relative',
               borderRadius: 2,
-              overflow: 'hidden',
-              backgroundImage: theme => `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.9)}, ${alpha(theme.palette.secondary.main, 0.82)})`,
-              color: 'common.white',
-              px: { xs: 1, md: 3 },
-              py: { xs: 0, md: 2 }
+              border: theme => `1px solid ${alpha(theme.palette.divider, 0.8)}`,
+              bgcolor: 'background.paper',
+              px: { xs: 2, md: 3 },
+              py: { xs: 2, md: 3 }
             }}
           >
             <Stack
-              spacing={{ xs: 1, md: 3 }}
+              spacing={2}
               direction={{ xs: 'column', md: 'row' }}
               justifyContent="space-between"
               alignItems={{ xs: 'flex-start', md: 'center' }}
             >
               <Box maxWidth={{ md: '60%' }}>
-                <Typography variant="overline" sx={{ color: alpha('#fff', 0.7), fontWeight: 700, letterSpacing: 1.2 }}>
-                  Borrower experience
-                </Typography>
-                <Typography variant="h3" fontWeight={800} sx={{ lineHeight: 1.1, mt: 1 }}>
+                <Typography variant="h5" fontWeight={700} sx={{ lineHeight: 1.2 }}>
                   Browse the Koronadal collections
                 </Typography>
-                <Typography variant="body1" sx={{ mt: 1.5, opacity: 0.86 }}>
-                  Discover books and city documents, manage your borrowing queue, and keep tabs on availability in one high-performance workspace.
+                <Typography variant="body2" sx={{ mt: 1, color: 'text.secondary' }}>
+                  Discover books and documents, queue borrow requests, and monitor availability from one place.
                 </Typography>
               </Box>
-              <Stack direction={{ xs: 'row', sm: 'column', md: 'row' }} spacing={1} flexWrap="wrap">
+              <Stack direction={{ xs: 'column', sm: 'row', md: 'row' }} spacing={1} flexWrap="wrap">
                 {headerStats.map(stat => (
                   <Paper
                     key={stat.label}
-                    elevation={0}
+                    variant="outlined"
                     sx={{
-                      px: 1.75,
+                      px: 1.5,
                       py: 0.75,
-                      borderRadius: 2,
-                      bgcolor: alpha('#000', 0.18),
-                      border: `1px solid ${alpha('#fff', 0.22)}`,
+                      borderRadius: 1.5,
                       minWidth: 150
                     }}
                   >
-                    <Typography variant="caption" sx={{ color: alpha('#fff', 0.72), fontWeight: 600, letterSpacing: 0.6 }}>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, letterSpacing: 0.4 }}>
                       {stat.label}
                     </Typography>
-                    <Typography variant="h5" fontWeight={800} sx={{ mt: 0.5 }}>
+                    <Typography variant="h6" fontWeight={700} sx={{ mt: 0.5 }}>
                       {stat.value}
                     </Typography>
                   </Paper>
@@ -645,13 +655,14 @@ const BrowseLibraryPage = () => {
                         display: 'flex',
                         flexDirection: 'column',
                         p: 2,
+                        gap: 1,
                         border: theme => `1px solid ${alpha(theme.palette.divider, 0.7)}`,
                         borderRadius: 3,
                         bgcolor: 'background.paper',
-                        transition: 'border-color .2s, box-shadow .2s',
+                        transition: 'border-color .2s, background-color .2s',
                         '&:hover': {
                           borderColor: theme => theme.palette.primary.main,
-                          boxShadow: theme => `0 8px 26px ${alpha(theme.palette.primary.main, 0.18)}`
+                          backgroundColor: theme => alpha(theme.palette.primary.main, 0.04)
                         }
                       }}
                     >
@@ -676,36 +687,33 @@ const BrowseLibraryPage = () => {
                         </Box>
                       )}
 
-                      <Box
-                        component="img"
-                        src={`https://placehold.co/400x200?text=${encodeURIComponent((item.Title || 'Untitled').slice(0, 40))}`}
-                        alt={item.Title || 'Untitled'}
-                        loading="lazy"
-                        sx={{
-                          width: '100%',
-                          height: 120,
-                          objectFit: 'cover',
-                          borderRadius: 2,
-                          mb: 1.5,
-                          border: theme => `1px solid ${alpha(theme.palette.divider, 0.7)}`
-                        }}
-                      />
+                      
                       <Stack direction="row" alignItems="flex-start" spacing={1} mb={0.5}>
                         <Box flexGrow={1} minWidth={0}>
                           <Typography
                             fontWeight={700}
                             fontSize={14}
-                            noWrap
                             title={item.Title}
-                            sx={{ lineHeight: 1.2 }}
+                            sx={{
+                              lineHeight: 1.3,
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden'
+                            }}
                           >
                             {item.Title}
                           </Typography>
                           <Typography
                             variant="caption"
                             color="text.secondary"
-                            noWrap
                             title={item.Author || item.Publisher}
+                            sx={{
+                              display: 'block',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis'
+                            }}
                           >
                             {item.Author || item.Publisher || ''}
                           </Typography>
@@ -720,11 +728,17 @@ const BrowseLibraryPage = () => {
 
                       <Divider sx={{ my: 1 }} />
 
-                      <Box flexGrow={1}>
+                      <Box flexGrow={1} sx={{ minHeight: 110 }}>
                         {renderDetails(item, isBook)}
                       </Box>
 
-                      <Stack direction="row" spacing={0.75} mt={1.5} flexWrap="wrap">
+                      <Stack
+                        direction="row"
+                        spacing={0.75}
+                        mt={1.5}
+                        flexWrap="wrap"
+                        sx={{ rowGap: 0.75 }}
+                      >
                         <Chip
                           size="small"
                           label={`Available: ${availableCount}`}
@@ -831,7 +845,7 @@ const BrowseLibraryPage = () => {
             bottom: 32,
             right: 32,
             borderRadius: 2,
-            boxShadow: '0 12px 32px rgba(0,0,0,0.22)'
+            boxShadow: theme => theme.shadows[4]
           }}
         >
           <Badge badgeContent={cart.length} color="error">
@@ -951,13 +965,12 @@ const BrowseLibraryPage = () => {
                 fullWidth
               />
               <TextField
-                label="Return Date"
-                type="date"
+                label="Return In (days)"
+                type="number"
                 size="small"
-                value={returnDate || ""}
-                onChange={e=>setReturnDate(e.target.value)}
-                inputProps={{ min: today() }}
-                InputLabelProps={{ shrink: true }}
+                value={returnDays}
+                onChange={e=>setReturnDays(e.target.value)}
+                inputProps={{ min: 1, max: 7 }}
                 fullWidth
               />
               <Tooltip

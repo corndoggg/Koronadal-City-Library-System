@@ -4,7 +4,7 @@ import {
   Box, Typography, TextField, Snackbar, Alert, Pagination, Button, useTheme,
   IconButton, Tooltip, Grid, Stack, CircularProgress, Chip, Paper, Divider, InputAdornment, LinearProgress
 } from '@mui/material';
-import { Article, Visibility, Edit, Add, Search, PictureAsPdf, Lock, Inventory2, Refresh } from '@mui/icons-material';
+import { Article, Visibility, Edit, Add, Search, Refresh, PictureAsPdf } from '@mui/icons-material';
 import { alpha } from '@mui/material/styles';
 import DocumentFormModal from '../../../components/DocumentFormModal.jsx';
 import DocumentPDFViewer from '../../../components/DocumentPDFViewer.jsx';
@@ -208,81 +208,25 @@ const DocumentManagementPage = () => {
     };
   }, [documents]);
 
-  const {
-    totalDocuments,
-    categoryCount,
-    publicCount,
-    restrictedCount,
-    confidentialCount,
-    totalCopies,
-    availableCopies,
-    borrowedCopies,
-    reservedCopies,
-    lostCopies
-  } = docStats;
+  const { totalDocuments, totalCopies, borrowedCopies, lostCopies } = docStats;
 
-  const summaryCards = [
-    {
-      title: 'Catalogued documents',
-      value: totalDocuments,
-      caption: `${categoryCount} categories organized`,
-      icon: <Article fontSize="small" />,
-      color: 'primary'
-    },
-    {
-      title: 'Total copies tracked',
-      value: totalCopies,
-      caption: `${availableCopies} currently on shelves`,
-      icon: <Inventory2 fontSize="small" />,
-      color: 'secondary'
-    },
-    {
-      title: 'Restricted holdings',
-      value: restrictedCount + confidentialCount,
-      caption: `${restrictedCount} restricted • ${confidentialCount} confidential`,
-      icon: <Lock fontSize="small" />,
-      color: 'warning'
-    },
-    {
-      title: 'Loans in circulation',
-      value: borrowedCopies,
-      caption: `${reservedCopies} reserved • ${lostCopies} lost`,
-      icon: <PictureAsPdf fontSize="small" />,
-      color: 'error'
-    }
-  ];
+  // summary cards intentionally removed per design guidelines (use inline chips instead)
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', p: { xs: 2, md: 3 } }}>
       <Stack spacing={3}>
-        <Paper
-          sx={{
-            position: 'relative',
-            overflow: 'hidden',
-            borderRadius: 2.5,
-            p: { xs: 2.5, md: 3 },
-            backgroundImage: t => `linear-gradient(135deg, ${t.palette.mode === 'dark' ? t.palette.primary.dark : alpha(t.palette.primary.light, 0.95)} 0%, ${t.palette.mode === 'dark' ? t.palette.primary.main : t.palette.primary.dark} 100%)`,
-            color: t => t.palette.common.white,
-            border: t => `1px solid ${alpha(t.palette.primary.main, 0.4)}`,
-            boxShadow: t => `0 24px 48px ${alpha(t.palette.primary.main, t.palette.mode === 'dark' ? 0.45 : 0.25)}`
-          }}
-        >
-          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={3} alignItems={{ lg: 'center' }}>
-            <Stack spacing={2} flex={1}>
-              <Stack direction="row" spacing={1.25} alignItems="center">
-                <Article sx={{ opacity: 0.9 }} />
-                <Typography variant="overline" sx={{ opacity: 0.85, letterSpacing: 1 }}>
-                  Knowledge repository
-                </Typography>
+        <Paper variant="outlined" sx={{ borderRadius: 2, p: { xs: 2, md: 2.5 } }}>
+          <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ md: 'center' }} justifyContent="space-between" spacing={2}>
+            <Box>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Article />
+                <Typography variant="subtitle1" fontWeight={700}>Document workspace</Typography>
               </Stack>
-              <Typography variant="h4" fontWeight={800} letterSpacing={0.45}>
-                Document research workspace
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                Search and manage document holdings; sensitivity and copy counts shown below.
               </Typography>
-              <Typography variant="body2" sx={{ maxWidth: 560, opacity: 0.9 }}>
-                Search, curate, and audit academic works with a Devias-inspired console that surfaces sensitivities, circulation, and storage availability at a glance.
-              </Typography>
-            </Stack>
-            <Stack spacing={1.5} minWidth={{ lg: 320 }} alignItems={{ xs: 'stretch', lg: 'flex-end' }}>
+            </Box>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="center">
               <TextField
                 size="small"
                 placeholder="Search title, author, or category"
@@ -293,115 +237,20 @@ const DocumentManagementPage = () => {
                     <InputAdornment position="start">
                       <Search fontSize="small" />
                     </InputAdornment>
-                  ),
-                  sx: {
-                    borderRadius: 1.25,
-                    bgcolor: alpha(theme.palette.common.white, 0.12),
-                    color: 'inherit',
-                    '& fieldset': { borderColor: alpha(theme.palette.common.white, 0.2) },
-                    '&:hover fieldset': { borderColor: alpha(theme.palette.common.white, 0.4) }
-                  }
+                  )
                 }}
-                sx={{
-                  width: '100%',
-                  '& .MuiInputBase-input': { color: 'inherit' }
-                }}
+                sx={{ minWidth: { sm: 220, md: 320 }, '& .MuiOutlinedInput-root': { borderRadius: 1 } }}
               />
-              <Stack direction="row" gap={1} justifyContent={{ xs: 'flex-start', lg: 'flex-end' }} flexWrap="wrap">
-                <Tooltip title="Refresh documents">
-                  <IconButton
-                    onClick={() => { fetchDocuments(); fetchLocations(); }}
-                    size="small"
-                    sx={{
-                      borderRadius: 1,
-                      border: `1px solid ${alpha(theme.palette.common.white, 0.4)}`,
-                      color: 'inherit',
-                      '&:hover': { bgcolor: alpha(theme.palette.common.white, 0.16) }
-                    }}
-                  >
-                    <Refresh fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-                <Button
-                  variant="contained"
-                  color="secondary"
-                  size="small"
-                  startIcon={<Add />}
-                  onClick={handleOpenAdd}
-                  sx={{
-                    fontWeight: 700,
-                    borderRadius: 1,
-                    px: 2.25,
-                    boxShadow: 'none'
-                  }}
-                >
-                  Add document
-                </Button>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Chip label={`Docs: ${totalDocuments}`} size="small" variant="outlined" sx={{ fontWeight: 700 }} />
+                <Chip label={`Copies: ${totalCopies}`} size="small" variant="outlined" sx={{ fontWeight: 700 }} />
+                <Chip label={`Borrowed: ${borrowedCopies}`} size="small" color={borrowedCopies ? 'warning' : 'default'} variant={borrowedCopies ? 'filled' : 'outlined'} sx={{ fontWeight: 700 }} />
+                <Chip label={`Lost: ${lostCopies}`} size="small" color={lostCopies ? 'error' : 'default'} variant={lostCopies ? 'filled' : 'outlined'} sx={{ fontWeight: 700 }} />
+                <Tooltip title="Refresh documents"><IconButton size="small" onClick={() => { fetchDocuments(); fetchLocations(); }} sx={{ borderRadius: 1, border: `1px solid ${alpha(theme.palette.divider, 0.75)}` }}><Refresh fontSize="small" /></IconButton></Tooltip>
+                <Button variant="contained" size="small" startIcon={<Add />} onClick={handleOpenAdd} sx={{ borderRadius: 1, fontWeight: 700 }}>Add</Button>
               </Stack>
-              {loading && (
-                <LinearProgress
-                  color="inherit"
-                  sx={{ width: '100%', borderRadius: 1, backgroundColor: alpha(theme.palette.common.white, 0.2) }}
-                />
-              )}
             </Stack>
           </Stack>
-        </Paper>
-
-        <Paper
-          variant="outlined"
-          sx={{
-            borderRadius: 2,
-            border: t => `1.5px solid ${t.palette.divider}`,
-            bgcolor: 'background.paper',
-            p: { xs: 2, md: 2.75 }
-          }}
-        >
-          <Grid container spacing={2.5}>
-            {summaryCards.map(card => (
-              <Grid item xs={12} sm={6} xl={3} key={card.title}>
-                <Paper
-                  elevation={0}
-                  sx={{
-                    borderRadius: 1.75,
-                    p: 2,
-                    height: '100%',
-                    border: theme => `1px solid ${alpha(theme.palette[card.color]?.main || theme.palette.primary.main, 0.25)}`,
-                    bgcolor: theme => alpha(theme.palette[card.color]?.main || theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.18 : 0.08)
-                  }}
-                >
-                  <Stack spacing={1.25}>
-                    <Stack direction="row" spacing={1.25} alignItems="center">
-                      <Box
-                        sx={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: 1,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          bgcolor: theme => alpha(theme.palette.background.paper, 0.35)
-                        }}
-                      >
-                        {card.icon}
-                      </Box>
-                      <Box>
-                        <Typography variant="overline" sx={{ letterSpacing: 0.6, opacity: 0.75 }}>
-                          {card.title}
-                        </Typography>
-                        <Typography variant="h5" fontWeight={800}>
-                          {card.value}
-                        </Typography>
-                      </Box>
-                    </Stack>
-                    <Typography variant="caption" sx={{ opacity: 0.85 }}>
-                      {card.caption}
-                    </Typography>
-                  </Stack>
-                </Paper>
-              </Grid>
-            ))}
-          </Grid>
         </Paper>
 
         {loading ? (

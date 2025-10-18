@@ -21,9 +21,7 @@ const number = v => Intl.NumberFormat().format(v || 0);
 const surfacePaper = (extra = {}) => (theme) => ({
   borderRadius: 2,
   border: `1px solid ${alpha(theme.palette.divider, 0.5)}`,
-  background: `linear-gradient(135deg, ${alpha(theme.palette.background.paper, 0.98)}, ${alpha(theme.palette.primary.light, 0.08)})`,
-  boxShadow: `0 18px 36px ${alpha(theme.palette.common.black, 0.05)}`,
-  backdropFilter: 'blur(4px)',
+  background: theme.palette.background.paper,
   overflow: 'hidden',
   ...extra
 });
@@ -37,12 +35,6 @@ const BORROW_STATUS_VALUE_KEYS = {
   Returned: 'returned',
   Rejected: 'rejected'
 };
-
-// Dummy minimal lucide icons fallback (if not imported) — replace or ensure imports exist
-const IconBook = props => <span {...props}>📘</span>;
-const IconDoc = props => <span {...props}>📄</span>;
-const IconBorrow = props => <span {...props}>🔄</span>;
-const IconStore = props => <span {...props}>📦</span>;
 
 const DashboardPage = () => {
   const theme = useTheme();
@@ -606,117 +598,38 @@ const DashboardPage = () => {
     }
   }), [theme]);
 
-  const summaryCards = [
-    {
-      icon: IconBook,
-      title: 'Books',
-      value: number(metrics.bookTitles),
-      sub: `${number(metrics.bookCopies)} copies • ${number(metrics.bookAvailable)} avail`,
-      color: '#1976d2'
-    },
-    {
-      icon: IconDoc,
-      title: 'Documents',
-      value: number(metrics.docTitles),
-      sub: `${number(metrics.docPhysCopies)} phys • ${number(metrics.docPhysAvailable)} avail`,
-      color: '#9c27b0'
-    },
-    {
-      icon: IconBorrow,
-      title: 'Borrow Activity',
-      value: number(metrics.borrowTotal),
-      sub: `${number(metrics.active)} active • ${number(metrics.overdue)} overdue`,
-      color: '#2e7d32'
-    },
-    {
-      icon: IconStore,
-      title: 'Storages',
-      value: number(metrics.bookCopies + metrics.docPhysCopies),
-      sub: `${number(metrics.docPhysAvailable + metrics.bookAvailable)} total avail`,
-      color: '#ff9800'
-    }
-  ];
-
   const borrowTotals = borrowStatusBar.datasets[0].data.reduce((a,b)=>a+(b||0),0);
   const availTotals = availabilityDoughnut.datasets[0].data.reduce((a,b)=>a+(b||0),0);
 
+  // Summary cards removed per design guidelines; metrics now shown inline in header
+
   return (
     <Box p={{ xs: 2, md: 3 }} sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
-      <Paper
-        sx={(theme) => {
-          const base = surfacePaper({
-            mb: 3,
-            px: { xs: 2.5, md: 3.25 },
-            py: { xs: 2, md: 2.75 },
-            display: 'flex',
-            flexDirection: { xs: 'column', xl: 'row' },
-            gap: { xs: 2, md: 2.75 },
-            alignItems: { xs: 'flex-start', xl: 'center' }
-          })(theme);
-          return {
-            ...base,
-            background: `linear-gradient(135deg, ${alpha(theme.palette.primary.light, 0.25)} 0%, ${alpha(theme.palette.primary.main, 0.85)} 100%)`,
-            color: theme.palette.getContrastText(theme.palette.primary.main)
-          };
-        }}
-      >
-        <Stack spacing={1} flexGrow={1} pr={{ xs: 0, xl: 3 }}>
-          <Typography fontWeight={800} fontSize={22} color="inherit">Dashboard Overview</Typography>
-          <Typography variant="body2" sx={{ color: 'inherit', opacity: 0.85 }}>
-            Visual metrics designed with Devias polish and shadcn-inspired charts to keep tabs on the library pulse.
-          </Typography>
-          <Stack direction="row" spacing={1} flexWrap="wrap">
-            <Chip
-              size="small"
-              label={`${number(metrics.active)} active loans`}
-              sx={(theme) => ({
-                fontWeight: 600,
-                backgroundColor: alpha(theme.palette.common.white, 0.18),
-                color: theme.palette.common.white
-              })}
-            />
-            <Chip
-              size="small"
-              label={`${number(metrics.overdue)} overdue cases`}
-              sx={(theme) => ({
-                fontWeight: 600,
-                backgroundColor: alpha(theme.palette.common.white, 0.18),
-                color: theme.palette.common.white
-              })}
-            />
+      <Paper variant="outlined" sx={{ mb: 3, p: { xs: 2, md: 2.5 }, borderRadius: 2 }}>
+        <Stack spacing={2}>
+          <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ md: 'center' }} justifyContent="space-between" gap={2}>
+            <Box>
+              <Typography fontWeight={700} fontSize={18} mb={0.5}>Dashboard Overview</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Library activity and inventory status at a glance.
+              </Typography>
+            </Box>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'stretch', sm: 'center' }}>
+              {lastUpdated && (
+                <Chip size="small" variant="outlined" label={`Updated ${lastUpdated.toLocaleTimeString()}`} sx={{ fontWeight: 600 }} />
+              )}
+              <Button variant="contained" size="small" onClick={fetchAll} disabled={loading} startIcon={<RefreshCw size={16} />} sx={{ borderRadius: 1, fontWeight: 700 }}>
+                Refresh
+              </Button>
+            </Stack>
           </Stack>
-        </Stack>
-
-        <Stack
-          direction={{ xs: 'column', sm: 'row' }}
-          spacing={1.5}
-          alignItems={{ xs: 'stretch', sm: 'center' }}
-          justifyContent="flex-end"
-          sx={{ width: { xs: '100%', xl: 'auto' } }}
-          flexWrap="wrap"
-        >
-          {lastUpdated && (
-            <Chip
-              size="small"
-              label={`Updated ${lastUpdated.toLocaleTimeString()}`}
-              sx={(theme) => ({
-                fontWeight: 600,
-                backgroundColor: alpha(theme.palette.common.white, 0.14),
-                color: theme.palette.common.white
-              })}
-            />
-          )}
-
-          <Button
-            variant="contained"
-            size="small"
-            onClick={fetchAll}
-            disabled={loading}
-            startIcon={<RefreshCw size={16} />}
-            sx={{ borderRadius: 1.5, textTransform: 'none', fontWeight: 700 }}
-          >
-            Refresh
-          </Button>
+          <Stack direction="row" spacing={1} flexWrap="wrap">
+            <Chip size="small" variant="outlined" label={`Books: ${number(metrics.bookTitles)}`} sx={{ fontWeight: 600 }} />
+            <Chip size="small" variant="outlined" label={`Documents: ${number(metrics.docTitles)}`} sx={{ fontWeight: 600 }} />
+            <Chip size="small" variant="outlined" label={`Borrows: ${number(metrics.borrowTotal)}`} sx={{ fontWeight: 600 }} />
+            <Chip size="small" color={metrics.active ? 'info' : 'default'} variant={metrics.active ? 'filled' : 'outlined'} label={`Active: ${number(metrics.active)}`} sx={{ fontWeight: 600 }} />
+            <Chip size="small" color={metrics.overdue ? 'error' : 'default'} variant={metrics.overdue ? 'filled' : 'outlined'} label={`Overdue: ${number(metrics.overdue)}`} sx={{ fontWeight: 600 }} />
+          </Stack>
         </Stack>
       </Paper>
 
@@ -725,8 +638,7 @@ const DashboardPage = () => {
           sx={theme => ({
             ...surfacePaper({})(theme),
             mb: 2,
-            border: `1px solid ${alpha(theme.palette.error.main, 0.4)}`,
-            background: `linear-gradient(135deg, ${alpha(theme.palette.error.light, 0.18)}, ${alpha(theme.palette.background.paper, 0.96)})`
+            border: `1px solid ${alpha(theme.palette.error.main, 0.4)}`
           })}
         >
           <Typography variant="body2" fontWeight={600} color="error.main">{err}</Typography>
@@ -740,15 +652,6 @@ const DashboardPage = () => {
           </Button>
         </Paper>
       )}
-
-      {/* Summary cards */}
-      <Grid container spacing={2}>
-        {summaryCards.map(c => (
-          <Grid item xs={12} sm={6} md={3} key={c.title}>
-            <SummaryCard {...c} loading={loading} />
-          </Grid>
-        ))}
-      </Grid>
 
       <Grid container spacing={2} mt={0.5}>
         <Grid item xs={12} md={4}>
@@ -906,41 +809,5 @@ const DashboardPage = () => {
     </Box>
   );
 };
-
-// Add: SummaryCard component used by the summary grid
-const SummaryCard = ({ icon: Icon, title, value, sub, color = '#1976d2', loading }) => (
-  <Paper sx={theme => surfacePaper({ display: 'flex', alignItems: 'center', gap: 1.75, p: 2 })(theme)}>
-    <Box
-      sx={{
-        width: 52,
-        height: 52,
-        borderRadius: 2,
-        background: `linear-gradient(135deg, ${alpha(color, 0.24)}, ${alpha(color, 0.08)})`,
-        color,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0,
-        fontSize: 24
-      }}
-    >
-      {Icon ? <Icon /> : <span>•</span>}
-    </Box>
-    <Box sx={{ minWidth: 0, flexGrow: 1 }}>
-      {loading ? (
-        <>
-          <Skeleton width={80} height={22} sx={{ borderRadius: 1 }} />
-          <Skeleton width={160} height={14} sx={{ mt: 0.5, borderRadius: 1 }} />
-        </>
-      ) : (
-        <>
-          <Typography fontWeight={800} fontSize={22} noWrap>{value}</Typography>
-          <Typography variant="body2" color="text.secondary" noWrap>{title}</Typography>
-          <Typography variant="caption" color="text.secondary" display="block" noWrap>{sub}</Typography>
-        </>
-      )}
-    </Box>
-  </Paper>
-);
 
 export default DashboardPage;

@@ -88,8 +88,8 @@ def add_borrow_transaction():
 
         def create_tx(item_list, approval_status, update_availability):
             cursor.execute("""
-                INSERT INTO BorrowTransactions (BorrowerID, Purpose, ApprovalStatus, ApprovedByStaffID, RetrievalStatus, ReturnStatus, BorrowDate)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO BorrowTransactions (BorrowerID, Purpose, ApprovalStatus, ApprovedByStaffID, RetrievalStatus, ReturnStatus, BorrowDate, Remarks)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 data['borrowerId'],
                 data.get('purpose', ''),
@@ -97,7 +97,8 @@ def add_borrow_transaction():
                 data.get('approvedByStaffId'),
                 data.get('retrievalStatus', 'Pending'),
                 data.get('returnStatus', 'Not Returned'),
-                data.get('borrowDate')
+                data.get('borrowDate'),
+                data.get('remarks', '')
             ))
             borrow_id = cursor.lastrowid
 
@@ -176,15 +177,14 @@ def list_borrow_transactions():
             cursor.execute(f"SELECT * FROM BorrowedItems WHERE BorrowID IN ({fmt})", tuple(borrow_ids))
             for item in cursor.fetchall() or []:
                 items_by_borrow.setdefault(item['BorrowID'], []).append(item)
-
             cursor.execute(f"""
-                SELECT BorrowID, MAX(ReturnDate) AS ReturnDate
+                SELECT BorrowID, ReturnID, ReturnDate, Remarks
                 FROM ReturnTransactions
                 WHERE BorrowID IN ({fmt})
-                GROUP BY BorrowID
+                ORDER BY BorrowID ASC, ReturnDate DESC, ReturnID DESC
             """, tuple(borrow_ids))
             for ret in cursor.fetchall() or []:
-                returns_by_borrow[ret['BorrowID']] = ret['ReturnDate']
+                returns_by_borrow.setdefault(ret['BorrowID'], ret)
 
         # Role filtering
         if role == 'librarian':
@@ -196,7 +196,9 @@ def list_borrow_transactions():
 
         for tx in transactions:
             tx['items'] = items_by_borrow.get(tx['BorrowID'], [])
-            tx['ReturnDate'] = returns_by_borrow.get(tx['BorrowID'])
+            latest_return = returns_by_borrow.get(tx['BorrowID']) or {}
+            tx['ReturnDate'] = latest_return.get('ReturnDate')
+            tx['ReturnRemarks'] = latest_return.get('Remarks')
 
         return jsonify(transactions), 200
     finally:
@@ -224,17 +226,19 @@ def get_borrower_transactions(borrower_id):
                 items_by_borrow.setdefault(item['BorrowID'], []).append(item)
 
             cursor.execute(f"""
-                SELECT BorrowID, MAX(ReturnDate) AS ReturnDate
+                SELECT BorrowID, ReturnID, ReturnDate, Remarks
                 FROM ReturnTransactions
                 WHERE BorrowID IN ({fmt})
-                GROUP BY BorrowID
+                ORDER BY BorrowID ASC, ReturnDate DESC, ReturnID DESC
             """, tuple(borrow_ids))
             for ret in cursor.fetchall() or []:
-                returns_by_borrow[ret['BorrowID']] = ret['ReturnDate']
+                returns_by_borrow.setdefault(ret['BorrowID'], ret)
 
         for tx in transactions:
             tx['items'] = items_by_borrow.get(tx['BorrowID'], [])
-            tx['ReturnDate'] = returns_by_borrow.get(tx['BorrowID'])
+            latest_return = returns_by_borrow.get(tx['BorrowID']) or {}
+            tx['ReturnDate'] = latest_return.get('ReturnDate')
+            tx['ReturnRemarks'] = latest_return.get('Remarks')
 
         return jsonify(transactions), 200
     finally:
@@ -310,11 +314,21 @@ def reject_borrow_transaction(borrow_id):
         if route != role:
             return jsonify({'error': f'Transaction not allowed via {role} route.', 'route': route}), 403
 
-        cursor.execute("""
+        body = request.get_json(silent=True) or {}
+        remarks = (body.get('remarks') or '').strip()
+
+        update_parts = ["ApprovalStatus=%s"]
+        params = ['Rejected']
+        if remarks:
+            update_parts.append('Remarks=%s')
+            params.append(remarks)
+        params.append(borrow_id)
+
+        cursor.execute(f"""
             UPDATE BorrowTransactions
-            SET ApprovalStatus='Rejected'
+            SET {', '.join(update_parts)}
             WHERE BorrowID=%s
-        """, (borrow_id,))
+        """, tuple(params))
 
         # Free books
         cursor.execute("""

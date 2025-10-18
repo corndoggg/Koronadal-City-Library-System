@@ -5,11 +5,8 @@ import {
   Typography,
   Chip,
   Stack,
-  Divider,
   CircularProgress,
   Paper,
-  Card,
-  CardContent,
   IconButton,
   Tooltip,
   Avatar,
@@ -21,7 +18,13 @@ import {
   DialogActions,
   TextField,
   Skeleton,
-  InputAdornment
+  InputAdornment,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow
 } from "@mui/material";
 import {
   Book,
@@ -34,6 +37,12 @@ import {
 import { alpha } from "@mui/material/styles";
 import { formatDate } from '../../../utils/date';
 import DocumentPDFViewer from "../../../components/DocumentPDFViewer"; // added
+import { useSystemSettings } from "../../../contexts/SystemSettingsContext.jsx"; // added
+
+const pesoFormatter = new Intl.NumberFormat("en-PH", {
+  style: "currency",
+  currency: "PHP"
+});
 
 const BorrowerBorrowPage = () => {
   const API_BASE = import.meta.env.VITE_API_BASE;
@@ -43,6 +52,8 @@ const BorrowerBorrowPage = () => {
     user?.BorrowerID ||
     user?.UserID ||
     null;
+  const { settings } = useSystemSettings(); // added
+  const finePerDay = Number(settings?.fine ?? 0); // added
 
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -159,6 +170,19 @@ const BorrowerBorrowPage = () => {
     const items = tx?.items || [];
     return items.length > 0 && items.every(i => i.ItemType === "Document" && !i.DocumentStorageID);
   }; // changed
+  const startOfDay = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const calcExpectedFine = (tx) => {
+    if (!tx || finePerDay <= 0) return 0;
+    if (tx.ReturnStatus === "Returned" || tx.ApprovalStatus === "Rejected") return 0;
+    if (isDigitalOnlyTx(tx)) return 0;
+    const dueRaw = dueDates[tx.BorrowID];
+    if (!dueRaw) return 0;
+    const today = startOfDay(new Date());
+    const due = startOfDay(new Date(dueRaw));
+    const diffDays = Math.floor((today - due) / 86400000);
+    if (diffDays <= 0) return 0;
+    return diffDays * finePerDay;
+  };
   // status derivation: treat digital 'Returned' as Expired and hide PDF button
   const deriveStatus = useCallback((tx) => {
     const dueRaw = dueDates[tx.BorrowID];
@@ -263,11 +287,11 @@ const BorrowerBorrowPage = () => {
     });
 
     return [
-      { label: "Pending", value: totals.pending, color: "warning.main" },
-      { label: "Approved", value: totals.approved, color: "info.main" },
-      { label: "Borrowed", value: totals.borrowed, color: "secondary.main" },
-      { label: "Overdue", value: totals.overdue, color: "error.main" },
-      { label: "Returned", value: totals.returned, color: "success.main" }
+      { label: "Pending", value: totals.pending, tone: "warning" },
+      { label: "Approved", value: totals.approved, tone: "info" },
+      { label: "Borrowed", value: totals.borrowed, tone: "secondary" },
+      { label: "Overdue", value: totals.overdue, tone: "error" },
+      { label: "Returned", value: totals.returned, tone: "success" }
     ];
   }, [transactions, deriveStatus]);
 
@@ -296,122 +320,82 @@ const BorrowerBorrowPage = () => {
 
   return (
     <Box p={{ xs: 2, md: 3 }} sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
-      <Card
-        elevation={0}
+      <Paper
+        variant="outlined"
         sx={{
           mb: 3,
           borderRadius: 2,
-          border: (theme) => `1px solid ${alpha(theme.palette.primary.main, 0.28)}`,
-          background: (theme) =>
-            theme.palette.mode === "dark"
-              ? `linear-gradient(135deg, ${alpha(theme.palette.primary.dark, 0.2)} 0%, ${alpha(theme.palette.primary.main, 0.85)} 100%)`
-              : `linear-gradient(135deg, ${alpha(theme.palette.primary.dark, 0.92)} 0%, ${theme.palette.primary.main} 85%)`,
-          color: (theme) => {
-            const base = theme.palette.mode === "dark" ? theme.palette.primary.dark : theme.palette.primary.main;
-            return theme.palette.getContrastText(base);
-          },
-          overflow: "hidden",
-          position: "relative"
+          p: { xs: 2, md: 2.5 },
+          display: "flex",
+          flexDirection: { xs: "column", md: "row" },
+          gap: { xs: 1.5, md: 2 },
+          alignItems: { xs: "flex-start", md: "center" }
         }}
       >
-        <CardContent sx={{ p: { xs: 2.5, md: 3 } }}>
-          <Stack
-            direction={{ xs: "column", md: "row" }}
-            spacing={{ xs: 2, md: 2.5 }}
-            alignItems={{ xs: "flex-start", md: "center" }}
-          >
-            <Box sx={{ flexGrow: 1 }}>
-            <Typography variant="overline" color="inherit" sx={{ letterSpacing: 0.6, fontWeight: 700, opacity: 0.85 }}>
-              Borrowing activity
-            </Typography>
-            <Typography fontWeight={800} fontSize={20} color="inherit">
-              My Borrow Transactions
-            </Typography>
-            <Typography variant="caption" color="inherit" sx={{ opacity: 0.9, fontWeight: 600 }}>
-              Track requests, borrowed items, and digital access in real time.
-            </Typography>
-            </Box>
-            <Box
-              sx={{
-                minWidth: { xs: "100%", md: 280 },
-                display: "flex",
-                gap: 1,
-                alignItems: "center",
-                justifyContent: { xs: "flex-start", md: "flex-end" },
-                flexWrap: "wrap"
-              }}
-            >
-              <TextField
-                size="small"
-                placeholder="Search ID / purpose / date / status"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Search fontSize="small" />
-                    </InputAdornment>
-                  )
-                }}
-                sx={{
-                  flexGrow: 0,
-                  width: { xs: "100%", md: 260 },
-                  "& .MuiOutlinedInput-root": {
-                    borderRadius: 1.25,
-                    bgcolor: theme => alpha(theme.palette.background.paper, 0.85)
-                  }
-                }}
-              />
-              <Tooltip title="Refresh">
-                <IconButton
-                  size="small"
-                  onClick={fetchTransactions}
-                  sx={{
-                    borderRadius: 1.5,
-                    border: theme => `1px solid ${alpha(theme.palette.common.white, 0.6)}`,
-                    color: theme => theme.palette.common.white
-                  }}
-                >
-                  <Refresh fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            </Box>
-          </Stack>
-        </CardContent>
-      </Card>
-
-      {/* Summaries */}
-      <Stack sx={{ mb: 2.5 }}>
-        <Stack direction="row" spacing={1} alignItems="center" mb={1}>
-          <Typography variant="caption" fontWeight={700} color="text.secondary">
-            Snapshot
+        <Box sx={{ flexGrow: 1 }}>
+          <Typography variant="h6" fontWeight={700} sx={{ lineHeight: 1.3 }}>
+            My Borrow Transactions
           </Typography>
-          <Divider flexItem orientation="horizontal" sx={{ borderColor: theme => alpha(theme.palette.divider, 0.6) }} />
-        </Stack>
-        <Stack direction="row" flexWrap="wrap" gap={1.25}>
-          {summary.map((s) => (
-            <Card
-              key={s.label}
-              elevation={0}
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            Track requests, monitor due dates, and access digital files from a single view.
+          </Typography>
+          <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mt: 1 }}>
+            {summary.map((s) => (
+              <Chip
+                key={s.label}
+                label={`${s.label}: ${s.value}`}
+                size="small"
+                color={s.tone === "secondary" ? "secondary" : s.tone}
+                variant={s.value ? "filled" : "outlined"}
+                sx={{ borderRadius: 1, fontWeight: 600 }}
+              />
+            ))}
+          </Stack>
+        </Box>
+        <Box
+          sx={{
+            minWidth: { xs: "100%", md: 280 },
+            display: "flex",
+            gap: 1,
+            alignItems: "center",
+            justifyContent: { xs: "flex-start", md: "flex-end" },
+            flexWrap: "wrap"
+          }}
+        >
+          <TextField
+            size="small"
+            placeholder="Search ID / purpose / date / status"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search fontSize="small" />
+                </InputAdornment>
+              )
+            }}
+            sx={{
+              flexGrow: 0,
+              width: { xs: "100%", md: 260 },
+              "& .MuiOutlinedInput-root": {
+                borderRadius: 1.25
+              }
+            }}
+          />
+          <Tooltip title="Refresh">
+            <IconButton
+              size="small"
+              onClick={fetchTransactions}
               sx={{
-                minWidth: 140,
                 borderRadius: 1.5,
-                border: theme => `1px solid ${alpha(theme.palette.getContrastText("#fff"), 0.04)}`,
-                flex: "1 1 140px"
+                border: theme => `1px solid ${alpha(theme.palette.divider, 0.7)}`
               }}
             >
-              <CardContent sx={{ py: 1.5 }}>
-                <Typography variant="caption" fontWeight={600} color="text.secondary">
-                  {s.label}
-                </Typography>
-                <Typography fontWeight={800} fontSize={20} lineHeight={1.2} sx={{ mt: 0.5 }}>
-                  {s.value}
-                </Typography>
-              </CardContent>
-            </Card>
-          ))}
-        </Stack>
-      </Stack>
+              <Refresh fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      </Paper>
 
       {/* Content */}
       {!borrowerId && (
@@ -471,207 +455,171 @@ const BorrowerBorrowPage = () => {
         </Paper>
       )}
 
-      <Stack spacing={2.25}>
-        {paginated.map((tx) => {
-          const status = deriveStatus(tx);
-          const items = tx.items || [];
-          const due = dueDates[tx.BorrowID];
-          const dueText = due ? formatDate(due) : "—";
-          const borrowedText = tx.BorrowDate ? formatDate(tx.BorrowDate) : "—";
-          const digitalItems = items.filter((item) => item.ItemType === "Document" && !item.DocumentStorageID);
-          const physicalItems = items.filter((item) => item.ItemType === "Book" || (item.ItemType === "Document" && item.DocumentStorageID));
-          const digitalOnly = digitalItems.length > 0 && physicalItems.length === 0;
-          const digitalActive = digitalOnly && status.label === "Active (Digital)";
-          const docAccessLabel = digitalOnly
-            ? "Digital access"
-            : digitalItems.length && physicalItems.length
-              ? "Mixed access"
-              : physicalItems.length
-                ? "Physical copies"
-                : "Items";
-          const visibleItems = items.slice(0, 4);
-          const extraCount = items.length - visibleItems.length;
-          const dueIsPast = due ? new Date(due) < new Date() : false;
+      {borrowerId && !loading && sorted.length > 0 && (
+        <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ width: { xs: 180, md: 220 } }}>Transaction</TableCell>
+                <TableCell sx={{ minWidth: 160 }}>Items</TableCell>
+                <TableCell sx={{ minWidth: 140 }}>Access</TableCell>
+                <TableCell sx={{ minWidth: 120 }}>Borrowed</TableCell>
+                <TableCell sx={{ minWidth: 120 }}>Due / Expires</TableCell>
+                <TableCell sx={{ minWidth: 160 }}>Purpose</TableCell>
+                <TableCell sx={{ minWidth: 160 }}>Remarks</TableCell>
+                <TableCell align="right" sx={{ width: 120 }}>Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {paginated.map((tx) => {
+                const status = deriveStatus(tx);
+                const items = tx.items || [];
+                const due = dueDates[tx.BorrowID];
+                const dueText = due ? formatDate(due) : "—";
+                const borrowedText = tx.BorrowDate ? formatDate(tx.BorrowDate) : "—";
+                const digitalItems = items.filter((item) => item.ItemType === "Document" && !item.DocumentStorageID);
+                const physicalItems = items.filter((item) => item.ItemType === "Book" || (item.ItemType === "Document" && item.DocumentStorageID));
+                const digitalOnly = digitalItems.length > 0 && physicalItems.length === 0;
+                const docAccessLabel = digitalOnly
+                  ? "Digital access"
+                  : digitalItems.length && physicalItems.length
+                    ? "Mixed access"
+                    : physicalItems.length
+                      ? "Physical copies"
+                      : "Items";
+                const expectedFine = calcExpectedFine(tx);
+                const previewNames = items.slice(0, 2).map((item) => {
+                  const isBook = item.ItemType === "Book";
+                  const isDigital = !isBook && !item.DocumentStorageID;
+                  const docId = isDigital ? getDocumentId(item) : null;
+                  const meta = isBook
+                    ? bookDetails[item.BookCopyID]
+                    : item.DocumentStorageID
+                      ? docDetails[item.DocumentStorageID]
+                      : docId
+                        ? docMetaById[docId]
+                        : undefined;
+                  return meta?.Title || (isBook ? `Book Copy #${item.BookCopyID}` : isDigital ? `Doc #${docId}` : `Doc Storage #${item.DocumentStorageID}`);
+                }).filter(Boolean);
+                let previewText = previewNames.join(", ");
+                if (items.length > 2) {
+                  previewText = `${previewText}${previewText ? ", " : ""}+${items.length - 2} more`;
+                }
+                const dueIsPast = due ? new Date(due) < new Date() : false;
+                const remarksText = tx.ReturnStatus === "Returned"
+                  ? (tx.ReturnRemarks || tx.Remarks || "")
+                  : (tx.Remarks || tx.ReturnRemarks || "");
 
-          return (
-            <Card
-              key={tx.BorrowID}
-              elevation={0}
-              sx={{
-                borderRadius: 1.75,
-                border: (theme) => {
-                  const paletteEntry = status.tone ? theme.palette[status.tone] : undefined;
-                  const base = typeof paletteEntry === "object" ? paletteEntry?.main : paletteEntry;
-                  return `1px solid ${alpha(base || theme.palette.divider, 0.45)}`;
-                },
-                boxShadow: (theme) => `0 14px 36px ${alpha(theme.palette.common.black, 0.08)}`,
-                backgroundColor: (theme) => alpha(theme.palette.background.paper, 0.9),
-                width: "100%",
-                maxWidth: { xs: "100%", lg: 840 }
-              }}
-            >
-              <CardContent sx={{ display: "flex", flexDirection: "column", gap: 1.75, p: { xs: 2, md: 2.5 } }}>
-                <Stack direction={{ xs: "column", md: "row" }} spacing={1.25} alignItems={{ md: "center" }} flexWrap="wrap">
-                  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                    <StatusChip tx={tx} />
-                    <Typography fontWeight={700} fontSize={14}>
-                      Borrow #{tx.BorrowID}
-                    </Typography>
-                    <Chip
-                      size="small"
-                      variant="outlined"
-                      label={`${items.length} item${items.length === 1 ? "" : "s"}`}
-                      sx={{ borderRadius: 0.75, fontWeight: 600 }}
-                    />
-                    <Chip
-                      size="small"
-                      label={docAccessLabel}
-                      color={digitalOnly ? "info" : physicalItems.length ? "secondary" : "default"}
-                      sx={{ borderRadius: 0.75, fontWeight: 600 }}
-                    />
-                  </Stack>
-                  <Box flexGrow={1} />
-                  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                    <Typography variant="caption" fontWeight={600} color="text.secondary">
-                      Borrowed: {borrowedText}
-                    </Typography>
-                    <Typography
-                      variant="caption"
-                      fontWeight={700}
-                      color={dueIsPast && status.label !== "Returned" ? "error.main" : "text.secondary"}
-                    >
-                      {digitalOnly ? "Expires" : "Due"}: {dueText}
-                    </Typography>
-                    <Tooltip title="View details">
-                      <IconButton
+                return (
+                  <TableRow key={tx.BorrowID} hover>
+                    <TableCell>
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <StatusChip tx={tx} />
+                        <Typography fontWeight={700} fontSize={13}>
+                          #{tx.BorrowID}
+                        </Typography>
+                      </Stack>
+                    </TableCell>
+                    <TableCell>
+                      <Typography fontWeight={600} fontSize={13}>
+                        {items.length} item{items.length === 1 ? "" : "s"}
+                      </Typography>
+                      {previewText ? (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                          {previewText}
+                        </Typography>
+                      ) : null}
+                    </TableCell>
+                    <TableCell>
+                      <Chip
                         size="small"
-                        onClick={() => openDetail(tx)}
+                        label={docAccessLabel}
+                        variant="outlined"
+                        color={digitalOnly ? "info" : digitalItems.length && physicalItems.length ? "secondary" : "default"}
+                        sx={{ borderRadius: 0.75, fontWeight: 600 }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary">
+                        {borrowedText}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography
+                        variant="body2"
+                        color={dueIsPast && status.label !== "Returned" ? "error.main" : "text.secondary"}
+                        fontWeight={dueIsPast && status.label !== "Returned" ? 600 : 400}
+                      >
+                        {digitalOnly ? "Expires" : "Due"}: {dueText}
+                      </Typography>
+                      {expectedFine > 0 && (
+                        <Typography
+                          variant="caption"
+                          color="error.main"
+                          fontWeight={600}
+                          sx={{ display: "block" }}
+                        >
+                          Expected fine: {pesoFormatter.format(expectedFine)}
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
                         sx={{
-                          borderRadius: 1,
-                          border: (theme) => `1px solid ${alpha(theme.palette.divider, 0.7)}`,
-                          "&:hover": { bgcolor: "action.hover" }
+                          maxWidth: 220,
+                          display: "-webkit-box",
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden"
                         }}
                       >
-                        <Visibility fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                  </Stack>
-                </Stack>
-                <Divider />
-                <Stack direction="row" spacing={1} flexWrap="wrap">
-                  {visibleItems.map((item) => {
-                    const isBook = item.ItemType === "Book";
-                    const isDigital = !isBook && !item.DocumentStorageID;
-                    const docId = isDigital ? getDocumentId(item) : null;
-                    const meta = isBook
-                      ? bookDetails[item.BookCopyID]
-                      : item.DocumentStorageID
-                        ? docDetails[item.DocumentStorageID]
-                        : docId
-                          ? docMetaById[docId]
-                          : undefined;
-                    const label =
-                      meta?.Title ||
-                      (isBook
-                        ? `Book Copy #${item.BookCopyID}`
-                        : isDigital
-                          ? `Doc #${docId}`
-                          : `Doc Storage #${item.DocumentStorageID}`);
-                    return (
-                      <Chip
-                        key={item.BorrowedItemID}
-                        size="small"
-                        avatar={(
-                          <Avatar
-                            sx={{
-                              bgcolor: isBook ? "primary.main" : "secondary.main",
-                              color: "common.white",
-                              width: 26,
-                              height: 26,
-                              borderRadius: 0.75
-                            }}
-                          >
-                            {isBook ? <Book fontSize="inherit" /> : <Article fontSize="inherit" />}
-                          </Avatar>
-                        )}
-                        label={label}
-                        variant="outlined"
-                        sx={{
-                          borderRadius: 0.75,
-                          fontWeight: 600,
-                          px: 0.5,
-                          maxWidth: 220,
-                          "& .MuiChip-label": {
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap"
-                          }
-                        }}
-                      />
-                    );
-                  })}
-                  {extraCount > 0 && (
-                    <Chip
-                      size="small"
-                      label={`+${extraCount} more`}
-                      sx={{ borderRadius: 0.75, fontWeight: 600 }}
-                    />
-                  )}
-                </Stack>
-                {digitalItems.length > 0 && (
-                  <Stack spacing={0.5} sx={{ pt: 0.5 }}>
-                    {digitalItems.map((item) => {
-                      const docId = getDocumentId(item);
-                      const meta = docId ? docMetaById[docId] : undefined;
-                      const filePath = meta?.File_Path || meta?.file_path || meta?.FilePath;
-                      return (
-                        <Stack key={`${tx.BorrowID}-${docId}`} direction="row" spacing={1} alignItems="center">
-                          <Typography variant="caption" fontWeight={700}>
-                            {meta?.Title || `Doc #${docId}`}
-                          </Typography>
-                          {meta?.Author && (
-                            <Typography variant="caption" color="text.secondary">
-                              by {meta.Author}
+                        {tx.Purpose || "—"}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      {remarksText ? (
+                        <Tooltip
+                          title={
+                            <Typography variant="body2" sx={{ whiteSpace: "pre-line" }}>
+                              {remarksText}
                             </Typography>
-                          )}
-                          <Box flexGrow={1} />
-                          {filePath && (
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              onClick={() => handleViewPdf(filePath)}
-                              disabled={!digitalActive}
-                              sx={{ borderRadius: 0.75, fontWeight: 600 }}
-                            >
-                              {digitalActive ? "View PDF" : "Access expired"}
-                            </Button>
-                          )}
-                        </Stack>
-                      );
-                    })}
-                  </Stack>
-                )}
-                {tx.Purpose && (
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{
-                      px: 1.25,
-                      py: 0.75,
-                      border: (theme) => `1px dashed ${alpha(theme.palette.divider, 0.8)}`,
-                      borderRadius: 1,
-                      bgcolor: "background.default",
-                      fontWeight: 500
-                    }}
-                  >
-                    Purpose: {tx.Purpose}
-                  </Typography>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })}
-      </Stack>
+                          }
+                        >
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            noWrap
+                            sx={{ display: "block", maxWidth: 220 }}
+                          >
+                            {remarksText}
+                          </Typography>
+                        </Tooltip>
+                      ) : (
+                        <Typography variant="caption" color="text.disabled">
+                          —
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell align="right">
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<Visibility fontSize="small" />}
+                        onClick={() => openDetail(tx)}
+                        sx={{ borderRadius: 1 }}
+                      >
+                        Details
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
 
       {sorted.length > ITEMS_PER_PAGE && (
         <Box mt={3} display="flex" justifyContent="center">
@@ -752,7 +700,41 @@ const BorrowerBorrowPage = () => {
                 />
                 <MetaLine k="Purpose" v={selectedTx.Purpose} />
                 <MetaLine k="Status" v={deriveStatus(selectedTx).label} />
+                {(() => {
+                  const fineValue = calcExpectedFine(selectedTx);
+                  return fineValue > 0 ? (
+                    <MetaLine k="Expected fine" v={pesoFormatter.format(fineValue)} />
+                  ) : null;
+                })()}
               </Paper>
+
+              {selectedTx.Remarks && (
+                <Paper
+                  variant="outlined"
+                  sx={{ p: 1.25, borderRadius: 1, border: (t) => `1.5px solid ${t.palette.divider}` }}
+                >
+                  <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ letterSpacing: 0.4 }}>
+                    Request remarks
+                  </Typography>
+                  <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: "pre-line" }}>
+                    {selectedTx.Remarks}
+                  </Typography>
+                </Paper>
+              )}
+
+              {selectedTx.ReturnRemarks && (
+                <Paper
+                  variant="outlined"
+                  sx={{ p: 1.25, borderRadius: 1, border: (t) => `1.5px solid ${t.palette.divider}` }}
+                >
+                  <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ letterSpacing: 0.4 }}>
+                    Return remarks
+                  </Typography>
+                  <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: "pre-line" }}>
+                    {selectedTx.ReturnRemarks}
+                  </Typography>
+                </Paper>
+              )}
 
               {/*
                 FIX: compute digitalActive for the selectedTx (used below in the items map)
@@ -760,7 +742,7 @@ const BorrowerBorrowPage = () => {
               {(() => {
                 const st = deriveStatus(selectedTx);
                 // Active (Digital) means PDF can be viewed; if Returned/expired, hide button
-                var digitalActive = st.label === "Active (Digital)";
+                const digitalActive = st.label === "Active (Digital)";
 
                 return (
                   <Box>

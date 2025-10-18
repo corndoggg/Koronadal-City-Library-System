@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Box, Typography, Tabs, Tab, Paper, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Avatar, Chip, CircularProgress, IconButton, Tooltip, Snackbar, Alert, Stack,
-  TextField, InputAdornment, Button, Skeleton, Grid
+  TextField, InputAdornment, Button
 } from '@mui/material';
 import { useTheme, alpha } from '@mui/material/styles';
 import PersonIcon from '@mui/icons-material/Person';
@@ -27,9 +27,7 @@ const fetchUsers = async () => {
 const surfacePaper = (extra = {}) => (theme) => ({
   borderRadius: 2,
   border: `1px solid ${alpha(theme.palette.divider, 0.4)}`,
-  background: `linear-gradient(135deg, ${alpha(theme.palette.background.paper, 0.98)}, ${alpha(theme.palette.primary.light, 0.08)})`,
-  boxShadow: `0 24px 48px ${alpha(theme.palette.common.black, 0.04)}`,
-  backdropFilter: 'blur(6px)',
+  background: theme.palette.background.paper,
   overflow: 'hidden',
   ...extra
 });
@@ -155,37 +153,6 @@ const UserManagementPage = () => {
     };
   }, [users]);
 
-  const summaryStats = useMemo(() => ([
-    {
-      title: 'Total Users',
-      value: metrics.total,
-      subtitle: `${metrics.staff} staff • ${metrics.borrowers} borrowers`,
-      icon: GroupIcon,
-      color: theme.palette.primary.main
-    },
-    {
-      title: 'Staff Accounts',
-      value: metrics.staff,
-      subtitle: `${metrics.borrowers} borrowers alongside`,
-      icon: SupervisorAccountIcon,
-      color: theme.palette.info.main
-    },
-    {
-      title: 'Pending Approvals',
-      value: metrics.pendingBorrowers,
-      subtitle: 'Borrowers awaiting review',
-      icon: PersonIcon,
-      color: theme.palette.warning.main
-    },
-    {
-      title: 'Approved Borrowers',
-      value: metrics.approvedBorrowers,
-      subtitle: `${metrics.rejectedBorrowers} rejected`,
-      icon: GroupIcon,
-      color: theme.palette.success.main
-    }
-  ]), [metrics, theme]);
-
   const norm = v => (v || '').toString().toLowerCase();
   const matchesSearch = u => {
     if (!search) return true;
@@ -198,7 +165,14 @@ const UserManagementPage = () => {
   };
 
   const filteredStaff = staff.filter(matchesSearch);
-  const filteredBorrowers = borrowers.filter(matchesSearch);
+  const filteredBorrowers = borrowers.filter(matchesSearch).sort((a, b) => {
+    const statusOrder = { Pending: 0, Registered: 1, Approved: 1, Rejected: 2 };
+    const aStatus = a.borrower?.AccountStatus || 'Unknown';
+    const bStatus = b.borrower?.AccountStatus || 'Unknown';
+    const aOrder = statusOrder[aStatus] ?? 3;
+    const bOrder = statusOrder[bStatus] ?? 3;
+    return aOrder - bOrder;
+  });
 
   return (
     <Box
@@ -212,151 +186,110 @@ const UserManagementPage = () => {
       <Paper
         sx={surfacePaper({
           mb: 3,
-          px: { xs: 2.25, md: 3 },
-          py: { xs: 2, md: 2.75 },
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 2.25
+          px: { xs: 2, md: 2.5 },
+          py: { xs: 2, md: 2.5 },
+          borderRadius: 2
         })}
       >
-        <Stack
-          direction={{ xs: 'column', lg: 'row' }}
-          spacing={2}
-          alignItems={{ xs: 'flex-start', lg: 'center' }}
-          justifyContent="space-between"
-        >
-          <Stack spacing={1.25} pr={{ xs: 0, lg: 3 }}>
+        <Stack spacing={2}>
+          <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ md: 'center' }} justifyContent="space-between" gap={2}>
+            <Box>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <GroupIcon />
+                <Typography variant="subtitle1" fontWeight={700}>User Management</Typography>
+              </Stack>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                Manage staff and borrower accounts.
+              </Typography>
+            </Box>
             <Stack direction="row" spacing={1} alignItems="center">
-              <GroupIcon color="primary" />
-              <Typography fontWeight={800} fontSize={22}>User Management</Typography>
-            </Stack>
-            <Typography variant="body2" color="text.secondary">
-              Streamline staff coordination and borrower onboarding with a Devias-inspired control center.
-            </Typography>
-            <Stack direction="row" spacing={1} flexWrap="wrap">
-              <Chip
+              <Button
+                variant="outlined"
                 size="small"
-                label={`${metrics.total} total users`}
-                sx={{
-                  fontWeight: 600,
-                  backgroundColor: alpha(theme.palette.primary.main, 0.12),
-                  color: theme.palette.primary.main
-                }}
-              />
-              <Chip
+                onClick={loadUsers}
+                disabled={loading}
+                startIcon={<RefreshIcon fontSize="small" />}
+                sx={{ borderRadius: 1, fontWeight: 600 }}
+              >
+                Refresh
+              </Button>
+              <Button
+                variant="contained"
                 size="small"
-                label={`${metrics.pendingBorrowers} pending approvals`}
-                sx={{
-                  fontWeight: 600,
-                  backgroundColor: alpha(theme.palette.warning.main, 0.14),
-                  color: theme.palette.warning.dark
-                }}
-              />
-              <Chip
-                size="small"
-                label={`${metrics.approvedBorrowers} approved borrowers`}
-                sx={{
-                  fontWeight: 600,
-                  backgroundColor: alpha(theme.palette.success.main, 0.12),
-                  color: theme.palette.success.main
-                }}
-              />
+                onClick={handleAdd}
+                startIcon={<AddIcon fontSize="small" />}
+                sx={{ borderRadius: 1, fontWeight: 700 }}
+              >
+                New User
+              </Button>
             </Stack>
           </Stack>
-
-          <Stack direction="row" spacing={1.25} flexWrap="wrap" alignItems="center" justifyContent="flex-end">
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={loadUsers}
-              disabled={loading}
-              startIcon={<RefreshIcon fontSize="small" />}
-              sx={{ borderRadius: 1 }}
-            >
-              Refresh
-            </Button>
-            <Button
-              variant="contained"
-              size="small"
-              onClick={handleAdd}
-              startIcon={<AddIcon fontSize="small" />}
-              sx={{ borderRadius: 1, textTransform: 'none', fontWeight: 700 }}
-            >
-              New User
-            </Button>
+          <Stack direction="row" spacing={1} flexWrap="wrap">
+            <Chip size="small" variant="outlined" label={`Total: ${metrics.total}`} sx={{ fontWeight: 600 }} />
+            <Chip size="small" variant="outlined" label={`Staff: ${metrics.staff}`} sx={{ fontWeight: 600 }} />
+            <Chip size="small" variant="outlined" label={`Borrowers: ${metrics.borrowers}`} sx={{ fontWeight: 600 }} />
+            <Chip size="small" color={metrics.pendingBorrowers ? 'warning' : 'default'} variant={metrics.pendingBorrowers ? 'filled' : 'outlined'} label={`Pending: ${metrics.pendingBorrowers}`} sx={{ fontWeight: 600 }} />
+            <Chip size="small" color={metrics.approvedBorrowers ? 'success' : 'default'} variant={metrics.approvedBorrowers ? 'filled' : 'outlined'} label={`Approved: ${metrics.approvedBorrowers}`} sx={{ fontWeight: 600 }} />
           </Stack>
-        </Stack>
-
-        <Stack
-          direction={{ xs: 'column', lg: 'row' }}
-          spacing={1.5}
-          alignItems={{ xs: 'stretch', lg: 'center' }}
-        >
-          <Tabs
-            value={tab}
-            onChange={(_, v) => setTab(v)}
-            sx={{
-              '& .MuiTab-root': {
-                minHeight: 38,
-                fontWeight: 600,
-                textTransform: 'none',
-                borderRadius: 1,
-                px: 2,
-                mr: 1,
-                color: theme.palette.text.secondary,
-                border: `1px solid ${alpha(theme.palette.divider, 0.6)}`,
-                transition: 'all .2s ease-in-out'
-              },
-              '& .Mui-selected': {
-                color: `${theme.palette.primary.main} !important`,
-                borderColor: alpha(theme.palette.primary.main, 0.8),
-                backgroundColor: alpha(theme.palette.primary.main, 0.08)
-              },
-              '& .MuiTabs-indicator': {
-                height: 3,
-                borderRadius: 8,
-                backgroundColor: theme.palette.primary.main
-              }
-            }}
-          >
-            <Tab
-              label={`Staff (${filteredStaff.length}/${staff.length})`}
-              icon={<SupervisorAccountIcon fontSize="small" />}
-              iconPosition="start"
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', md: 'center' }}>
+            <Tabs
+              value={tab}
+              onChange={(_, v) => setTab(v)}
+              sx={{
+                '& .MuiTab-root': {
+                  minHeight: 38,
+                  fontWeight: 600,
+                  textTransform: 'none',
+                  borderRadius: 1,
+                  px: 2,
+                  mr: 1,
+                  color: theme.palette.text.secondary,
+                  border: `1px solid ${alpha(theme.palette.divider, 0.6)}`,
+                  transition: 'all .2s ease-in-out'
+                },
+                '& .Mui-selected': {
+                  color: `${theme.palette.primary.main} !important`,
+                  borderColor: alpha(theme.palette.primary.main, 0.8),
+                  backgroundColor: alpha(theme.palette.primary.main, 0.08)
+                },
+                '& .MuiTabs-indicator': {
+                  height: 3,
+                  borderRadius: 8,
+                  backgroundColor: theme.palette.primary.main
+                }
+              }}
+            >
+              <Tab
+                label={`Staff (${filteredStaff.length}/${staff.length})`}
+                icon={<SupervisorAccountIcon fontSize="small" />}
+                iconPosition="start"
+              />
+              <Tab
+                label={`Borrowers (${filteredBorrowers.length}/${borrowers.length})`}
+                icon={<PersonIcon fontSize="small" />}
+                iconPosition="start"
+              />
+            </Tabs>
+            <TextField
+              size="small"
+              placeholder="Search users..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              sx={{
+                width: { xs: '100%', sm: 260, md: 320 },
+                '& .MuiOutlinedInput-root': { borderRadius: 1 }
+              }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                )
+              }}
             />
-            <Tab
-              label={`Borrowers (${filteredBorrowers.length}/${borrowers.length})`}
-              icon={<PersonIcon fontSize="small" />}
-              iconPosition="start"
-            />
-          </Tabs>
-          <TextField
-            size="small"
-            placeholder="Search users..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            sx={{
-              width: { xs: '100%', sm: 260, md: 320 },
-              '& .MuiOutlinedInput-root': { borderRadius: 1 }
-            }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon fontSize="small" />
-                </InputAdornment>
-              )
-            }}
-          />
+          </Stack>
         </Stack>
       </Paper>
-
-      <Grid container spacing={2} mb={3}>
-        {summaryStats.map(card => (
-          <Grid item xs={12} sm={6} md={3} key={card.title}>
-            <SummaryCard {...card} loading={loading} />
-          </Grid>
-        ))}
-      </Grid>
 
       {error && (
         <Alert
@@ -607,39 +540,5 @@ const UserManagementPage = () => {
     </Box>
   );
 };
-
-const SummaryCard = ({ icon: Icon, title, value, subtitle, color, loading }) => (
-  <Paper sx={surfacePaper({ display: 'flex', alignItems: 'center', gap: 1.75, p: 2 })}>
-    <Box
-      sx={{
-        width: 48,
-        height: 48,
-        borderRadius: 1.5,
-        background: `linear-gradient(135deg, ${alpha(color, 0.24)}, ${alpha(color, 0.08)})`,
-        color,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0
-      }}
-    >
-      {Icon ? <Icon fontSize="small" /> : null}
-    </Box>
-    <Box sx={{ minWidth: 0, flexGrow: 1 }}>
-      {loading ? (
-        <>
-          <Skeleton width={80} height={24} sx={{ borderRadius: 1 }} />
-          <Skeleton width="60%" height={14} sx={{ mt: 0.5, borderRadius: 1 }} />
-        </>
-      ) : (
-        <>
-          <Typography fontWeight={800} fontSize={22} noWrap>{value}</Typography>
-          <Typography variant="body2" color="text.secondary" noWrap>{title}</Typography>
-          <Typography variant="caption" color="text.secondary" display="block" noWrap>{subtitle}</Typography>
-        </>
-      )}
-    </Box>
-  </Paper>
-);
 
 export default UserManagementPage;

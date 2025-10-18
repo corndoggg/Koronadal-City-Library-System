@@ -5,9 +5,6 @@ import {
   Avatar,
   Box,
   Button,
-  Card,
-  CardContent,
-  CardHeader,
   Checkbox,
   Chip,
   Container,
@@ -85,12 +82,6 @@ const dateFilters = [
 
 const currency = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" });
 const formatCurrency = value => currency.format(Number.isFinite(value) ? value : 0);
-
-const heroCopy = fineRateText => ({
-  overline: "Borrowing fines",
-  title: "Track outstanding balances and collection progress",
-  description: `Review fines assessed during returns, highlight unpaid balances, and monitor settlements. The default fine rate is ${fineRateText} per overdue day.`
-});
 
 const FinesPage = () => {
   const theme = useTheme();
@@ -472,7 +463,7 @@ const FinesPage = () => {
   }, [fineRows]);
 
   const outstandingColor = summary.outstanding > 0 ? theme.palette.error.main : theme.palette.success.main;
-  const heroContent = heroCopy(formatCurrency(Number(settings?.fine ?? 0)));
+  const fineRateText = formatCurrency(Number(settings?.fine ?? 0));
 
   const filtersAreDefault = !search && statusFilter === "all" && dateFilter === "all";
 
@@ -588,271 +579,205 @@ const FinesPage = () => {
     <Box component="main" sx={{ flexGrow: 1, bgcolor: "background.default", py: { xs: 3, md: 4 } }}>
       <Container maxWidth="xl">
         <Stack spacing={3}>
-          <Box
+          <Paper
+            variant="outlined"
             sx={{
-              position: "relative",
-              borderRadius: 3,
-              overflow: "hidden",
-              p: { xs: 2.5, md: 3.25 },
-              backgroundImage: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.12)} 0%, ${alpha(theme.palette.primary.dark, 0.75)} 100%)`,
-              color: theme.palette.mode === "dark" ? theme.palette.primary.contrastText : theme.palette.common.white,
-              border: `1px solid ${alpha(theme.palette.primary.main, 0.35)}`,
-              boxShadow: `0 18px 44px ${alpha(theme.palette.primary.main, 0.2)}`
+              borderRadius: 2,
+              p: { xs: 2, md: 2.5 },
+              display: "flex",
+              flexDirection: { xs: "column", md: "row" },
+              gap: { xs: 2, md: 3 },
+              alignItems: { xs: "flex-start", md: "center" },
+              justifyContent: "space-between"
             }}
           >
-            <Stack
-              direction={{ xs: "column", md: "row" }}
-              spacing={2.5}
-              alignItems={{ xs: "flex-start", md: "center" }}
-              justifyContent="space-between"
-            >
-              <Stack spacing={1.25}>
-                <Typography variant="overline" sx={{ letterSpacing: 0.6, opacity: 0.85, fontWeight: 700 }}>
-                  {heroContent.overline}
-                </Typography>
-                <Typography variant="h4" fontWeight={800} letterSpacing={0.5}>
-                  {heroContent.title}
-                </Typography>
-                <Typography variant="body2" sx={{ maxWidth: 520, opacity: 0.9 }}>
-                  {heroContent.description}
-                </Typography>
-                <Stack direction="row" spacing={1} flexWrap="wrap">
-                  <Chip
-                    icon={<AccountBalanceWallet fontSize="small" />}
-                    label={`Total assessed: ${formatCurrency(summary.total)}`}
-                    size="small"
-                    sx={{
-                      bgcolor: alpha(theme.palette.common.white, 0.16),
-                      color: alpha(theme.palette.common.white, 0.95),
-                      fontWeight: 700
-                    }}
-                  />
-                  <Chip
-                    icon={<AssignmentLate fontSize="small" />}
-                    label={`${summary.outstandingCount} outstanding`}
-                    size="small"
-                    sx={{
-                      bgcolor: alpha(theme.palette.error.main, 0.18),
-                      color: theme.palette.error.contrastText,
-                      fontWeight: 700
-                    }}
-                  />
-                  <Chip
-                    icon={<CheckCircle fontSize="small" />}
-                    label={`${summary.paidCount} collected`}
-                    size="small"
-                    sx={{
-                      bgcolor: alpha(theme.palette.success.light, 0.2),
-                      color: theme.palette.success.contrastText,
-                      fontWeight: 700
-                    }}
-                  />
-                </Stack>
-              </Stack>
-              <Stack spacing={1.25} alignItems={{ xs: "flex-start", md: "flex-end" }}>
-                <Typography variant="caption" sx={{ textTransform: "uppercase", letterSpacing: 0.4, opacity: 0.78 }}>
-                  Outstanding balance
-                </Typography>
-                <Typography variant="h3" fontWeight={800} sx={{ color: outstandingColor }}>
-                  {formatCurrency(summary.outstanding)}
-                </Typography>
-                <Button
-                  variant="contained"
-                  color="inherit"
-                  onClick={refreshData}
-                  startIcon={<Refresh fontSize="small" />}
-                  disabled={loading}
-                  sx={{
-                    borderRadius: 2,
-                    px: 2.5,
-                    fontWeight: 700,
-                    bgcolor: theme.palette.mode === "dark" ? alpha(theme.palette.common.white, 0.18) : theme.palette.common.white,
-                    color: theme.palette.mode === "dark" ? theme.palette.common.white : theme.palette.grey[900]
-                  }}
-                >
-                  Refresh
-                </Button>
-              </Stack>
-            </Stack>
-          </Box>
-
-          <Grid container spacing={3}>
-            {[
-              {
-                label: "Collected",
-                value: formatCurrency(summary.collected),
-                description: `${summary.paidCount} incidents fully paid`,
-                icon: <Paid fontSize="small" />,
-                color: theme.palette.success.main
-              },
-              {
-                label: "Outstanding",
-                value: formatCurrency(summary.outstanding),
-                description: `${summary.outstandingCount} fines pending`,
-                icon: <AssignmentLate fontSize="small" />,
-                color: theme.palette.error.main
-              },
-              {
-                label: "Lost cases",
-                value: summary.lostCount,
-                description: "Marked as lost during returns",
-                icon: <WarningAmber fontSize="small" />,
-                color: theme.palette.warning.main
-              },
-              {
-                label: "Total incidents",
-                value: summary.incidents,
-                description: "Returned items evaluated",
-                icon: <ReceiptLong fontSize="small" />,
-                color: theme.palette.info.main
-              }
-            ].map(card => (
-              <Grid key={card.label} item xs={12} sm={6} md={3}>
-                <Card
-                  elevation={0}
-                  sx={{
-                    borderRadius: 2,
-                    border: `1px solid ${alpha(card.color, 0.35)}`,
-                    boxShadow: `0 18px 32px ${alpha(card.color, 0.16)}`,
-                    height: "100%"
-                  }}
-                >
-                  <CardContent>
-                    <Stack spacing={2}>
-                      <Stack direction="row" spacing={2} alignItems="center">
-                        <Avatar sx={{ bgcolor: alpha(card.color, 0.12), color: card.color, width: 48, height: 48 }}>
-                          {card.icon}
-                        </Avatar>
-                        <Stack spacing={0.25}>
-                          <Typography variant="overline" sx={{ color: card.color, letterSpacing: 0.6, fontWeight: 700 }}>
-                            {card.label}
-                          </Typography>
-                          <Typography variant="h5" fontWeight={800}>
-                            {card.value}
-                          </Typography>
-                        </Stack>
-                      </Stack>
-                      <Typography variant="caption" color="text.secondary">
-                        {card.description}
-                      </Typography>
-                    </Stack>
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
-
-          <Card elevation={0} sx={{ borderRadius: 2, border: `1px solid ${alpha(theme.palette.divider, 0.6)}` }}>
-            <CardHeader
-              avatar={
-                <Avatar sx={{ bgcolor: alpha(theme.palette.primary.main, 0.12), color: theme.palette.primary.main }}>
-                  <FilterAlt fontSize="small" />
-                </Avatar>
-              }
-              title="Filters"
-              subheader="Search and focus on specific fine scenarios"
-              action={
-                <Button
+            <Box sx={{ flexGrow: 1 }}>
+              <Typography variant="h6" fontWeight={700} sx={{ lineHeight: 1.3 }}>
+                Fine Management
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, maxWidth: 520 }}>
+                Monitor assessed fines, settle balances, and keep lost cases visible. The default overdue rate is {fineRateText} per day.
+              </Typography>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1} flexWrap="wrap" sx={{ mt: 1.25 }}>
+                <Chip
+                  icon={<AccountBalanceWallet fontSize="small" />}
+                  label={`Total assessed: ${formatCurrency(summary.total)}`}
                   size="small"
-                  onClick={resetFilters}
-                  disabled={filtersAreDefault}
-                  sx={{ textTransform: "none", fontWeight: 600 }}
-                >
-                  Clear all
-                </Button>
-              }
-            />
-            <Divider />
-            <CardContent>
-              <Grid container spacing={2}>
-                <Grid item xs={12} md={5}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label="Search borrower, item, remarks, or ID"
-                    value={search}
-                    onChange={e => setSearch(e.target.value)}
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <Search fontSize="small" />
-                        </InputAdornment>
-                      )
-                    }}
-                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-                  />
-                </Grid>
-                <Grid item xs={12} md={4}>
-                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: 0.4 }}>
-                    Fine status
-                  </Typography>
-                  <ToggleButtonGroup
-                    size="small"
-                    exclusive
-                    value={statusFilter}
-                    onChange={(event, value) => value && setStatusFilter(value)}
-                    sx={{ mt: 1, display: "flex", flexWrap: "wrap", gap: 1 }}
-                  >
-                    {statusFilters.map(option => (
-                      <ToggleButton
-                        key={option.value}
-                        value={option.value}
-                        sx={{ textTransform: "none", borderRadius: 999, px: 1.5, fontWeight: 600 }}
-                      >
-                        {option.label}
-                      </ToggleButton>
-                    ))}
-                  </ToggleButtonGroup>
-                </Grid>
-                <Grid item xs={12} md={3}>
-                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: 0.4 }}>
-                    Return window
-                  </Typography>
-                  <ToggleButtonGroup
-                    size="small"
-                    exclusive
-                    value={dateFilter}
-                    onChange={(event, value) => value && setDateFilter(value)}
-                    sx={{ mt: 1, display: "flex", flexWrap: "wrap", gap: 1 }}
-                  >
-                    {dateFilters.map(option => (
-                      <ToggleButton
-                        key={option.value}
-                        value={option.value}
-                        sx={{ textTransform: "none", borderRadius: 999, px: 1.5, fontWeight: 600 }}
-                      >
-                        {option.label}
-                      </ToggleButton>
-                    ))}
-                  </ToggleButtonGroup>
-                </Grid>
-              </Grid>
-            </CardContent>
-          </Card>
-
-          <Card elevation={0} sx={{ borderRadius: 2, border: `1px solid ${alpha(theme.palette.divider, 0.6)}`, overflow: "hidden" }}>
-            <CardHeader
-              title="Fine ledger"
-              subheader={`${filteredRows.length} of ${summary.incidents} assessed items`}
-              action={
+                  variant="outlined"
+                  sx={{ borderRadius: 1, fontWeight: 600 }}
+                />
                 <Chip
                   icon={<AssignmentLate fontSize="small" />}
                   label={`${summary.outstandingCount} outstanding`}
-                  color={summary.outstandingCount ? "error" : "default"}
                   size="small"
+                  color={summary.outstandingCount ? "error" : "default"}
+                  variant={summary.outstandingCount ? "filled" : "outlined"}
                   sx={{ borderRadius: 1, fontWeight: 600 }}
                 />
-              }
-            />
-            <Divider />
+                <Chip
+                  icon={<CheckCircle fontSize="small" />}
+                  label={`${summary.paidCount} collected`}
+                  size="small"
+                  color={summary.paidCount ? "success" : "default"}
+                  variant={summary.paidCount ? "filled" : "outlined"}
+                  sx={{ borderRadius: 1, fontWeight: 600 }}
+                />
+                <Chip
+                  icon={<WarningAmber fontSize="small" />}
+                  label={`${summary.lostCount} lost cases`}
+                  size="small"
+                  color={summary.lostCount ? "warning" : "default"}
+                  variant={summary.lostCount ? "filled" : "outlined"}
+                  sx={{ borderRadius: 1, fontWeight: 600 }}
+                />
+              </Stack>
+            </Box>
+            <Stack spacing={1.25} alignItems={{ xs: "flex-start", md: "flex-end" }} sx={{ minWidth: { md: 220 } }}>
+              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: 0.4 }}>
+                Outstanding balance
+              </Typography>
+              <Typography variant="h5" fontWeight={800} sx={{ color: outstandingColor }}>
+                {formatCurrency(summary.outstanding)}
+              </Typography>
+              <Button
+                onClick={refreshData}
+                startIcon={<Refresh fontSize="small" />}
+                disabled={loading}
+                variant="outlined"
+                size="small"
+                sx={{ borderRadius: 1, fontWeight: 600 }}
+              >
+                Refresh
+              </Button>
+            </Stack>
+          </Paper>
+
+          <Paper
+            variant="outlined"
+            sx={{ borderRadius: 2, p: { xs: 2, md: 2.5 } }}
+          >
+            <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems={{ xs: "flex-start", md: "center" }} justifyContent="space-between">
+              <Stack direction="row" spacing={1.5} alignItems="center">
+                <Avatar sx={{ bgcolor: alpha(theme.palette.primary.main, 0.08), color: theme.palette.primary.main }}>
+                  <FilterAlt fontSize="small" />
+                </Avatar>
+                <Box>
+                  <Typography variant="subtitle1" fontWeight={700}>
+                    Filters
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Search and focus on specific fine scenarios
+                  </Typography>
+                </Box>
+              </Stack>
+              <Button
+                size="small"
+                onClick={resetFilters}
+                disabled={filtersAreDefault}
+                sx={{ textTransform: "none", fontWeight: 600 }}
+              >
+                Clear all
+              </Button>
+            </Stack>
+            <Divider sx={{ my: 2 }} />
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={5}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Search borrower, item, remarks, or ID"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Search fontSize="small" />
+                      </InputAdornment>
+                    )
+                  }}
+                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: 0.4 }}>
+                  Fine status
+                </Typography>
+                <ToggleButtonGroup
+                  size="small"
+                  exclusive
+                  value={statusFilter}
+                  onChange={(event, value) => value && setStatusFilter(value)}
+                  sx={{ mt: 1, display: "flex", flexWrap: "wrap", gap: 1 }}
+                >
+                  {statusFilters.map(option => (
+                    <ToggleButton
+                      key={option.value}
+                      value={option.value}
+                      sx={{ textTransform: "none", borderRadius: 999, px: 1.5, fontWeight: 600 }}
+                    >
+                      {option.label}
+                    </ToggleButton>
+                  ))}
+                </ToggleButtonGroup>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: 0.4 }}>
+                  Return window
+                </Typography>
+                <ToggleButtonGroup
+                  size="small"
+                  exclusive
+                  value={dateFilter}
+                  onChange={(event, value) => value && setDateFilter(value)}
+                  sx={{ mt: 1, display: "flex", flexWrap: "wrap", gap: 1 }}
+                >
+                  {dateFilters.map(option => (
+                    <ToggleButton
+                      key={option.value}
+                      value={option.value}
+                      sx={{ textTransform: "none", borderRadius: 999, px: 1.5, fontWeight: 600 }}
+                    >
+                      {option.label}
+                    </ToggleButton>
+                  ))}
+                </ToggleButtonGroup>
+              </Grid>
+            </Grid>
+          </Paper>
+
+          <Paper variant="outlined" sx={{ borderRadius: 2, overflow: "hidden" }}>
+            <Stack
+              direction={{ xs: "column", md: "row" }}
+              spacing={1.5}
+              alignItems={{ xs: "flex-start", md: "center" }}
+              justifyContent="space-between"
+              sx={{ p: { xs: 2, md: 2.5 }, pb: 0 }}
+            >
+              <Box>
+                <Typography variant="subtitle1" fontWeight={700}>
+                  Fine ledger
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {`${filteredRows.length} of ${summary.incidents} assessed items`}
+                </Typography>
+              </Box>
+              <Chip
+                icon={<AssignmentLate fontSize="small" />}
+                label={`${summary.outstandingCount} outstanding`}
+                color={summary.outstandingCount ? "error" : "default"}
+                size="small"
+                sx={{ borderRadius: 1, fontWeight: 600 }}
+              />
+            </Stack>
+            <Divider sx={{ mt: 2 }} />
             {loading ? (
-              <CardContent>
+              <Box sx={{ p: { xs: 2, md: 2.5 } }}>
                 <Stack spacing={1.5}>
                   <Skeleton variant="rounded" height={52} />
                   <Skeleton variant="rounded" height={52} />
                   <Skeleton variant="rounded" height={52} />
                 </Stack>
-              </CardContent>
+              </Box>
             ) : filteredRows.length ? (
               <TableContainer sx={{ maxHeight: "70vh" }}>
                 <Table stickyHeader size="small">
@@ -992,7 +917,7 @@ const FinesPage = () => {
                 </Table>
               </TableContainer>
             ) : (
-              <CardContent>
+              <Box sx={{ p: { xs: 2, md: 2.5 } }}>
                 <Paper
                   variant="outlined"
                   sx={{
@@ -1017,9 +942,9 @@ const FinesPage = () => {
                     </Typography>
                   </Stack>
                 </Paper>
-              </CardContent>
+              </Box>
             )}
-          </Card>
+          </Paper>
         </Stack>
 
         <Dialog

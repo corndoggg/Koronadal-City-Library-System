@@ -20,17 +20,7 @@ import {
   InputAdornment,
   LinearProgress
 } from '@mui/material';
-import {
-  Edit,
-  Book,
-  Add,
-  Search,
-  Refresh,
-  Inventory2,
-  LibraryBooks,
-  AssignmentReturn,
-  Translate
-} from '@mui/icons-material';
+import { Edit, Book, Add, Search, Refresh, LibraryBooks } from '@mui/icons-material';
 import { alpha } from '@mui/material/styles';
 import BookFormModal from '../../../components/BookFormModal.jsx';
 
@@ -251,44 +241,10 @@ const BookManagementPage = () => {
   const {
     totalBooks,
     totalCopies,
-    availableCopies,
     borrowedCopies,
-    reservedCopies,
-    lostCopies,
-    subjectCount,
-    languageCount
+    lostCopies
   } = bookStats;
-
-  const summaryCards = [
-    {
-      title: 'Catalogued titles',
-      value: totalBooks,
-      caption: `${subjectCount} subjects organized`,
-      icon: <LibraryBooks fontSize="small" />,
-      color: 'primary'
-    },
-    {
-      title: 'Physical copies tracked',
-      value: totalCopies,
-      caption: `${availableCopies} currently on shelves`,
-      icon: <Inventory2 fontSize="small" />,
-      color: 'secondary'
-    },
-    {
-      title: 'Active loans & holds',
-      value: borrowedCopies,
-      caption: `${reservedCopies} reserved • ${lostCopies} lost`,
-      icon: <AssignmentReturn fontSize="small" />,
-      color: 'warning'
-    },
-    {
-      title: 'Languages represented',
-      value: languageCount,
-      caption: `${languageCount} languages supported`,
-      icon: <Translate fontSize="small" />,
-      color: 'info'
-    }
-  ];
+  // Summary cards removed per project design guidance; inline chips used instead
 
   const indexOfLast = currentPage * rowsPerPage;
   const indexOfFirst = indexOfLast - rowsPerPage;
@@ -310,163 +266,36 @@ const BookManagementPage = () => {
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', p: { xs: 2, md: 3 } }}>
       <Stack spacing={3}>
-        <Paper
-          sx={{
-            position: 'relative',
-            overflow: 'hidden',
-            borderRadius: 2.5,
-            p: { xs: 2.5, md: 3 },
-            backgroundImage: t =>
-              `linear-gradient(135deg, ${
-                t.palette.mode === 'dark'
-                  ? t.palette.primary.dark
-                  : alpha(t.palette.primary.light, 0.95)
-              } 0%, ${
-                t.palette.mode === 'dark' ? t.palette.primary.main : t.palette.primary.dark
-              } 100%)`,
-            color: t => t.palette.common.white,
-            border: t => `1px solid ${alpha(t.palette.primary.main, 0.4)}`,
-            boxShadow: t => `0 24px 48px ${alpha(t.palette.primary.main, t.palette.mode === 'dark' ? 0.45 : 0.25)}`
-          }}
-        >
-          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={3} alignItems={{ lg: 'center' }}>
-            <Stack spacing={2} flex={1}>
-              <Stack direction="row" spacing={1.25} alignItems="center">
-                <Book sx={{ opacity: 0.9 }} />
-                <Typography variant="overline" sx={{ opacity: 0.85, letterSpacing: 1 }}>
-                  Circulation console
-                </Typography>
+        <Paper variant="outlined" sx={{ borderRadius: 2, p: { xs: 2, md: 2.5 } }}>
+          <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ md: 'center' }} justifyContent="space-between" spacing={2}>
+            <Box>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Book />
+                <Typography variant="subtitle1" fontWeight={700}>Collection workspace</Typography>
               </Stack>
-              <Typography variant="h4" fontWeight={800} letterSpacing={0.45}>
-                Library collection workspace
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                Search and manage physical titles; inventory counts are shown inline.
               </Typography>
-              <Typography variant="body2" sx={{ maxWidth: 560, opacity: 0.9 }}>
-                Search, curate, and audit physical titles with a Devias-inspired dashboard that surfaces
-                availability, loan activity, and shelving locations at a glance.
-              </Typography>
-            </Stack>
-            <Stack spacing={1.5} minWidth={{ lg: 320 }} alignItems={{ xs: 'stretch', lg: 'flex-end' }}>
+            </Box>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="center">
               <TextField
                 size="small"
                 placeholder="Search title, author, or ISBN"
                 value={search}
                 onChange={event => setSearch(event.target.value)}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Search fontSize="small" />
-                    </InputAdornment>
-                  ),
-                  sx: {
-                    borderRadius: 1.25,
-                    bgcolor: alpha(theme.palette.common.white, 0.12),
-                    color: 'inherit',
-                    '& fieldset': { borderColor: alpha(theme.palette.common.white, 0.2) },
-                    '&:hover fieldset': { borderColor: alpha(theme.palette.common.white, 0.4) }
-                  }
-                }}
-                sx={{
-                  width: '100%',
-                  '& .MuiInputBase-input': { color: 'inherit' }
-                }}
+                InputProps={{ startAdornment: (<InputAdornment position="start"><Search fontSize="small" /></InputAdornment>) }}
+                sx={{ minWidth: { sm: 220, md: 320 }, '& .MuiOutlinedInput-root': { borderRadius: 1 } }}
               />
-              <Stack direction="row" gap={1} justifyContent={{ xs: 'flex-start', lg: 'flex-end' }} flexWrap="wrap">
-                <Tooltip title="Refresh books">
-                  <IconButton
-                    onClick={() => {
-                      fetchBooks();
-                      fetchLocations();
-                    }}
-                    size="small"
-                    sx={{
-                      borderRadius: 1,
-                      border: `1px solid ${alpha(theme.palette.common.white, 0.4)}`,
-                      color: 'inherit',
-                      '&:hover': { bgcolor: alpha(theme.palette.common.white, 0.16) }
-                    }}
-                  >
-                    <Refresh fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-                <Button
-                  variant="contained"
-                  color="secondary"
-                  size="small"
-                  startIcon={<Add />}
-                  onClick={openAddModal}
-                  sx={{ fontWeight: 700, borderRadius: 1, px: 2.25, boxShadow: 'none' }}
-                >
-                  Add book
-                </Button>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Chip label={`Titles: ${totalBooks}`} size="small" variant="outlined" sx={{ fontWeight: 700 }} />
+                <Chip label={`Copies: ${totalCopies}`} size="small" variant="outlined" sx={{ fontWeight: 700 }} />
+                <Chip label={`Borrowed: ${borrowedCopies}`} size="small" color={borrowedCopies ? 'warning' : 'default'} variant={borrowedCopies ? 'filled' : 'outlined'} sx={{ fontWeight: 700 }} />
+                <Chip label={`Lost: ${lostCopies}`} size="small" color={lostCopies ? 'error' : 'default'} variant={lostCopies ? 'filled' : 'outlined'} sx={{ fontWeight: 700 }} />
+                <Tooltip title="Refresh books"><IconButton size="small" onClick={() => { fetchBooks(); fetchLocations(); }} sx={{ borderRadius: 1, border: `1px solid ${alpha(theme.palette.divider, 0.75)}` }}><Refresh fontSize="small" /></IconButton></Tooltip>
+                <Button variant="contained" size="small" startIcon={<Add />} onClick={openAddModal} sx={{ borderRadius: 1, fontWeight: 700 }}>Add</Button>
               </Stack>
-              {loading && (
-                <LinearProgress
-                  color="inherit"
-                  sx={{ width: '100%', borderRadius: 1, backgroundColor: alpha(theme.palette.common.white, 0.2) }}
-                />
-              )}
             </Stack>
           </Stack>
-        </Paper>
-
-        <Paper
-          variant="outlined"
-          sx={{
-            borderRadius: 2,
-            border: t => `1.5px solid ${t.palette.divider}`,
-            bgcolor: 'background.paper',
-            p: { xs: 2, md: 2.75 }
-          }}
-        >
-          <Grid container spacing={2.5}>
-            {summaryCards.map(card => (
-              <Grid item xs={12} sm={6} xl={3} key={card.title}>
-                <Paper
-                  elevation={0}
-                  sx={{
-                    borderRadius: 1.75,
-                    p: 2,
-                    height: '100%',
-                    border: t => `1px solid ${alpha(t.palette[card.color]?.main || t.palette.primary.main, 0.25)}`,
-                    bgcolor: t =>
-                      alpha(
-                        t.palette[card.color]?.main || t.palette.primary.main,
-                        t.palette.mode === 'dark' ? 0.18 : 0.08
-                      )
-                  }}
-                >
-                  <Stack spacing={1.25}>
-                    <Stack direction="row" spacing={1.25} alignItems="center">
-                      <Box
-                        sx={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: 1,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          bgcolor: t => alpha(t.palette.background.paper, 0.35)
-                        }}
-                      >
-                        {card.icon}
-                      </Box>
-                      <Box>
-                        <Typography variant="overline" sx={{ letterSpacing: 0.6, opacity: 0.75 }}>
-                          {card.title}
-                        </Typography>
-                        <Typography variant="h5" fontWeight={800}>
-                          {card.value}
-                        </Typography>
-                      </Box>
-                    </Stack>
-                    <Typography variant="caption" sx={{ opacity: 0.85 }}>
-                      {card.caption}
-                    </Typography>
-                  </Stack>
-                </Paper>
-              </Grid>
-            ))}
-          </Grid>
         </Paper>
 
         {loading ? (

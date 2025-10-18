@@ -184,6 +184,10 @@ const DocumentApprovalPage = () => {
   const [lostSubmitting, setLostSubmitting] = useState(false);
   const [lostDialogOpen, setLostDialogOpen] = useState(false);
   const [lostTarget, setLostTarget] = useState(null);
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [rejectTarget, setRejectTarget] = useState(null);
+  const [rejectRemarks, setRejectRemarks] = useState("");
+  const [confirmState, setConfirmState] = useState({ open: false, action: null, tx: null });
 
   // Only fetch transactions on mount
   useEffect(() => { fetchTransactions(); }, []);
@@ -382,6 +386,22 @@ const DocumentApprovalPage = () => {
                 <Typography variant="body2" sx={{ mt: 0.5 }}>{selectedTx.Purpose || '—'}</Typography>
               </Paper>
             </Grid>
+            {selectedTx.Remarks && (
+              <Grid item xs={12}>
+                <Paper variant="outlined" sx={{ p: 2, borderRadius: 1.5 }}>
+                  <Typography variant="caption" color="text.secondary" fontWeight={600}>Transaction remarks</Typography>
+                  <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: 'pre-line' }}>{selectedTx.Remarks}</Typography>
+                </Paper>
+              </Grid>
+            )}
+            {selectedTx.ReturnRemarks && (
+              <Grid item xs={12}>
+                <Paper variant="outlined" sx={{ p: 2, borderRadius: 1.5 }}>
+                  <Typography variant="caption" color="text.secondary" fontWeight={600}>Return remarks</Typography>
+                  <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: 'pre-line' }}>{selectedTx.ReturnRemarks}</Typography>
+                </Paper>
+              </Grid>
+            )}
             {digitalOnly && (
               <Grid item xs={12}>
                 <Paper variant="outlined" sx={{ p: 2, borderRadius: 1.5, bgcolor: alpha(theme.palette.info.light, 0.08), borderColor: alpha(theme.palette.info.main, 0.4) }}>
@@ -451,14 +471,14 @@ const DocumentApprovalPage = () => {
                 startIcon={<CheckCircle />} disabled={actionLoading} sx={{ borderRadius: 1, fontWeight: 700 }}>
                 Approve
               </Button>
-              <Button onClick={() => rejectTx(selectedTx)} variant="outlined" size="small" color="error"
+              <Button onClick={() => openRejectDialog(selectedTx)} variant="outlined" size="small" color="error"
                 startIcon={<Cancel />} disabled={actionLoading} sx={{ borderRadius: 1, fontWeight: 700 }}>
                 Reject
               </Button>
             </>
           )}
           {!digitalOnly && selectedTx.ApprovalStatus === "Approved" && selectedTx.RetrievalStatus !== "Retrieved" && (
-            <Button onClick={() => markRetrieved(selectedTx)} variant="contained" size="small" color="primary"
+            <Button onClick={() => openConfirmAction('retrieved', selectedTx)} variant="contained" size="small" color="primary"
               startIcon={<TaskAlt />} disabled={actionLoading} sx={{ borderRadius: 1, fontWeight: 700 }}>
               Mark Retrieved
             </Button>
@@ -654,13 +674,23 @@ const DocumentApprovalPage = () => {
   const [approveTarget, setApproveTarget] = useState(null);
   // Quick approve options removed per request
 
+  const openConfirmAction = (action, tx) => {
+    if (!tx) return;
+    setConfirmState({ open: true, action, tx });
+  };
+
+  const closeConfirmAction = () => {
+    if (actionLoading) return;
+    setConfirmState({ open: false, action: null, tx: null });
+  };
+
   const openApprove = (tx) => {
     if (isDigitalOnlyTx(tx)) {
       setApproveTarget(tx);
       setApproveDue((dueDates[tx.BorrowID] || "").slice(0, 10));
       setApproveDlgOpen(true);
     } else {
-      approveTx(tx); // physical/mixed, approve immediately
+      openConfirmAction('approve-physical', tx);
     }
   };
 
@@ -693,13 +723,39 @@ const DocumentApprovalPage = () => {
       await fetchTransactions();
     } finally { setActionLoading(false); }
   };
-  const rejectTx = async (tx) => {
+  const rejectTx = async (tx, remarksText = "") => {
     setActionLoading(true);
     try {
-      await axios.put(`${API_BASE}/borrow/${tx.BorrowID}/reject?role=admin`);
-      logAudit('BORROW_REJECT', 'Borrow', tx.BorrowID, { role: 'admin' }); // NEW
+      await axios.put(`${API_BASE}/borrow/${tx.BorrowID}/reject?role=admin`, {
+        remarks: remarksText || undefined
+      });
+      logAudit('BORROW_REJECT', 'Borrow', tx.BorrowID, { role: 'admin', remarks: remarksText || undefined }); // NEW
       await fetchTransactions();
     } finally { setActionLoading(false); }
+  };
+
+  const openRejectDialog = (tx) => {
+    if (!tx) return;
+    setRejectTarget(tx);
+    setRejectRemarks("");
+    setRejectDialogOpen(true);
+  };
+
+  const closeRejectDialog = () => {
+    if (actionLoading) return;
+    setRejectDialogOpen(false);
+    setRejectTarget(null);
+    setRejectRemarks("");
+  };
+
+  const handleRejectConfirm = async () => {
+    if (!rejectTarget) return;
+    const remarksValue = rejectRemarks.trim();
+    if (!remarksValue) return;
+    await rejectTx(rejectTarget, remarksValue);
+    setRejectDialogOpen(false);
+    setRejectTarget(null);
+    setRejectRemarks("");
   };
   const markRetrieved = async (tx) => {
     setActionLoading(true);
@@ -708,6 +764,25 @@ const DocumentApprovalPage = () => {
       logAudit('BORROW_RETRIEVE', 'Borrow', tx.BorrowID, { role: 'admin' }); // NEW
       await fetchTransactions();
     } finally { setActionLoading(false); }
+  };
+
+  const handleConfirmAction = async () => {
+    if (!confirmState.tx) return;
+    const target = confirmState.tx;
+    try {
+      switch (confirmState.action) {
+        case 'approve-physical':
+          await approveTx(target);
+          break;
+        case 'retrieved':
+          await markRetrieved(target);
+          break;
+        default:
+          break;
+      }
+    } finally {
+      setConfirmState({ open: false, action: null, tx: null });
+    }
   };
 
   // Add: search-based filter
@@ -906,37 +981,6 @@ const DocumentApprovalPage = () => {
     return tallies;
   }, [transactions, statusMap]);
 
-  const summaryCards = useMemo(() => ([
-    {
-      label: "Pending approvals",
-      value: scenarioTallies.pending,
-      icon: <PendingActions fontSize="small" />,
-      description: "Waiting for librarian action",
-      color: theme.palette.warning.main
-    },
-    {
-      label: "Active loans",
-      value: scenarioTallies.active,
-      icon: <TaskAlt fontSize="small" />,
-      description: `${scenarioTallies.borrowed || 0} out • ${scenarioTallies.awaitingPickup || 0} pickup`,
-      color: theme.palette.primary.main
-    },
-    {
-      label: "Overdue / expired",
-      value: scenarioTallies.overdue,
-      icon: <AssignmentLate fontSize="small" />,
-      description: `${scenarioTallies.dueToday || 0} due today`,
-      color: theme.palette.error.main
-    },
-    {
-      label: "Digital requests",
-      value: scenarioTallies.digitalOnly,
-      icon: <CloudDone fontSize="small" />,
-      description: `${scenarioTallies.digitalActive || 0} active now`,
-      color: theme.palette.info.main
-    }
-  ]), [scenarioTallies, theme]);
-
   const MetaLine = ({ data }) => (
     <Stack spacing={0.5} sx={{ fontSize: 12, '& b': { fontWeight: 600 } }}>
   {data.filter(([, v]) => v).map(([k, v]) => (
@@ -1105,6 +1149,102 @@ const DocumentApprovalPage = () => {
             sx={{ borderRadius: 1, fontWeight: 700 }}
           >
             {lostSubmitting ? 'Marking…' : 'Confirm lost'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    );
+  };
+
+  const renderRejectDialog = () => {
+    if (!rejectDialogOpen || !rejectTarget) return null;
+    const borrowerLabel = getBorrowerInfo(rejectTarget.BorrowerID) || `Borrower #${rejectTarget.BorrowerID || '—'}`;
+    return (
+      <Dialog open={rejectDialogOpen} onClose={closeRejectDialog} maxWidth="sm" fullWidth
+        PaperProps={{ sx: { borderRadius: 1, border: `2px solid ${theme.palette.divider}` } }}>
+        <DialogTitle sx={{ fontWeight: 800, py: 1.25, borderBottom: `2px solid ${theme.palette.divider}` }}>
+          Reject request • Borrow #{rejectTarget.BorrowID}
+        </DialogTitle>
+        <DialogContent dividers sx={{ display: 'flex', flexDirection: 'column', gap: 1.75, bgcolor: 'background.default' }}>
+          <Typography variant="body2" color="text.secondary">
+            This note is sent to {borrowerLabel}. Keep it short and specific so the borrower understands the next steps.
+          </Typography>
+          <TextField
+            label="Remarks"
+            placeholder="Reason for rejection (required)"
+            value={rejectRemarks}
+            onChange={(e) => setRejectRemarks(e.target.value)}
+            multiline
+            minRows={3}
+            autoFocus
+            fullWidth
+            sx={{ '& .MuiInputBase-root': { borderRadius: 1 } }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ borderTop: `2px solid ${theme.palette.divider}`, py: 1 }}>
+          <Button onClick={closeRejectDialog} variant="outlined" size="small" sx={{ borderRadius: 1 }} disabled={actionLoading}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleRejectConfirm}
+            variant="contained"
+            size="small"
+            color="error"
+            disabled={actionLoading || !rejectRemarks.trim()}
+            sx={{ borderRadius: 1, fontWeight: 700 }}
+          >
+            {actionLoading ? 'Rejecting…' : 'Reject request'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    );
+  };
+
+  const renderActionConfirm = () => {
+    if (!confirmState.open || !confirmState.tx) return null;
+    const { action, tx } = confirmState;
+    const borrowerLabel = getBorrowerInfo(tx.BorrowerID) || `Borrower #${tx.BorrowerID || '—'}`;
+
+    let title = 'Confirm action';
+    let description = 'Are you sure you want to continue?';
+    let confirmLabel = 'Confirm';
+    let confirmColor = 'primary';
+
+    if (action === 'approve-physical') {
+      title = 'Approve borrow request';
+      description = `Approve this request so ${borrowerLabel} can pick up the physical copies.`;
+      confirmLabel = 'Approve';
+      confirmColor = 'success';
+    } else if (action === 'retrieved') {
+      title = 'Mark as retrieved';
+      description = `Confirm that ${borrowerLabel} has picked up the items for borrow #${tx.BorrowID}.`;
+      confirmLabel = 'Mark retrieved';
+      confirmColor = 'primary';
+    }
+
+    return (
+      <Dialog open={confirmState.open} onClose={closeConfirmAction} maxWidth="xs" fullWidth
+        PaperProps={{ sx: { borderRadius: 1, border: `2px solid ${theme.palette.divider}` } }}>
+        <DialogTitle sx={{ fontWeight: 800, py: 1.25, borderBottom: `2px solid ${theme.palette.divider}` }}>
+          {title}
+        </DialogTitle>
+        <DialogContent dividers sx={{ bgcolor: 'background.default' }}>
+          <Typography variant="body2" color="text.secondary">
+            {description}
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ borderTop: `2px solid ${theme.palette.divider}`, py: 1 }}>
+          <Button onClick={closeConfirmAction} variant="outlined" size="small" sx={{ borderRadius: 1 }} disabled={actionLoading}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleConfirmAction}
+            variant="contained"
+            size="small"
+            color={confirmColor}
+            disabled={actionLoading}
+            sx={{ borderRadius: 1, fontWeight: 700 }}
+          >
+            {actionLoading ? 'Working…' : confirmLabel}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1298,88 +1438,43 @@ const DocumentApprovalPage = () => {
     <Box component="main" sx={{ flexGrow: 1, bgcolor: 'background.default', py: { xs: 3, md: 4 }, minHeight: '100vh' }}>
       <Container maxWidth="xl">
         <Stack spacing={3}>
-          <Box
+          <Paper
+            variant="outlined"
             sx={{
-              position: 'relative',
-              borderRadius: 3,
-              overflow: 'hidden',
-              p: { xs: 2.5, md: 3 },
-              backgroundImage: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.15)} 0%, ${alpha(theme.palette.primary.dark, 0.65)} 100%)`,
-              color: theme.palette.mode === 'dark' ? theme.palette.primary.contrastText : theme.palette.common.white,
-              border: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
-              boxShadow: `0 18px 42px ${alpha(theme.palette.primary.main, 0.16)}`
+              borderRadius: 2,
+              p: { xs: 2, md: 2.5 },
+              display: 'flex',
+              flexDirection: { xs: 'column', md: 'row' },
+              gap: { xs: 1.5, md: 2 },
+              alignItems: { xs: 'flex-start', md: 'center' },
+              justifyContent: 'space-between'
             }}
           >
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2.5} alignItems={{ xs: 'flex-start', md: 'center' }} justifyContent="space-between">
-              <Box>
-                <Typography variant="h4" fontWeight={800} letterSpacing={0.6}>Document approvals</Typography>
-                <Typography variant="body2" sx={{ mt: 0.75, color: alpha(theme.palette.common.white, 0.85), maxWidth: 520 }}>
-                  Monitor borrower requests, track due windows, and surface scenarios such as digital expirations or lost copies.
-                </Typography>
-              </Box>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'stretch', sm: 'center' }}>
-                <Chip
-                  label={`Total: ${scenarioTallies.total}`}
-                  size="small"
-                  sx={{
-                    bgcolor: alpha(theme.palette.common.white, 0.15),
-                    color: alpha(theme.palette.common.white, 0.95),
-                    fontWeight: 700
-                  }}
-                />
-                <Button
-                  onClick={fetchTransactions}
-                  startIcon={<Refresh fontSize="small" />}
-                  variant="contained"
-                  color="inherit"
-                  disabled={loading}
-                  sx={{
-                    borderRadius: 2,
-                    px: 2.5,
-                    fontWeight: 700,
-                    bgcolor: theme.palette.mode === 'dark' ? alpha(theme.palette.common.white, 0.18) : theme.palette.common.white,
-                    color: theme.palette.mode === 'dark' ? theme.palette.common.white : theme.palette.grey[900],
-                    '&:hover': {
-                      bgcolor: theme.palette.mode === 'dark'
-                        ? alpha(theme.palette.common.white, 0.24)
-                        : alpha(theme.palette.common.white, 0.9)
-                    }
-                  }}
-                >
-                  Refresh
-                </Button>
-              </Stack>
+            <Box sx={{ flexGrow: 1 }}>
+              <Typography variant="h5" fontWeight={700} sx={{ lineHeight: 1.3 }}>
+                Document approvals
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, maxWidth: 520 }}>
+                Review borrower requests, monitor due windows, and keep digital access in sync without extra visuals.
+              </Typography>
+            </Box>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'stretch', sm: 'center' }}>
+              <Chip
+                label={`Total: ${scenarioTallies.total}`}
+                size="small"
+                sx={{ fontWeight: 600, borderRadius: 1 }}
+              />
+              <Button
+                onClick={fetchTransactions}
+                startIcon={<Refresh fontSize="small" />}
+                variant="outlined"
+                disabled={loading}
+                sx={{ borderRadius: 1, fontWeight: 600 }}
+              >
+                Refresh
+              </Button>
             </Stack>
-          </Box>
-
-          <Grid container spacing={3}>
-            {summaryCards.map(card => (
-              <Grid item xs={12} sm={6} md={3} key={card.label}>
-                <Card elevation={0} sx={{ borderRadius: 2, border: `1px solid ${alpha(card.color, 0.35)}`, boxShadow: `0 18px 32px ${alpha(card.color, 0.14)}`, height: '100%' }}>
-                  <CardContent>
-                    <Stack spacing={2}>
-                      <Stack direction="row" spacing={2} alignItems="center">
-                        <Avatar sx={{ bgcolor: alpha(card.color, 0.12), color: card.color, width: 48, height: 48 }}>
-                          {card.icon}
-                        </Avatar>
-                        <Box>
-                          <Typography variant="overline" sx={{ color: card.color, letterSpacing: 0.6, fontWeight: 700, textTransform: 'uppercase' }}>
-                            {card.label}
-                          </Typography>
-                          <Typography variant="h4" sx={{ fontWeight: 800, lineHeight: 1 }}>
-                            {card.value}
-                          </Typography>
-                        </Box>
-                      </Stack>
-                      <Typography variant="caption" color="text.secondary">
-                        {card.description}
-                      </Typography>
-                    </Stack>
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
+          </Paper>
 
           <Card elevation={0} sx={{ borderRadius: 2, border: `1px solid ${alpha(theme.palette.divider, 0.6)}` }}>
             <CardHeader
@@ -1530,7 +1625,8 @@ const DocumentApprovalPage = () => {
                       <TableCell width={120}>Borrowed</TableCell>
                       <TableCell width={150}>Due / Expiry</TableCell>
                       <TableCell>Purpose</TableCell>
-                      <TableCell width={260} align="center">Actions</TableCell>
+                      <TableCell width={220}>Remarks</TableCell>
+                      <TableCell width={240} align="center">Actions</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody sx={{ '& tr:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.04) }, '& td': { borderBottom: `1px solid ${theme.palette.divider}` } }}>
@@ -1541,6 +1637,11 @@ const DocumentApprovalPage = () => {
                       const dueDescriptor = describeDue(meta);
                       const digitalOnly = isDigitalOnlyTx(tx);
                       const itemCount = (tx.items || []).length;
+                      const txRemark = (tx.Remarks || '').trim();
+                      const returnRemark = (tx.ReturnRemarks || '').trim();
+                      const remarkText = status.code === 'returned'
+                        ? (returnRemark || txRemark)
+                        : txRemark || returnRemark;
                       return (
                         <TableRow key={tx.BorrowID} hover>
                           <TableCell>
@@ -1585,6 +1686,17 @@ const DocumentApprovalPage = () => {
                               {tx.Purpose || '—'}
                             </Typography>
                           </TableCell>
+                          <TableCell>
+                            {remarkText ? (
+                              <Tooltip title={<Typography variant="body2" sx={{ whiteSpace: 'pre-line' }}>{remarkText}</Typography>}>
+                                <Typography variant="caption" color="text.primary" noWrap sx={{ maxWidth: 200 }}>
+                                  {remarkText}
+                                </Typography>
+                              </Tooltip>
+                            ) : (
+                              <Typography variant="caption" color="text.disabled">—</Typography>
+                            )}
+                          </TableCell>
                           <TableCell align="center">
                             <Stack direction="row" spacing={0.75} justifyContent="center" flexWrap="wrap">
                               <Tooltip title="View details">
@@ -1613,7 +1725,7 @@ const DocumentApprovalPage = () => {
                                     <IconButton
                                       size="small"
                                       color="error"
-                                      onClick={() => rejectTx(tx)}
+                                      onClick={() => openRejectDialog(tx)}
                                       disabled={actionLoading}
                                       sx={{ border: `1px solid ${alpha(theme.palette.error.main, 0.5)}`, borderRadius: 1 }}
                                     >
@@ -1626,7 +1738,7 @@ const DocumentApprovalPage = () => {
                                 <Button
                                   size="small"
                                   variant="contained"
-                                  onClick={() => markRetrieved(tx)}
+                                  onClick={() => openConfirmAction('retrieved', tx)}
                                   disabled={actionLoading}
                                   sx={{ borderRadius: 1, fontWeight: 700, px: 1.5 }}
                                 >
@@ -1694,6 +1806,8 @@ const DocumentApprovalPage = () => {
       {renderTxModal()}
       {renderReturnModal()}
       {renderLostDialog()}
+      {renderRejectDialog()}
+      {renderActionConfirm()}
 
       {/* Approve dialog for digital-only */}
       <Dialog open={approveDlgOpen} onClose={() => setApproveDlgOpen(false)} maxWidth="xs" fullWidth

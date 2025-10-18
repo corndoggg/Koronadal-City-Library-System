@@ -20,9 +20,7 @@ import { nowDateTime } from '../../../utils/date';
 const surfacePaper = (extra = {}) => (theme) => ({
   borderRadius: 1.75,
   border: `1px solid ${alpha(theme.palette.divider, 0.4)}`,
-  background: `linear-gradient(135deg, ${alpha(theme.palette.background.paper, 0.98)}, ${alpha(theme.palette.primary.light, 0.12)})`,
-  boxShadow: `0 18px 40px ${alpha(theme.palette.common.black, 0.05)}`,
-  backdropFilter: 'blur(4px)',
+  background: theme.palette.background.paper,
   ...extra
 });
 
@@ -977,73 +975,6 @@ const ReportsPage = () => {
 
   const currentReport = dataBuilders[reportType]();
 
-  const summaryMetrics = useMemo(() => {
-    const meta = currentReport.meta || {};
-    const baseRange = (fromDate || toDate) ? `${fromDate || '—'} to ${toDate || '—'}` : 'All activity';
-    const rowsCount = currentReport.rows.length;
-
-    if (reportType === 'book_borrowing') {
-      const {
-        total = 0,
-        returnedCount = 0,
-        active = 0,
-        pendingApproval = 0,
-        overdue = 0
-      } = meta;
-      return [
-        { label: 'Total Borrowings', value: total },
-        { label: 'Active Loans', value: active, subtitle: `${returnedCount} returned` },
-        { label: 'Pending Approval', value: pendingApproval },
-        { label: 'Overdue Loans', value: overdue, subtitle: baseRange }
-      ];
-    }
-
-    if (reportType === 'document_retrieval') {
-      const entries = meta.entries || [];
-      const totalRequests = entries.reduce((sum, item) => sum + (item.total || 0), 0);
-      const delayed = entries.reduce((sum, item) => sum + (item.delayed || 0), 0);
-      return [
-        { label: 'Total Requests', value: totalRequests },
-        { label: 'Departments', value: entries.length },
-        { label: 'Delayed >3 days', value: delayed },
-        { label: 'Coverage', value: baseRange }
-      ];
-    }
-
-    if (reportType === 'pending_overdue') {
-      const { totalPending = 0, overdueCount = 0 } = meta;
-      return [
-        { label: 'Pending Returns', value: totalPending },
-        { label: 'Overdue Items', value: overdueCount },
-        { label: 'Rows Rendered', value: rowsCount },
-        { label: 'Coverage', value: baseRange }
-      ];
-    }
-
-    if (reportType === 'request_backlog') {
-      const {
-        active = 0,
-        pending = 0,
-        retrieval = 0,
-        overdue = 0,
-        averageAge = 0,
-        approvalBacklog = 0,
-        retrievalBacklog = 0
-      } = meta;
-      return [
-        { label: 'Active Requests', value: active },
-        { label: 'Pending Approval', value: `${pending} (Backlog ${approvalBacklog})` },
-        { label: 'Awaiting Retrieval', value: `${retrieval} (Backlog ${retrievalBacklog})` },
-        { label: 'Overdue Returns', value: overdue, subtitle: `Avg age ${averageAge.toFixed(1)}d` }
-      ];
-    }
-
-    return [
-      { label: 'Rows Rendered', value: rowsCount },
-      { label: 'Coverage', value: baseRange }
-    ];
-  }, [currentReport, fromDate, reportType, toDate]);
-
   // Reset page on data change
   useEffect(() => {
     setPage(1);
@@ -1169,7 +1100,7 @@ const ReportsPage = () => {
         px: { xs: 2, md: 3.5 },
         py: { xs: 2.5, md: 4 },
         minHeight: '100vh',
-        background: (theme) => `linear-gradient(160deg, ${alpha(theme.palette.background.default, 0.96)}, ${alpha(theme.palette.primary.light, 0.08)})`
+        background: (theme) => theme.palette.background.default
       }}
     >
       <Stack spacing={3.5}>
@@ -1334,35 +1265,6 @@ const ReportsPage = () => {
             </Button>
           </Stack>
         </Paper>
-
-        {summaryMetrics.length > 0 && (
-          <Grid container spacing={2}>
-            {summaryMetrics.map((metric) => (
-              <Grid item xs={12} sm={6} md={3} key={metric.label}>
-                <Paper
-                  sx={surfacePaper({
-                    p: { xs: 1.75, md: 2 },
-                    height: '100%'
-                  })}
-                >
-                  <Stack spacing={0.75}>
-                    <Typography variant="caption" color="text.secondary" fontWeight={700}>
-                      {metric.label}
-                    </Typography>
-                    <Typography variant="h6" fontWeight={800}>
-                      {metric.value}
-                    </Typography>
-                    {metric.subtitle && (
-                      <Typography variant="caption" color="text.secondary">
-                        {metric.subtitle}
-                      </Typography>
-                    )}
-                  </Stack>
-                </Paper>
-              </Grid>
-            ))}
-          </Grid>
-        )}
 
         {err && (
           <Paper
