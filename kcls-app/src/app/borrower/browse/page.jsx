@@ -16,7 +16,7 @@ import { alpha } from "@mui/material/styles";
 import DocumentPDFViewer from '../../../components/DocumentPDFViewer';
 import { useSystemSettings } from '../../../contexts/SystemSettingsContext.jsx';
 
-const DEFAULT_ROWS_PER_PAGE = 8;
+const DEFAULT_ROWS_PER_PAGE = 24;
 
 const SEARCHABLE_KEYS_BY_TYPE = {
   Book: ["Title", "Author", "Publisher", "ISBN", "Category", "Edition", "Description"],
@@ -438,7 +438,7 @@ const BrowseLibraryPage = () => {
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: theme => alpha(theme.palette.background.default, 0.85) }}>
-      <Container maxWidth="xl" sx={{ py: { xs: 0, md: 0 } }}>
+      <Container maxWidth="xxl" sx={{ py: { xs: 0, md: 0 } }}>
         <Stack spacing={{ xs: 1, md: 1 }}>
           <Paper
             elevation={0}
@@ -618,9 +618,9 @@ const BrowseLibraryPage = () => {
           </Card>
 
           {loading ? (
-            <Grid container spacing={2.5}>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0, justifyContent: 'flex-start' }}>
               {Array.from({ length: rowsPerPage }).map((_, i) => (
-                <Grid item xs={12} sm={6} md={4} lg={3} key={i}>
+                <Box key={i} sx={{ width: { xs: '100%', sm: '50%', md: '33.333%', lg: '25%' }, flex: '0 0 auto', boxSizing: 'border-box' }}>
                   <Paper
                     sx={{
                       p: 2,
@@ -634,19 +634,27 @@ const BrowseLibraryPage = () => {
                     <Skeleton width="90%" />
                     <Skeleton variant="rectangular" height={34} sx={{ mt: 2, borderRadius: 1 }} />
                   </Paper>
-                </Grid>
+                </Box>
               ))}
-            </Grid>
+            </Box>
           ) : (
-            <Grid container spacing={2.5}>
+            <Box
+              sx={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 0,
+                justifyContent: 'flex-start'
+              }}
+            >
               {paged.map(item => {
                 const isBook = item.type === 'Book';
                 const availableCount = (item.inventory || []).filter(inv => (inv.availability || inv.Availability) === "Available").length;
                 const docTypes = !isBook ? getAvailableDocTypes(item) : [];
                 const reason = disabledReason(item, isBook);
                 const showDigitalView = !isBook && (item.File_Path || item.file_path) && (item.Sensitivity || item.sensitivity) === "Public";
+                const key = `${item.type}-${item.Book_ID || item.Document_ID}`;
                 return (
-                  <Grid item xs={12} sm={6} md={4} lg={3} key={`${item.type}-${item.Book_ID || item.Document_ID}`}>
+                  <Box key={key} sx={{ width: { xs: '100%', sm: '50%', md: '33.333%', lg: '25%' }, flex: '0 0 auto', boxSizing: 'border-box' }}>
                     <Paper
                       elevation={0}
                       sx={{
@@ -687,7 +695,6 @@ const BrowseLibraryPage = () => {
                         </Box>
                       )}
 
-                      
                       <Stack direction="row" alignItems="flex-start" spacing={1} mb={0.5}>
                         <Box flexGrow={1} minWidth={0}>
                           <Typography
@@ -789,11 +796,12 @@ const BrowseLibraryPage = () => {
                         {reason || 'Add to Queue'}
                       </Button>
                     </Paper>
-                  </Grid>
+                  </Box>
                 );
               })}
+
               {!paged.length && (
-                <Grid item xs={12}>
+                <Box sx={{ width: '100%' }}>
                   <Paper
                     sx={{
                       p: 6,
@@ -807,9 +815,9 @@ const BrowseLibraryPage = () => {
                       No {emptyLabel} match the current filters.
                     </Typography>
                   </Paper>
-                </Grid>
+                </Box>
               )}
-            </Grid>
+            </Box>
           )}
           <Stack
             direction={{ xs: 'column', sm: 'row' }}

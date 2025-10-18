@@ -6,6 +6,7 @@ import {
   Switch, FormGroup, FormControlLabel, Checkbox, FormHelperText, Tooltip,
   Grid, Card, CardHeader, CardContent, CardActions, Avatar, Pagination
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import {
   Save as SaveIcon,
   Restore as ResetIcon,
@@ -359,37 +360,38 @@ const SettingsPage = () => {
   };
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', py: 4 }}>
-      <Box sx={{ maxWidth: 1200, mx: 'auto', px: { xs: 2, md: 4 } }}>
-        <Box
+    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', py: 3 }}>
+      <Box sx={{ maxWidth: 1400, mx: 'auto', px: { xs: 2, md: 3 } }}>
+        <Paper
+          variant="outlined"
           sx={{
             mb: 4,
             p: { xs: 3, md: 4 },
             borderRadius: 2,
-            background: (theme) => `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 60%)`,
-            color: 'primary.contrastText'
+            backgroundColor: (theme) => theme.palette.background.paper,
+            border: (theme) => `1px solid ${alpha(theme.palette.divider, 0.4)}`
           }}
         >
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} alignItems={{ xs: 'flex-start', sm: 'center' }}>
-            <Avatar sx={{ bgcolor: 'primary.light', color: 'primary.dark', width: 56, height: 56 }}>
+            <Avatar sx={{ bgcolor: (theme) => alpha(theme.palette.primary.main, 0.12), color: 'primary.main', width: 56, height: 56 }}>
               <SettingsIcon />
             </Avatar>
             <Box>
               <Typography variant="h5" fontWeight={800} sx={{ letterSpacing: 0.3 }}>System Administration</Typography>
-              <Typography variant="body2" sx={{ opacity: 0.9, mt: 0.5 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                 Tune lending policies, automate backups, and safeguard collections from a single control pane.
               </Typography>
             </Box>
             <Stack direction="row" spacing={1} alignItems="center" sx={{ ml: { sm: 'auto' } }}>
-              <Chip size="small" label={`Source: ${ctxSettings?._source || '—'}`} sx={{ bgcolor: 'primary.light', color: 'primary.dark' }} />
-              {ctxLoading && <CircularProgress size={18} color="inherit" />}
+              <Chip size="small" label={`Source: ${ctxSettings?._source || '—'}`} />
+              {ctxLoading && <CircularProgress size={18} />}
             </Stack>
           </Stack>
-        </Box>
+        </Paper>
 
-        <Grid container spacing={3} alignItems="stretch">
+        <Grid container spacing={2} alignItems="stretch">
           <Grid item xs={12} md={5}>
-            <Card variant="outlined" sx={{ height: '100%', display: 'flex', flexDirection: 'column', borderRadius: 2 }}>
+            <Card variant="outlined" sx={{ height: '100%', display: 'flex', flexDirection: 'column', borderRadius: 1.5 }}>
               <CardHeader
                 avatar={(<Avatar sx={{ bgcolor: 'primary.main', color: 'primary.contrastText' }}><SettingsIcon fontSize="small" /></Avatar>)}
                 titleTypographyProps={{ fontWeight: 800, fontSize: 16 }}
@@ -398,7 +400,7 @@ const SettingsPage = () => {
                 subheader="Adjust global penalties and lending thresholds."
               />
               <Divider />
-              <CardContent sx={{ flexGrow: 1 }}>
+              <CardContent sx={{ flexGrow: 1, py: 2 }}>
                 <Stack spacing={2.5}>
                   <TextField
                     label="Fine per day"
@@ -431,7 +433,7 @@ const SettingsPage = () => {
                   />
                 </Stack>
               </CardContent>
-              <CardActions sx={{ px: 3, pb: 3, pt: 0 }}>
+              <CardActions sx={{ px: 2.5, pb: 2, pt: 0 }}>
                 <Stack direction="row" spacing={1.5} sx={{ width: '100%' }}>
                   <Button
                     variant="contained"
@@ -457,7 +459,7 @@ const SettingsPage = () => {
           </Grid>
 
           <Grid item xs={12} md={7}>
-            <Card variant="outlined" sx={{ borderRadius: 2 }}>
+            <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
               <CardHeader
                 avatar={(<Avatar sx={{ bgcolor: 'secondary.main', color: 'secondary.contrastText' }}><StorageIcon fontSize="small" /></Avatar>)}
                 titleTypographyProps={{ fontWeight: 800, fontSize: 16 }}
@@ -467,13 +469,13 @@ const SettingsPage = () => {
                 action={(backupsLoading || backupRunning) ? <CircularProgress size={18} sx={{ mt: 1, mr: 1 }} /> : null}
               />
               <Divider />
-              <CardContent>
-                <Stack spacing={3}>
-                  <Stack spacing={1}>
+              <CardContent sx={{ py: 2 }}>
+                  <Stack spacing={2}>
+                    <Stack spacing={0.75}>
                     <Typography variant="caption" color="text.secondary" fontWeight={600}>
                       Create and download MySQL backup archives. Latest snapshots appear first.
                     </Typography>
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                       <Button
                         variant="contained"
                         startIcon={<BackupIcon />}
@@ -514,7 +516,7 @@ const SettingsPage = () => {
                   )}
                   {backupsError && <Alert severity="error">{backupsError}</Alert>}
 
-                  <Stack spacing={1.5}>
+                  <Stack spacing={1}>
                     {!backupsLoading && (!backups || backups.length === 0) && (
                       <Typography variant="caption" color="text.secondary">No backups yet.</Typography>
                     )}
@@ -536,7 +538,7 @@ const SettingsPage = () => {
                   <Divider sx={{ my: 1 }} />
 
                   <Stack spacing={2.5}>
-                    <Stack direction="row" spacing={1.5} alignItems="center">
+                    <Stack direction="row" spacing={1} alignItems="center">
                       <Avatar sx={{ bgcolor: 'secondary.light', color: 'secondary.dark', width: 36, height: 36 }}>
                         <ScheduleIcon fontSize="small" />
                       </Avatar>
@@ -560,7 +562,7 @@ const SettingsPage = () => {
                       label={schedule.enabled ? 'Automatic backups enabled' : 'Automatic backups disabled'}
                     />
 
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'stretch', sm: 'center' }}>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} alignItems={{ xs: 'stretch', sm: 'center' }}>
                       <TextField
                         label="Backup time"
                         type="time"
@@ -629,7 +631,7 @@ const SettingsPage = () => {
           </Grid>
 
           <Grid item xs={12}>
-            <Card variant="outlined" sx={{ borderRadius: 2 }}>
+            <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
               <CardHeader
                 avatar={(<Avatar sx={{ bgcolor: 'error.main', color: 'error.contrastText' }}><PictureAsPdfIcon fontSize="small" /></Avatar>)}
                 titleTypographyProps={{ fontWeight: 800, fontSize: 16 }}
@@ -639,9 +641,9 @@ const SettingsPage = () => {
                 action={uploadsLoading ? <CircularProgress size={18} sx={{ mt: 1, mr: 1 }} /> : null}
               />
               <Divider />
-              <CardContent>
-                <Stack spacing={3}>
-                  <Stack spacing={1}>
+              <CardContent sx={{ py: 2 }}>
+                <Stack spacing={2}>
+                    <Stack spacing={0.75}>
                     <Typography variant="caption" color="text.secondary" fontWeight={600}>
                       This list reflects the files currently stored on disk. Use the controls to refresh or open a document.
                     </Typography>
@@ -686,7 +688,7 @@ const SettingsPage = () => {
 
                   {uploadsError && <Alert severity="error">{uploadsError}</Alert>}
 
-                  <Stack spacing={1.5}>
+                    <Stack spacing={1}>
                     {!uploadsLoading && (!uploads || uploads.length === 0) && (
                       <Typography variant="caption" color="text.secondary">No files detected in uploads directory.</Typography>
                     )}

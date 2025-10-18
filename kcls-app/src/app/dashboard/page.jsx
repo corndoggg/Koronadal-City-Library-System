@@ -504,10 +504,14 @@ const DashboardPage = () => {
         backgroundColor: backgrounds,
         borderColor: borders,
         borderWidth: 2,
-        borderRadius: 16,
+        // smaller corner radius keeps bars visually aligned and prevents large pill shapes
+        borderRadius: 6,
         borderSkipped: false,
   data: BORROW_STATUS_LABELS.map(label => metrics[BORROW_STATUS_VALUE_KEYS[label]] ?? 0),
-        maxBarThickness: 48
+        // narrower category so bars sit clearly under their labels
+        categoryPercentage: 0.6,
+        barPercentage: 0.85,
+        maxBarThickness: 36
       }]
     };
   }, [metrics, theme]);
@@ -515,17 +519,19 @@ const DashboardPage = () => {
   const chartOptions = useMemo(() => ({
     responsive: true,
     maintainAspectRatio: false,
-    layout: { padding: 12 },
-    cutout: '68%',
+    // tighten internal paddings so legends/labels use less vertical space
+    layout: { padding: 6 },
+    cutout: '60%',
     plugins: {
       legend: {
         position: 'bottom',
         align: 'center',
         labels: {
           usePointStyle: true,
-          padding: 16,
-          boxWidth: 10,
-          font: { size: 11, weight: 600 },
+          // reduce the legend footprint (less padding + smaller boxes/labels)
+          padding: 8,
+          boxWidth: 8,
+          font: { size: 10, weight: 600 },
           color: theme.palette.text.secondary,
           textAlign: 'center'
         }
@@ -552,7 +558,8 @@ const DashboardPage = () => {
   const barOptions = useMemo(() => ({
     responsive: true,
     maintainAspectRatio: false,
-    layout: { padding: { top: 12, right: 16, left: 8, bottom: 8 } },
+    // tighter layout so x-axis labels have room and don't collide with neighbors
+    layout: { padding: { top: 8, right: 12, left: 6, bottom: 6 } },
     plugins: {
       legend: { display: false },
       tooltip: {
@@ -569,30 +576,31 @@ const DashboardPage = () => {
     },
     scales:{
       x: {
+        // offset=true gives bars breathing room at the chart edges and aligns categories
         offset: true,
         grid: { display: false },
         ticks: {
-          autoSkip: false,
-          autoSkipPadding: 16,
+          autoSkip: true,
+          autoSkipPadding: 8,
           maxRotation: 0,
           align: 'center',
           crossAlign: 'center',
-          padding: 15,
-          labelOffset: 10,
-          font: { size: 11, weight: 600 },
+          padding: 8,
+          labelOffset: 6,
+          font: { size: 10, weight: 600 },
           color: theme.palette.text.secondary,
           callback(value) {
             const raw = typeof value === 'string' ? value : BORROW_STATUS_LABELS[value] || value;
-            return String(raw)
-              .split(' ')
-              .map((segment) => segment.trim())
-              .filter(Boolean);
+            // return a shortened label if it's long so it won't collide
+            const str = String(raw);
+            if (str.length > 14) return str.slice(0, 12) + '…';
+            return str;
           }
         }
       },
       y:{
         beginAtZero:true,
-        ticks:{ precision:0, color: theme.palette.text.secondary },
+        ticks:{ precision:0, color: theme.palette.text.secondary, font: { size: 11 } },
         grid: { color: alpha(theme.palette.divider, 0.28), drawBorder: false }
       }
     }
@@ -600,8 +608,6 @@ const DashboardPage = () => {
 
   const borrowTotals = borrowStatusBar.datasets[0].data.reduce((a,b)=>a+(b||0),0);
   const availTotals = availabilityDoughnut.datasets[0].data.reduce((a,b)=>a+(b||0),0);
-
-  // Summary cards removed per design guidelines; metrics now shown inline in header
 
   return (
     <Box p={{ xs: 2, md: 3 }} sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
@@ -670,7 +676,7 @@ const DashboardPage = () => {
 
         <Grid item xs={12} md={4}>
           <Paper sx={surfacePaper({ p: 2.25, height: { xs: 280, md: 300 }, display: 'flex', flexDirection: 'column' })}>
-            <Typography fontWeight={800} fontSize={14}>Loan Status Spread</Typography>
+            <Typography fontWeight={800} fontSize={14}>Borrow Status Spread</Typography>
             <Divider sx={{ my:1 }} />
             {loading ? <Skeleton variant="rounded" height={240} /> : borrowTotals ? (
               <Box flexGrow={1}>
