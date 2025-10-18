@@ -618,32 +618,37 @@ const BrowseLibraryPage = () => {
           </Card>
 
           {loading ? (
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0, justifyContent: 'flex-start' }}>
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(4, 1fr)' },
+                gap: 2
+              }}
+            >
               {Array.from({ length: rowsPerPage }).map((_, i) => (
-                <Box key={i} sx={{ width: { xs: '100%', sm: '50%', md: '33.333%', lg: '25%' }, flex: '0 0 auto', boxSizing: 'border-box' }}>
-                  <Paper
-                    sx={{
-                      p: 2,
-                      border: theme => `1px solid ${alpha(theme.palette.divider, 0.7)}`,
-                      borderRadius: 3
-                    }}
-                  >
-                    <Skeleton variant="rectangular" height={110} sx={{ mb: 1.5, borderRadius: 2 }} />
-                    <Skeleton width="70%" />
-                    <Skeleton width="50%" />
-                    <Skeleton width="90%" />
-                    <Skeleton variant="rectangular" height={34} sx={{ mt: 2, borderRadius: 1 }} />
-                  </Paper>
-                </Box>
+                <Paper
+                  key={i}
+                  sx={{
+                    p: 2,
+                    border: theme => `1px solid ${alpha(theme.palette.divider, 0.7)}`,
+                    borderRadius: 3,
+                    boxSizing: 'border-box'
+                  }}
+                >
+                  <Skeleton variant="rectangular" height={110} sx={{ mb: 1.5, borderRadius: 2 }} />
+                  <Skeleton width="70%" />
+                  <Skeleton width="50%" />
+                  <Skeleton width="90%" />
+                  <Skeleton variant="rectangular" height={34} sx={{ mt: 2, borderRadius: 1 }} />
+                </Paper>
               ))}
             </Box>
           ) : (
             <Box
               sx={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: 0,
-                justifyContent: 'flex-start'
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(4, 1fr)' },
+                gap: 2
               }}
             >
               {paged.map(item => {
@@ -654,26 +659,27 @@ const BrowseLibraryPage = () => {
                 const showDigitalView = !isBook && (item.File_Path || item.file_path) && (item.Sensitivity || item.sensitivity) === "Public";
                 const key = `${item.type}-${item.Book_ID || item.Document_ID}`;
                 return (
-                  <Box key={key} sx={{ width: { xs: '100%', sm: '50%', md: '33.333%', lg: '25%' }, flex: '0 0 auto', boxSizing: 'border-box' }}>
-                    <Paper
-                      elevation={0}
-                      sx={{
-                        position: 'relative',
-                        height: '100%',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        p: 2,
-                        gap: 1,
-                        border: theme => `1px solid ${alpha(theme.palette.divider, 0.7)}`,
-                        borderRadius: 3,
-                        bgcolor: 'background.paper',
-                        transition: 'border-color .2s, background-color .2s',
-                        '&:hover': {
-                          borderColor: theme => theme.palette.primary.main,
-                          backgroundColor: theme => alpha(theme.palette.primary.main, 0.04)
-                        }
-                      }}
-                    >
+                  <Paper
+                    key={key}
+                    elevation={0}
+                    sx={{
+                      position: 'relative',
+                      height: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      p: 2,
+                      gap: 1,
+                      border: theme => `1px solid ${alpha(theme.palette.divider, 0.7)}`,
+                      borderRadius: 3,
+                      bgcolor: 'background.paper',
+                      transition: 'border-color .2s, background-color .2s',
+                      boxSizing: 'border-box',
+                      '&:hover': {
+                        borderColor: theme => theme.palette.primary.main,
+                        backgroundColor: theme => alpha(theme.palette.primary.main, 0.04)
+                      }
+                    }}
+                  >
                       {reason && (
                         <Box
                           sx={{
@@ -795,8 +801,7 @@ const BrowseLibraryPage = () => {
                       >
                         {reason || 'Add to Queue'}
                       </Button>
-                    </Paper>
-                  </Box>
+                      </Paper>
                 );
               })}
 
