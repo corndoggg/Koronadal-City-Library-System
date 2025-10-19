@@ -23,11 +23,13 @@ def get_inventory_by_document(document_id):
 @document_inventory_bp.route('/documents/inventory/<int:document_id>', methods=['POST'])
 def add_inventory(document_id):
     data = request.json
+    if not data:
+        return jsonify({'error': 'Missing JSON body'}), 400
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO Document_Inventory (Document_ID, Availability, `Condition`, `StorageLocation`)
-        VALUES (%s, %s, %s, %s)
+        INSERT INTO Document_Inventory (Document_ID, Availability, `Condition`, `StorageLocation`, UpdatedOn)
+        VALUES (%s, %s, %s, %s, NOW())
     """, (
         document_id, data.get('availability'), data.get('condition'), data.get('location')
     ))
@@ -40,11 +42,13 @@ def add_inventory(document_id):
 @document_inventory_bp.route('/documents/inventory/<int:document_id>/<int:storage_id>', methods=['PUT'])
 def update_inventory(document_id, storage_id):
     data = request.json
+    if not data:
+        return jsonify({'error': 'Missing JSON body'}), 400
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
         UPDATE Document_Inventory
-        SET Availability=%s, `Condition`=%s, `StorageLocation`=%s
+        SET Availability=%s, `Condition`=%s, `StorageLocation`=%s, UpdatedOn=NOW()
         WHERE Document_ID=%s AND Storage_ID=%s
     """, (
         data.get('availability'), data.get('condition'), data.get('location'),

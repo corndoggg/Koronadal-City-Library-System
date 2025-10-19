@@ -52,3 +52,23 @@ def delete_storage(storage_id):
     cursor.close()
     conn.close()
     return jsonify({'message': 'Storage deleted'})
+
+
+# Get usage (number of items assigned) for a storage
+@storages_bp.route('/storages/<int:storage_id>/usage', methods=['GET'])
+def storage_usage(storage_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    # Count items in Books inventory and Documents inventory that reference this storage
+    # Books inventory uses StorageLocation or location columns; Documents inventory uses StorageLocation as well
+    cursor.execute("""
+        SELECT (
+            (SELECT COUNT(*) FROM Book_Inventory WHERE StorageLocation = %s)
+            + (SELECT COUNT(*) FROM Document_Inventory WHERE StorageLocation = %s)
+        ) AS used
+    """, (storage_id, storage_id))
+    row = cursor.fetchone()
+    used = row[0] if row else 0
+    cursor.close()
+    conn.close()
+    return jsonify({'used': used})

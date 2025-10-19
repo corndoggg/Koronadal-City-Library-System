@@ -1310,17 +1310,17 @@ const LibrarianBorrowPage = () => {
                                   >
                                     Approve
                                   </Button>
-                                  <Tooltip title="Reject">
-                                    <IconButton
-                                      size="small"
-                                      color="error"
-                                      onClick={() => openRejectDialog(tx)}
-                                      disabled={actionLoading}
-                                      sx={{ border: `1px solid ${alpha(theme.palette.error.main, 0.5)}`, borderRadius: 1 }}
-                                    >
-                                      <Cancel fontSize="small" />
-                                    </IconButton>
-                                  </Tooltip>
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    color="error"
+                                    onClick={() => openRejectDialog(tx)}
+                                    disabled={actionLoading}
+                                    sx={{ borderRadius: 1, fontWeight: 600 }}
+                                    startIcon={<Cancel fontSize="small" />}
+                                  >
+                                    Reject
+                                  </Button>
                                 </>
                               )}
                               {tx.ApprovalStatus === 'Approved' && tx.RetrievalStatus !== 'Retrieved' && (

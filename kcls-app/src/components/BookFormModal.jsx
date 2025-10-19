@@ -8,6 +8,7 @@ import {
   Add, Edit as EditIcon, Save, Cancel, LibraryBooks,
   Delete as DeleteIcon, WarningAmber, AutoFixHigh
 } from '@mui/icons-material';
+import { formatDate } from '../utils/date';
 
 const BookFormModal = ({
   open, onClose, isEdit, bookForm, handleBookChange,
@@ -67,14 +68,39 @@ const BookFormModal = ({
     showToast('Accession generated.', 'info');
   };
 
+  const checkStorageCapacity = async (locationId) => {
+    if (!locationId) return { ok: true };
+    const loc = locations.find(l => String(l.ID) === String(locationId));
+    const capacity = Number(loc?.Capacity ?? 0);
+    if (!capacity || capacity <= 0) return { ok: true };
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_BASE}/storages/${locationId}/usage`);
+      if (!res.ok) return { ok: true };
+      const data = await res.json();
+      const used = Number(data?.used ?? 0);
+      if (used >= capacity) return { ok: false, capacity, used };
+      return { ok: true, capacity, used };
+    } catch {
+      return { ok: true };
+    }
+  };
+
   const handleCopyAction = () => {
-    if (editCopyIndex !== null) {
+    (async () => {
+      const targetLocation = copyForm.location;
+      const capacityCheck = await checkStorageCapacity(targetLocation);
+      if (!capacityCheck.ok) {
+        showToast(`Cannot add to location — capacity ${capacityCheck.capacity} reached (${capacityCheck.used}).`, 'error');
+        return;
+      }
+      if (editCopyIndex !== null) {
       const current = copies[editCopyIndex];
       if (current?.availability === 'Borrowed') {
         showToast('Borrowed copies cannot be modified from this modal.', 'warning');
         return;
       }
-    }
+      }
+    })();
     for (let key of ['accessionNumber', 'location']) {
       if (!copyForm[key]) {
         showToast(`${key.charAt(0).toUpperCase() + key.slice(1)} is required.`, 'error');
@@ -696,7 +722,14 @@ const BookFormModal = ({
                       >
                         {copies.map((copy, idx) => (
                           <TableRow key={idx} hover>
-                            <TableCell>{copy.accessionNumber}</TableCell>
+                            <TableCell>
+                              <div>{copy.accessionNumber}</div>
+                              {(copy.updatedOn || copy.UpdatedOn) ? (
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                  Updated: {formatDate(copy.updatedOn || copy.UpdatedOn)}
+                                </Typography>
+                              ) : null}
+                            </TableCell>
                             <TableCell>{getLocationName(copy.location)}</TableCell>
                             <TableCell>
                               <Chip

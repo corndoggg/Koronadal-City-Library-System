@@ -7,6 +7,7 @@ import {
   Skeleton, MenuItem
 } from "@mui/material";
 import { Add, Edit, Search, Visibility, Refresh, Delete as DeleteIcon, WarningAmber } from "@mui/icons-material";
+import { formatDate } from '../../../utils/date';
 
 const initialForm = { name: "", capacity: "" };
 
@@ -51,7 +52,8 @@ const StorageManagementPage = () => {
             location: copy.StorageLocation != null ? String(copy.StorageLocation) : (copy.location != null ? String(copy.location) : ''),
             accessionNumber: copy.accessionNumber ?? copy.AccessionNumber ?? "",
             availability: copy.availability ?? copy.Availability ?? "",
-            condition: copy.condition ?? copy.Condition ?? ""
+            condition: copy.condition ?? copy.Condition ?? "",
+            updatedOn: copy.UpdatedOn || copy.updatedOn || copy.updated_on || null
           }));
           return { type: "Book", title: b.Title, id: b.Book_ID, inventory };
         })
@@ -64,7 +66,8 @@ const StorageManagementPage = () => {
             ...inv,
             location: inv.StorageLocation != null ? String(inv.StorageLocation) : '',
             availability: inv.availability ?? inv.Availability ?? "",
-            condition: inv.condition ?? inv.Condition ?? ""
+            condition: inv.condition ?? inv.Condition ?? "",
+            updatedOn: inv.UpdatedOn || inv.updatedOn || inv.updated_on || null
           }));
           return { type: "Document", title: d.Title, id: d.Document_ID, inventory };
         })
@@ -123,6 +126,21 @@ const StorageManagementPage = () => {
     });
     setOpenEditInv(true);
   };
+
+  const checkStorageCapacity = async (locationId) => {
+    if (!locationId) return { ok: true };
+    const loc = storages.find(s => String(s.ID) === String(locationId));
+    const capacity = Number(loc?.Capacity ?? 0);
+    if (!capacity || capacity <= 0) return { ok: true };
+    try {
+      const res = await axios.get(`${API_BASE}/storages/${locationId}/usage`);
+      const used = Number(res.data?.used ?? 0);
+      if (used >= capacity) return { ok: false, capacity, used };
+      return { ok: true, capacity, used };
+    } catch {
+      return { ok: true };
+    }
+  };
   const handleSaveInventory = async () => {
     if (!editInv) return;
     const originalAvailability = editInv.originalAvailability || editInv.availability || "Available";
@@ -155,6 +173,15 @@ const StorageManagementPage = () => {
     try {
       const locId = parseInt(String(nextLocationValue), 10);
       const normalizedLocation = Number.isNaN(locId) ? String(nextLocationValue) : locId;
+      // If moving to a different location, check capacity
+      const originalLocId = originalLocation;
+      if (String(normalizedLocation) !== String(originalLocId)) {
+        const cap = await checkStorageCapacity(normalizedLocation);
+        if (!cap.ok) {
+          setToast({ open: true, message: `Cannot move item: target location capacity ${cap.capacity} reached (${cap.used}).`, severity: 'error' });
+          return;
+        }
+      }
       const normalizedCondition = editInv.condition || "Good";
       if (editItem.type === "Book") {
         await axios.put(
@@ -807,6 +834,11 @@ const StorageManagementPage = () => {
                           <Typography variant="body2" color="text.secondary">
                             {item.accessionNumber || '—'}
                           </Typography>
+                          {item.inv && (item.inv.updatedOn || item.inv.UpdatedOn) ? (
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                              Updated: {formatDate(item.inv.updatedOn || item.inv.UpdatedOn)}
+                            </Typography>
+                          ) : null}
                         </TableCell>
                         <TableCell>
                           <Chip

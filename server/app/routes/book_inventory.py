@@ -14,7 +14,8 @@ def get_inventory(book_id):
             bi.Accession_Number AS accessionNumber, 
             bi.Availability AS availability, 
             bi.BookCondition AS `condition`, 
-            bi.StorageLocation AS location,      
+            bi.StorageLocation AS location,
+            bi.UpdatedOn AS updatedOn,
             s.Name AS locationName
         FROM Book_Inventory bi
         LEFT JOIN Storages s ON bi.StorageLocation = s.ID
@@ -38,6 +39,7 @@ def get_inventory_copy(copy_id):
             bi.Availability AS availability, 
             bi.BookCondition AS `condition`,
             bi.StorageLocation AS location,
+            bi.UpdatedOn AS updatedOn,
             s.Name AS locationName
         FROM Book_Inventory bi
         LEFT JOIN Storages s ON bi.StorageLocation = s.ID
@@ -52,13 +54,15 @@ def get_inventory_copy(copy_id):
 @inventory_bp.route('/books/inventory/<int:book_id>', methods=['POST'])
 def add_inventory(book_id):
     copy = request.json
+    if not copy:
+        return jsonify({'error': 'Missing JSON body'}), 400
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
         INSERT INTO Book_Inventory (
             Book_ID, Accession_Number, Availability, 
-            BookCondition, StorageLocation
-        ) VALUES (%s, %s, %s, %s, %s)
+            BookCondition, StorageLocation, UpdatedOn
+    ) VALUES (%s, %s, %s, %s, %s, NOW())
     """, (
         book_id,
         copy['accessionNumber'],
@@ -75,6 +79,8 @@ def add_inventory(book_id):
 @inventory_bp.route('/books/inventory/<int:book_id>/<int:copy_id>', methods=['PUT'])
 def update_copy(book_id, copy_id):
     copy = request.json
+    if not copy:
+        return jsonify({'error': 'Missing JSON body'}), 400
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -83,7 +89,8 @@ def update_copy(book_id, copy_id):
             Accession_Number = %s, 
             Availability = %s, 
             BookCondition = %s, 
-            StorageLocation = %s 
+            StorageLocation = %s, 
+            UpdatedOn = NOW()
         WHERE 
             Copy_ID = %s AND Book_ID = %s
     """, (

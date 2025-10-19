@@ -33,6 +33,7 @@ import {
   WarningAmber, CloudUpload, Close, Preview, DocumentScanner, Download
 } from "@mui/icons-material";
 import axios from "axios";
+import { formatDate } from '../utils/date';
 import DocumentPDFViewer from "./DocumentPDFViewer"; // NEW
 
 const initialForm = {
@@ -222,7 +223,7 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
         filePath: documentData.File_Path || ""
       });
 
-      const normalizedInventory = (documentData.inventory || []).map(inv => {
+  const normalizedInventory = (documentData.inventory || []).map(inv => {
         const storageId =
           inv.Storage_ID ?? inv.storage_id ?? inv.Location_ID ?? inv.location_id ??
           inv.LocationID ?? inv.storageId ?? inv.StorageId ?? null;
@@ -237,7 +238,8 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
           condition: inv.condition || inv.Condition || "",
           location: locationId,
           locationName: locationName || "",
-          Storage_ID: storageId ?? null
+          Storage_ID: storageId ?? null,
+          updatedOn: inv.UpdatedOn || inv.updatedOn || inv.updated_on || null
         };
       });
       setInventoryList(normalizedInventory);
@@ -299,6 +301,23 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
     setInventoryForm(prev => ({ ...prev, [name]: value }));
   };
 
+  const checkStorageCapacity = async (locationId) => {
+    if (!locationId) return { ok: true };
+    const loc = locations.find(l => String(l.ID) === String(locationId));
+    const capacity = Number(loc?.Capacity ?? 0);
+    if (!capacity || capacity <= 0) return { ok: true };
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_BASE}/storages/${locationId}/usage`);
+      if (!res.ok) return { ok: true };
+      const data = await res.json();
+      const used = Number(data?.used ?? 0);
+      if (used >= capacity) return { ok: false, capacity, used };
+      return { ok: true, capacity, used };
+    } catch {
+      return { ok: true };
+    }
+  };
+
   const handleAddOrUpdateInventory = () => {
     if (editInvIndex !== null) {
       const current = inventoryList[editInvIndex];
@@ -327,8 +346,16 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
       setEditInvIndex(null);
       openToast("Inventory updated.");
     } else {
-      setInventoryList(prev => [...prev, preparedEntry]);
-      openToast("Inventory added.");
+      // Check capacity before adding to a location
+      (async () => {
+        const cap = await checkStorageCapacity(normalizedLocation);
+        if (!cap.ok) {
+          openToast(`Cannot add inventory: location capacity ${cap.capacity} reached (${cap.used}).`, 'error');
+          return;
+        }
+        setInventoryList(prev => [...prev, preparedEntry]);
+        openToast("Inventory added.");
+      })();
     }
     setInventoryForm({ ...initialInventory });
     setUnsaved(true);
@@ -1201,7 +1228,14 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
                                 />
                               </TableCell>
                               <TableCell>{inv.condition || "-"}</TableCell>
-                              <TableCell>{getLocationName(inv.location, inv.locationName)}</TableCell>
+                              <TableCell>
+                                {getLocationName(inv.location, inv.locationName)}
+                                {inv && (inv.updatedOn || inv.UpdatedOn) ? (
+                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                    Updated: {formatDate(inv.updatedOn || inv.UpdatedOn)}
+                                  </Typography>
+                                ) : null}
+                              </TableCell>
                               <TableCell align="center">
                                 <Tooltip title="Edit">
                                   <IconButton

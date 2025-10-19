@@ -5,6 +5,7 @@ import {
   IconButton, Tooltip, Grid, Stack, CircularProgress, Chip, Paper, Divider, InputAdornment, LinearProgress
 } from '@mui/material';
 import { Article, Visibility, Edit, Add, Search, Refresh, PictureAsPdf } from '@mui/icons-material';
+import { formatDate } from '../../../utils/date';
 import { alpha } from '@mui/material/styles';
 import DocumentFormModal from '../../../components/DocumentFormModal.jsx';
 import DocumentPDFViewer from '../../../components/DocumentPDFViewer.jsx';
@@ -45,7 +46,8 @@ const DocumentManagementPage = () => {
                 condition: inv.condition || inv.Condition || "",
                 location: storageLocation != null && storageLocation !== "" ? String(storageLocation) : "",
                 locationName: inv.Location ?? inv.location ?? "",
-                Storage_ID: storageId ?? null
+                Storage_ID: storageId ?? null,
+                updatedOn: inv.UpdatedOn || inv.updatedOn || inv.updated_on || inv.Updated_On || inv.Updated || null
               };
             });
             return { ...doc, inventory: normalizedInventory };
@@ -418,6 +420,11 @@ const DocumentManagementPage = () => {
                                     <Chip size="small" label={inv.availability || 'Unknown'} color={availabilityColor} sx={{ height: 20, fontSize: 10, fontWeight: 600, borderRadius: 0.75 }} />
                                     <Chip size="small" variant="outlined" label={inv.condition || '—'} sx={{ height: 20, fontSize: 10, fontWeight: 600, borderRadius: 0.75 }} />
                                     <Chip size="small" variant="outlined" label={inv.locationName || inv.location || 'Location?'} sx={{ height: 20, fontSize: 10, fontWeight: 600, borderRadius: 0.75 }} />
+                                    {inv.updatedOn ? (
+                                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10, ml: 0.5 }}>
+                                        Updated: {formatDate(inv.updatedOn)}
+                                      </Typography>
+                                    ) : null}
                                   </Stack>
                                 );
                               })}

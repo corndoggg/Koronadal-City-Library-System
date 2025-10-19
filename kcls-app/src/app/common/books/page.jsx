@@ -23,6 +23,7 @@ import {
 import { Edit, Book, Add, Search, Refresh, LibraryBooks } from '@mui/icons-material';
 import { alpha } from '@mui/material/styles';
 import BookFormModal from '../../../components/BookFormModal.jsx';
+import { formatDate } from '../../../utils/date';
 
 const initialBookForm = { title: '', author: '', edition: '', publisher: '', year: '', subject: '', language: '', isbn: '' };
 const initialCopyForm = { accessionNumber: '', availability: 'Available', condition: '', location: '' };
@@ -65,7 +66,8 @@ const BookManagementPage = () => {
                   ? String(copy.location)
                   : copy.Location_ID !== null && copy.Location_ID !== undefined
                   ? String(copy.Location_ID)
-                  : ''
+                  : '',
+              updatedOn: copy.UpdatedOn || copy.updatedOn || copy.updated_on || copy.Updated_On || null
             }));
             return { ...book, inventory };
           } catch {
@@ -511,6 +513,11 @@ const BookManagementPage = () => {
                                   label={locationLabel}
                                   sx={{ height: 20, fontSize: 10, fontWeight: 600, borderRadius: 0.75 }}
                                 />
+                                {copy.updatedOn ? (
+                                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10, ml: 0.5 }}>
+                                    Updated: {formatDate(copy.updatedOn)}
+                                  </Typography>
+                                ) : null}
                               </Stack>
                             );
                           })}
