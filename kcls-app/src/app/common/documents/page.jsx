@@ -2,7 +2,8 @@ import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import {
   Box, Typography, TextField, Snackbar, Alert, Pagination, Button, useTheme,
-  IconButton, Tooltip, Grid, Stack, CircularProgress, Chip, Paper, Divider, InputAdornment, LinearProgress
+  IconButton, Tooltip, Grid, Stack, CircularProgress, Chip, Paper, Divider, InputAdornment, LinearProgress,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Collapse, TableSortLabel
 } from '@mui/material';
 import { Article, Visibility, Edit, Add, Search, Refresh, PictureAsPdf } from '@mui/icons-material';
 import { formatDate } from '../../../utils/date';
@@ -26,6 +27,13 @@ const DocumentManagementPage = () => {
   const [pdfUrl, setPdfUrl] = useState(''); 
   const [loading, setLoading] = useState(false);
   const [locations, setLocations] = useState([]);
+  const [expandedRows, setExpandedRows] = useState({});
+  const [sortBy, setSortBy] = useState('Title');
+  const [sortDir, setSortDir] = useState('asc');
+
+  const toggleRow = (id) => {
+    setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }));
+  };
 
   const fetchDocuments = useCallback(async () => {
     setLoading(true);
@@ -164,7 +172,29 @@ const DocumentManagementPage = () => {
 
   const indexLast = currentPage * rowsPerPage;
   const indexFirst = indexLast - rowsPerPage;
-  const currentDocs = filteredDocs.slice(indexFirst, indexLast);
+  const sortedDocs = useMemo(() => {
+    const s = [...(filteredDocs || [])];
+    const dir = sortDir === 'asc' ? 1 : -1;
+    s.sort((a, b) => {
+      const va = (a[sortBy] || '').toString().toLowerCase();
+      const vb = (b[sortBy] || '').toString().toLowerCase();
+      if (va < vb) return -1 * dir;
+      if (va > vb) return 1 * dir;
+      return 0;
+    });
+    return s;
+  }, [filteredDocs, sortBy, sortDir]);
+
+  const currentDocs = sortedDocs.slice(indexFirst, indexLast);
+
+  const handleSort = (column) => {
+    if (sortBy === column) {
+      setSortDir(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(column);
+      setSortDir('asc');
+    }
+  };
 
   const docStats = useMemo(() => {
     let publicCount = 0;
@@ -288,204 +318,93 @@ const DocumentManagementPage = () => {
                 </Typography>
               </Paper>
             ) : (
-              <Box
-                sx={{
-                  display: 'grid',
-                  gap: 2,
-                  gridTemplateColumns: {
-                    xs: 'repeat(1, minmax(0, 1fr))',
-                    sm: 'repeat(2, minmax(0, 1fr))',
-                    md: 'repeat(3, minmax(0, 1fr))',
-                    lg: 'repeat(4, minmax(0, 1fr))'
-                  },
-                  alignItems: 'stretch'
-                }}
-              >
-                {currentDocs.map(doc => {
-                  const copies = doc.inventory || [];
-                  return (
-                    <Paper
-                      key={doc.Document_ID}
-                      variant="outlined"
-                      sx={{
-                        borderRadius: 2,
-                        width: '100%',
-                        minHeight: 320,
-                        maxHeight: 320,
-                        height: 320,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        overflow: 'hidden',
-                        transition: 'border-color .18s ease, box-shadow .18s ease',
-                        '&:hover': {
-                          borderColor: theme => theme.palette.primary.main,
-                          boxShadow: theme => `0 10px 32px ${alpha(theme.palette.primary.main, 0.18)}`
-                        }
-                      }}
-                    >
-                      <Box
-                        sx={{
-                          px: 1.75,
-                          py: 1.5,
-                          borderBottom: theme => `1px solid ${alpha(theme.palette.primary.main, 0.12)}`,
-                          backgroundImage: theme => `linear-gradient(135deg, ${alpha(theme.palette.primary.light, theme.palette.mode === 'dark' ? 0.35 : 0.18)} 0%, ${alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.35 : 0.24)} 100%)`
-                        }}
-                      >
-                        <Stack direction="row" spacing={1.25} alignItems="flex-start">
-                          <Box
-                            sx={{
-                              width: 36,
-                              height: 36,
-                              borderRadius: 1,
-                              bgcolor: theme => theme.palette.background.paper,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              boxShadow: theme => `0 6px 12px ${alpha(theme.palette.primary.main, 0.25)}`
-                            }}
-                          >
-                            <PictureAsPdf fontSize="small" color="primary" />
-                          </Box>
-                          <Box flex={1} minWidth={0}>
-                            <Typography
-                              variant="subtitle1"
-                              fontWeight={800}
-                              title={doc.Title}
-                              sx={{
-                                lineHeight: 1.1,
-                                display: '-webkit-box',
-                                WebkitBoxOrient: 'vertical',
-                                WebkitLineClamp: 2,
-                                overflow: 'hidden'
-                              }}
-                            >
-                              {doc.Title || 'Untitled Document'}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
-                              {doc.Department || 'No department assigned'}
-                            </Typography>
-                          </Box>
-                          <Chip
-                            size="small"
-                            label={doc.Sensitivity || 'Unknown'}
-                            color={doc.Sensitivity === 'Public' ? 'success' : doc.Sensitivity === 'Confidential' ? 'error' : 'warning'}
-                            sx={{ fontSize: 10, fontWeight: 700, borderRadius: 0.75 }}
-                          />
-                        </Stack>
-                      </Box>
-
-                      <Stack spacing={1} sx={{ p: 1.5, flexGrow: 1 }}>
-                        <Stack
-                          direction="row"
-                          spacing={0.75}
-                          flexWrap="wrap"
-                          sx={{
-                            fontSize: 11,
-                            gap: 0.5,
-                            minHeight: 44,
-                            alignContent: 'flex-start'
-                          }}
-                        >
-                          <Chip size="small" variant="outlined" label={`Author: ${doc.Author || '—'}`} sx={{ fontWeight: 600, borderRadius: 0.75, fontSize: 10 }} />
-                          <Chip size="small" variant="outlined" label={`Category: ${doc.Category || '—'}`} sx={{ fontWeight: 600, borderRadius: 0.75, fontSize: 10 }} />
-                          <Chip size="small" variant="outlined" label={`Year: ${doc.Year || '—'}`} sx={{ fontWeight: 600, borderRadius: 0.75, fontSize: 10 }} />
-                          <Chip size="small" variant="outlined" label={`Class: ${doc.Classification || '—'}`} sx={{ fontWeight: 600, borderRadius: 0.75, fontSize: 10 }} />
-                        </Stack>
-
-                        <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
-                          {copies.length > 0 ? (
-                            <Stack
-                              spacing={0.5}
-                              sx={{
-                                flexGrow: 1,
-                                minHeight: 96,
-                                maxHeight: 96,
-                                overflowY: 'auto',
-                                pr: 0.25
-                              }}
-                            >
-                              {copies.slice(0, 4).map((inv, i) => {
-                                const availability = (inv.availability || '').toLowerCase();
-                                const availabilityColor = availability === 'available'
-                                  ? 'success'
-                                  : availability === 'borrowed'
-                                  ? 'warning'
-                                  : availability === 'reserved'
-                                  ? 'info'
-                                  : availability === 'lost'
-                                  ? 'error'
-                                  : 'default';
-                                return (
-                                  <Stack key={i} direction="row" spacing={0.5} alignItems="center">
-                                    <Chip size="small" label={inv.availability || 'Unknown'} color={availabilityColor} sx={{ height: 20, fontSize: 10, fontWeight: 600, borderRadius: 0.75 }} />
-                                    <Chip size="small" variant="outlined" label={inv.condition || '—'} sx={{ height: 20, fontSize: 10, fontWeight: 600, borderRadius: 0.75 }} />
-                                    <Chip size="small" variant="outlined" label={inv.locationName || inv.location || 'Location?'} sx={{ height: 20, fontSize: 10, fontWeight: 600, borderRadius: 0.75 }} />
-                                    {inv.updatedOn ? (
-                                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10, ml: 0.5 }}>
-                                        Updated: {formatDate(inv.updatedOn)}
-                                      </Typography>
-                                    ) : null}
-                                  </Stack>
-                                );
-                              })}
-                              {copies.length > 4 && (
-                                <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10 }}>
-                                  +{copies.length - 4} additional copies…
-                                </Typography>
-                              )}
-                            </Stack>
-                          ) : (
-                            <Box
-                              sx={{
-                                flexGrow: 1,
-                                minHeight: 96,
-                                display: 'flex',
-                                alignItems: 'center'
-                              }}
-                            >
-                              <Typography variant="caption" color="text.secondary">
-                                No physical copies recorded yet.
-                              </Typography>
-                            </Box>
+              <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>
+                        <TableSortLabel active={sortBy === 'Title'} direction={sortDir} onClick={() => handleSort('Title')}>Title</TableSortLabel>
+                      </TableCell>
+                      <TableCell>
+                        <TableSortLabel active={sortBy === 'Author'} direction={sortDir} onClick={() => handleSort('Author')}>Author</TableSortLabel>
+                      </TableCell>
+                      <TableCell>
+                        <TableSortLabel active={sortBy === 'Category'} direction={sortDir} onClick={() => handleSort('Category')}>Category</TableSortLabel>
+                      </TableCell>
+                      <TableCell>
+                        <TableSortLabel active={sortBy === 'Department'} direction={sortDir} onClick={() => handleSort('Department')}>Department</TableSortLabel>
+                      </TableCell>
+                      <TableCell>
+                        <TableSortLabel active={sortBy === 'Copies'} direction={sortDir} onClick={() => handleSort('Copies')}>Copies</TableSortLabel>
+                      </TableCell>
+                      <TableCell>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {currentDocs.map(doc => {
+                      const copies = doc.inventory || [];
+                      const isOpen = !!expandedRows[doc.Document_ID];
+                      return (
+                        <React.Fragment key={doc.Document_ID}>
+                          <TableRow hover>
+                            <TableCell sx={{ maxWidth: 320 }}>
+                              <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>{doc.Title || 'Untitled Document'}</Typography>
+                              <Typography variant="caption" color="text.secondary">{doc.Classification || ''}</Typography>
+                            </TableCell>
+                            <TableCell>{doc.Author || '—'}</TableCell>
+                            <TableCell>{doc.Category || '—'}</TableCell>
+                            <TableCell>{doc.Department || '—'}</TableCell>
+                            <TableCell>{copies.length}</TableCell>
+                            <TableCell>
+                              <Stack direction="row" spacing={0.5}>
+                                <Tooltip title="View PDF"><IconButton size="small" onClick={() => handleViewPdf(doc.File_Path)}><Visibility fontSize="small" /></IconButton></Tooltip>
+                                <Tooltip title="Edit"><IconButton size="small" onClick={() => handleOpenEdit(doc)}><Edit fontSize="small" /></IconButton></Tooltip>
+                                {copies.length > 0 && (
+                                  <Button size="small" onClick={() => toggleRow(doc.Document_ID)}>{isOpen ? 'Hide copies' : `Show copies (${copies.length})`}</Button>
+                                )}
+                              </Stack>
+                            </TableCell>
+                          </TableRow>
+                          {copies.length > 0 && (
+                            <TableRow>
+                              <TableCell colSpan={6} sx={{ p: 0 }}>
+                                <Collapse in={isOpen} timeout="auto" unmountOnExit>
+                                  <Box sx={{ p: 2 }}>
+                                    <Table size="small">
+                                      <TableHead>
+                                        <TableRow>
+                                          <TableCell>Availability</TableCell>
+                                          <TableCell>Condition</TableCell>
+                                          <TableCell>Location</TableCell>
+                                          <TableCell>Accession</TableCell>
+                                          <TableCell>Updated</TableCell>
+                                        </TableRow>
+                                      </TableHead>
+                                      <TableBody>
+                                        {copies.map((inv, idx) => (
+                                          <TableRow key={idx}>
+                                            <TableCell>{inv.availability || 'Unknown'}</TableCell>
+                                            <TableCell>{inv.condition || '—'}</TableCell>
+                                            <TableCell>{inv.locationName || inv.location || '—'}</TableCell>
+                                            <TableCell>{
+                                              inv.accessionNumber || inv.AccessionNumber || inv.Accession_No || inv.Accession || inv.Copy_Number || inv.CopyNo || inv.Storage_ID || '—'
+                                            }</TableCell>
+                                            <TableCell>{inv.updatedOn ? formatDate(inv.updatedOn) : '—'}</TableCell>
+                                          </TableRow>
+                                        ))}
+                                      </TableBody>
+                                    </Table>
+                                  </Box>
+                                </Collapse>
+                              </TableCell>
+                            </TableRow>
                           )}
-                        </Box>
-                      </Stack>
-
-                      <Divider />
-                      <Stack direction="row" justifyContent="flex-end" gap={0.5} sx={{ p: 1.25 }}>
-                        <Tooltip title="View PDF">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleViewPdf(doc.File_Path)}
-                            sx={{
-                              borderRadius: 0.75,
-                              border: theme => `1px solid ${alpha(theme.palette.primary.main, 0.35)}`,
-                              '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.12) }
-                            }}
-                            color="primary"
-                          >
-                            <Visibility fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Edit document">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleOpenEdit(doc)}
-                            sx={{
-                              borderRadius: 0.75,
-                              border: theme => `1px solid ${alpha(theme.palette.secondary.main, 0.35)}`,
-                              '&:hover': { bgcolor: alpha(theme.palette.secondary.main, 0.12) }
-                            }}
-                            color="secondary"
-                          >
-                            <Edit fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      </Stack>
-                    </Paper>
-                  );
-                })}
-              </Box>
+                        </React.Fragment>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
             )}
 
             <Box display="flex" justifyContent="center" mt={3}>
