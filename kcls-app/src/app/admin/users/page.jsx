@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Box, Typography, Tabs, Tab, Paper, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Avatar, Chip, CircularProgress, IconButton, Tooltip, Snackbar, Alert, Stack,
-  TextField, InputAdornment, Button
+  TextField, InputAdornment, Button, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions
 } from '@mui/material';
 import { useTheme, alpha } from '@mui/material/styles';
 import PersonIcon from '@mui/icons-material/Person';
@@ -45,6 +45,11 @@ const UserManagementPage = () => {
   const [editUser, setEditUser] = useState(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsUser, setDetailsUser] = useState(null);
+  // Confirm approve/reject
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmIntent, setConfirmIntent] = useState(''); // 'approve' | 'reject'
+  const [confirmUser, setConfirmUser] = useState(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
 
   // Snackbar state
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' });
@@ -132,6 +137,25 @@ const UserManagementPage = () => {
       });
     }
   }, [loadUsers]);
+
+  const openConfirm = (user, intent) => {
+    setConfirmUser(user);
+    setConfirmIntent(intent);
+    setConfirmOpen(true);
+  };
+
+  const handleConfirm = async () => {
+    if (!confirmUser || !confirmIntent) return;
+    setConfirmLoading(true);
+    try {
+      await handleBorrowerStatus(confirmUser.UserID, confirmIntent);
+    } finally {
+      setConfirmLoading(false);
+      setConfirmOpen(false);
+      setConfirmUser(null);
+      setConfirmIntent('');
+    }
+  };
 
   const { staff, borrowers, metrics } = useMemo(() => {
     const staffList = (users || []).filter(u => u.Role === 'Staff');
@@ -456,7 +480,7 @@ const UserManagementPage = () => {
                             <Tooltip title="Approve">
                               <IconButton
                                 size="small"
-                                onClick={() => handleBorrowerStatus(user.UserID, 'approve')}
+                                onClick={() => openConfirm(user, 'approve')}
                                 sx={{
                                   border: `1px solid ${theme.palette.success.main}`,
                                   borderRadius: 0.75,
@@ -470,7 +494,7 @@ const UserManagementPage = () => {
                             <Tooltip title="Reject">
                               <IconButton
                                 size="small"
-                                onClick={() => handleBorrowerStatus(user.UserID, 'reject')}
+                                onClick={() => openConfirm(user, 'reject')}
                                 sx={{
                                   border: `1px solid ${theme.palette.error.main}`,
                                   borderRadius: 0.75,
@@ -520,6 +544,28 @@ const UserManagementPage = () => {
         user={detailsUser}
         onEdit={(u) => handleEdit(u)}
       />
+
+      {/* Confirm Approve/Reject Dialog */}
+      <Dialog
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        aria-labelledby="confirm-dialog-title"
+      >
+        <DialogTitle id="confirm-dialog-title">
+          {confirmIntent === 'approve' ? 'Approve Borrower' : 'Reject Borrower'}
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {confirmUser ? (`Are you sure you want to ${confirmIntent} ${confirmUser.Firstname} ${confirmUser.Lastname}?`) : 'Are you sure?'}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmOpen(false)} disabled={confirmLoading}>Cancel</Button>
+          <Button onClick={handleConfirm} color={confirmIntent === 'approve' ? 'success' : 'error'} disabled={confirmLoading} variant="contained">
+            {confirmIntent === 'approve' ? 'Approve' : 'Reject'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Snackbar */}
       <Snackbar
