@@ -53,7 +53,8 @@ const StorageManagementPage = () => {
             accessionNumber: copy.accessionNumber ?? copy.AccessionNumber ?? "",
             availability: copy.availability ?? copy.Availability ?? "",
             condition: copy.condition ?? copy.Condition ?? "",
-            updatedOn: copy.UpdatedOn || copy.updatedOn || copy.updated_on || null
+            updatedOn: copy.UpdatedOn || copy.updatedOn || copy.updated_on || null,
+            lostOn: copy.LostOn || copy.lostOn || copy.Lost_On || copy.lost_on || null
           }));
           return { type: "Book", title: b.Title, id: b.Book_ID, inventory };
         })
@@ -67,7 +68,8 @@ const StorageManagementPage = () => {
             location: inv.StorageLocation != null ? String(inv.StorageLocation) : '',
             availability: inv.availability ?? inv.Availability ?? "",
             condition: inv.condition ?? inv.Condition ?? "",
-            updatedOn: inv.UpdatedOn || inv.updatedOn || inv.updated_on || null
+            updatedOn: inv.UpdatedOn || inv.updatedOn || inv.updated_on || null,
+            lostOn: inv.LostOn || inv.lostOn || inv.Lost_On || inv.lost_on || null
           }));
           return { type: "Document", title: d.Title, id: d.Document_ID, inventory };
         })
@@ -284,7 +286,9 @@ const StorageManagementPage = () => {
       .filter(item => {
         const condition = (item.condition || "").toLowerCase();
         const availability = (item.availability || "").toLowerCase();
-        return condition === "lost" || condition === "bad" || condition === "poor" || availability === "lost";
+        // Exclude items that are already lost from the attentionItems list
+        if (availability === 'lost' || condition === 'lost') return false;
+        return condition === "bad" || condition === "poor" || availability === "lost";
       })
       .map(item => {
         const condition = (item.condition || "").toLowerCase();
@@ -299,6 +303,22 @@ const StorageManagementPage = () => {
         };
       })
       .sort((a, b) => a.severityKey - b.severityKey || (a.title || "").localeCompare(b.title || ""));
+  }, [allItems, storageLookup]);
+
+  // Lost items block: items explicitly marked lost, includes LostOn date when available
+  const lostItems = useMemo(() => {
+    return allItems
+      .filter(item => {
+        const availability = (item.availability || '').toLowerCase();
+        const condition = (item.condition || '').toLowerCase();
+        return availability === 'lost' || condition === 'lost';
+      })
+      .map(item => ({
+        ...item,
+        storageName: storageLookup.get(String(item.storageId ?? "")) || 'Unassigned',
+        lostOn: item.inv?.lostOn || item.inv?.LostOn || item.inv?.lost_on || null
+      }))
+      .sort((a, b) => (b.lostOn || '').localeCompare(a.lostOn || ''));
   }, [allItems, storageLookup]);
 
   const filteredAttentionItems = useMemo(() => {
@@ -476,6 +496,68 @@ const StorageManagementPage = () => {
             </Stack>
           </Stack>
         </Paper>
+
+        {/* Lost items block */}
+        <Paper
+          variant="outlined"
+          sx={{
+            borderRadius: 2,
+            p: { xs: 2, md: 2.5 }
+          }}
+        >
+          <Stack spacing={2}>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }} justifyContent="space-between">
+              <Box>
+                <Typography variant="subtitle1" fontWeight={700}>Lost items</Typography>
+                <Typography variant="body2" color="text.secondary">Items that were recorded as lost. Use this view to reconcile or record fines.</Typography>
+              </Box>
+              <Chip label={`Lost: ${lostItems.length}`} size="small" color={lostItems.length ? 'error' : 'default'} sx={{ borderRadius: 1, fontWeight: 600 }} />
+            </Stack>
+            {lostItems.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">No lost items recorded.</Typography>
+            ) : (
+              <TableContainer sx={{ maxHeight: '40vh' }}>
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow sx={{ '& th': { fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 } }}>
+                      <TableCell>Item</TableCell>
+                      <TableCell width={120}>Accession</TableCell>
+                      <TableCell width={120}>Storage</TableCell>
+                      <TableCell width={140}>Lost On</TableCell>
+                      <TableCell width={120} align="right">Action</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {lostItems.map((item, idx) => (
+                      <TableRow key={`${item.type}-${item.id}-lost-${idx}`} hover>
+                        <TableCell>
+                          <Stack spacing={0.25}>
+                            <Typography variant="body2" fontWeight={600}>{item.type === 'Book' ? `Book · ${item.title}` : `Document · ${item.title}`}</Typography>
+                            <Typography variant="caption" color="text.secondary">Storage: {item.storageName}</Typography>
+                          </Stack>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2" color="text.secondary">{item.accessionNumber || '—'}</Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2">{item.storageName}</Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2">{item.lostOn ? formatDate(item.lostOn) : '—'}</Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Button size="small" variant="outlined" onClick={() => handleEditInventory({ type: item.type, title: item.title, id: item.id }, item.inv)} sx={{ borderRadius: 1, fontWeight: 600 }}>Update</Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </Stack>
+        </Paper>
+
+        {/* End Lost items block */}
 
         <Paper
           variant="outlined"

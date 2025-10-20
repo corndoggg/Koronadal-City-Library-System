@@ -55,7 +55,8 @@ const DocumentManagementPage = () => {
                 location: storageLocation != null && storageLocation !== "" ? String(storageLocation) : "",
                 locationName: inv.Location ?? inv.location ?? "",
                 Storage_ID: storageId ?? null,
-                updatedOn: inv.UpdatedOn || inv.updatedOn || inv.updated_on || inv.Updated_On || inv.Updated || null
+                updatedOn: inv.UpdatedOn || inv.updatedOn || inv.updated_on || inv.Updated_On || inv.Updated || null,
+                lostOn: inv.LostOn || inv.lostOn || inv.Lost_On || inv.lost_on || null
               };
             });
             return { ...doc, inventory: normalizedInventory };
@@ -378,6 +379,7 @@ const DocumentManagementPage = () => {
                                           <TableCell>Location</TableCell>
                                           <TableCell>Accession</TableCell>
                                           <TableCell>Updated</TableCell>
+                                          <TableCell>Lost On</TableCell>
                                         </TableRow>
                                       </TableHead>
                                       <TableBody>
@@ -390,6 +392,7 @@ const DocumentManagementPage = () => {
                                               inv.accessionNumber || inv.AccessionNumber || inv.Accession_No || inv.Accession || inv.Copy_Number || inv.CopyNo || inv.Storage_ID || '—'
                                             }</TableCell>
                                             <TableCell>{inv.updatedOn ? formatDate(inv.updatedOn) : '—'}</TableCell>
+                                            <TableCell>{inv.lostOn ? formatDate(inv.lostOn) : '—'}</TableCell>
                                           </TableRow>
                                         ))}
                                       </TableBody>

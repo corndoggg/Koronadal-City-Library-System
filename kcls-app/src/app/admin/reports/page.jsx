@@ -50,7 +50,9 @@ const REPORT_TYPES = [
   { key: 'borrowing_trends', label: 'Daily / Weekly / Monthly Borrowing' },
   { key: 'returns', label: 'Return Report' },
   { key: 'overdue', label: 'Overdue Report' },
-  { key: 'loss_or_damage', label: 'Lost or Damaged Items' }
+  { key: 'loss_or_damage', label: 'Lost or Damaged Items' },
+  { key: 'inventory_books', label: 'Book Inventory Report' },
+  { key: 'inventory_documents', label: 'Document Inventory Report' }
 ];
 
 const GRANULARITY_OPTIONS = [
@@ -830,6 +832,59 @@ const ReportsPage = () => {
         rows: rowsWithFallback,
         chart
       };
+    }
+    ,
+    inventory_books: () => {
+      const rows = [];
+      (books || []).forEach((book) => {
+        const bookId = book?.Book_ID;
+        const inv = (bookId != null && bookInvMap[bookId]) ? (bookInvMap[bookId] || []) : [];
+        const title = book?.Title || `Book #${bookId}`;
+        const meta = safeJoin([book?.Author ? `Author: ${book.Author}` : null, book?.Edition ? `Edition: ${book.Edition}` : null, book?.Publisher ? `Publisher: ${book.Publisher}` : null]);
+        const identifier = book?.ISBN || `BookID: ${bookId}`;
+
+        rows.push(['Book', title, meta || '—', identifier || '—', 'Copy Accession', 'Availability / Condition', 'Location', 'Updated', 'Lost On']);
+        if ((inv || []).length === 0) rows.push(['', '', '', '', '—', '—', '—', '—', '—']);
+        else {
+          inv.forEach((copy) => {
+            const accession = copy.accessionNumber || copy.AccessionNumber || copy.Accession_No || copy.Accession || copy.Copy_Number || copy.CopyNo || copy.Copy_ID || '';
+            const availability = copy.availability || copy.Availability || '';
+            const condition = copy.condition || copy.Condition || '';
+            const location = copy.StorageLocation || copy.location || copy.StorageLocationID || copy.location_id || copy.Location || '';
+            const updated = copy.UpdatedOn || copy.updatedOn || copy.updated_on || copy.Updated || null;
+            const lostOn = copy.LostOn || copy.lostOn || copy.lost_on || null;
+            rows.push(['', '', '', '', accession || '—', `${availability}${condition ? ' • ' + condition : ''}`, String(location || '—'), formatDisplayDate(updated), formatDisplayDate(lostOn)]);
+          });
+        }
+      });
+      const headers = ['Type', 'Title', 'Meta', 'Identifier', 'Copy Accession', 'Availability / Condition', 'Location', 'Updated', 'Lost On'];
+      return { title: 'Book Inventory Report', headers, rows: rows.length ? rows : [['—', 'No inventory data available', '', '', '', '', '', '', '']], chart: null };
+    },
+    inventory_documents: () => {
+      const rows = [];
+      (documents || []).forEach((doc) => {
+        const docId = doc?.Document_ID;
+        const inv = (docId != null && docInvMap[docId]) ? (docInvMap[docId] || []) : [];
+        const title = doc?.Title || `Document #${docId}`;
+        const meta = safeJoin([doc?.Author ? `Author: ${doc.Author}` : null, doc?.Category ? `Category: ${doc.Category}` : null, doc?.Classification ? `Class: ${doc.Classification}` : null]);
+        const identifier = `DocumentID: ${docId}`;
+
+        rows.push(['Document', title, meta || '—', identifier || '—', 'Copy Accession', 'Availability / Condition', 'Location', 'Updated', 'Lost On']);
+        if ((inv || []).length === 0) rows.push(['', '', '', '', '—', '—', '—', '—', '—']);
+        else {
+          inv.forEach((copy) => {
+            const accession = copy.accessionNumber || copy.AccessionNumber || copy.Accession_No || copy.Accession || copy.Copy_Number || copy.CopyNo || copy.Storage_ID || '';
+            const availability = copy.availability || copy.Availability || '';
+            const condition = copy.condition || copy.Condition || '';
+            const location = copy.StorageLocation || copy.location || copy.StorageLocationID || copy.location_id || copy.Location || '';
+            const updated = copy.UpdatedOn || copy.updatedOn || copy.updated_on || copy.Updated || null;
+            const lostOn = copy.LostOn || copy.lostOn || copy.lost_on || null;
+            rows.push(['', '', '', '', accession || '—', `${availability}${condition ? ' • ' + condition : ''}`, String(location || '—'), formatDisplayDate(updated), formatDisplayDate(lostOn)]);
+          });
+        }
+      });
+      const headers = ['Type', 'Title', 'Meta', 'Identifier', 'Copy Accession', 'Availability / Condition', 'Location', 'Updated', 'Lost On'];
+      return { title: 'Document Inventory Report', headers, rows: rows.length ? rows : [['—', 'No inventory data available', '', '', '', '', '', '', '']], chart: null };
     }
   };
 

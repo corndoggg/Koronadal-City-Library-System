@@ -15,7 +15,8 @@ def get_inventory(book_id):
             bi.Availability AS availability, 
             bi.BookCondition AS `condition`, 
             bi.StorageLocation AS location,
-            bi.UpdatedOn AS updatedOn,
+                bi.UpdatedOn AS updatedOn,
+                bi.LostOn AS lostOn,
             s.Name AS locationName
         FROM Book_Inventory bi
         LEFT JOIN Storages s ON bi.StorageLocation = s.ID
@@ -39,7 +40,8 @@ def get_inventory_copy(copy_id):
             bi.Availability AS availability, 
             bi.BookCondition AS `condition`,
             bi.StorageLocation AS location,
-            bi.UpdatedOn AS updatedOn,
+                bi.UpdatedOn AS updatedOn,
+                bi.LostOn AS lostOn,
             s.Name AS locationName
         FROM Book_Inventory bi
         LEFT JOIN Storages s ON bi.StorageLocation = s.ID
@@ -60,15 +62,16 @@ def add_inventory(book_id):
     cursor = conn.cursor()
     cursor.execute("""
         INSERT INTO Book_Inventory (
-            Book_ID, Accession_Number, Availability, 
-            BookCondition, StorageLocation, UpdatedOn
-    ) VALUES (%s, %s, %s, %s, %s, NOW())
+            Book_ID, Accession_Number, Availability,
+            BookCondition, StorageLocation, UpdatedOn, LostOn
+    ) VALUES (%s, %s, %s, %s, %s, NOW(), CASE WHEN %s = 'Lost' THEN NOW() ELSE NULL END)
     """, (
         book_id,
         copy['accessionNumber'],
         copy['availability'],
         copy['condition'],
-        copy['location']
+        copy['location'],
+        copy['availability']
     ))
     conn.commit()
     cursor.close()
@@ -90,7 +93,8 @@ def update_copy(book_id, copy_id):
             Availability = %s, 
             BookCondition = %s, 
             StorageLocation = %s, 
-            UpdatedOn = NOW()
+            UpdatedOn = NOW(),
+            LostOn = CASE WHEN %s = 'Lost' THEN NOW() ELSE LostOn END
         WHERE 
             Copy_ID = %s AND Book_ID = %s
     """, (
@@ -98,6 +102,7 @@ def update_copy(book_id, copy_id):
         copy['availability'],
         copy['condition'],
         copy['location'],
+        copy['availability'],
         copy_id,
         book_id
     ))

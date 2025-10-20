@@ -9,7 +9,15 @@ def get_inventory_by_document(document_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
-        SELECT di.*, s.Name as Location
+        SELECT 
+            di.Storage_ID,
+            di.Document_ID,
+            di.Availability AS availability,
+            di.`Condition` AS `condition`,
+            di.StorageLocation AS location,
+            di.UpdatedOn AS updatedOn,
+            di.LostOn AS lostOn,
+            s.Name as Location
         FROM Document_Inventory di
         LEFT JOIN Storages s ON di.StorageLocation = s.ID
         WHERE di.Document_ID = %s
@@ -28,10 +36,10 @@ def add_inventory(document_id):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO Document_Inventory (Document_ID, Availability, `Condition`, `StorageLocation`, UpdatedOn)
-        VALUES (%s, %s, %s, %s, NOW())
+        INSERT INTO Document_Inventory (Document_ID, Availability, `Condition`, `StorageLocation`, UpdatedOn, LostOn)
+        VALUES (%s, %s, %s, %s, NOW(), CASE WHEN %s = 'Lost' THEN NOW() ELSE NULL END)
     """, (
-        document_id, data.get('availability'), data.get('condition'), data.get('location')
+        document_id, data.get('availability'), data.get('condition'), data.get('location'), data.get('availability')
     ))
     conn.commit()
     cursor.close()
@@ -48,10 +56,12 @@ def update_inventory(document_id, storage_id):
     cursor = conn.cursor()
     cursor.execute("""
         UPDATE Document_Inventory
-        SET Availability=%s, `Condition`=%s, `StorageLocation`=%s, UpdatedOn=NOW()
+        SET Availability=%s, `Condition`=%s, `StorageLocation`=%s, UpdatedOn=NOW(),
+            LostOn = CASE WHEN %s = 'Lost' THEN NOW() ELSE LostOn END
         WHERE Document_ID=%s AND Storage_ID=%s
     """, (
         data.get('availability'), data.get('condition'), data.get('location'),
+        data.get('availability'),
         document_id, storage_id
     ))
     conn.commit()
@@ -79,7 +89,15 @@ def get_inventory_by_storage(storage_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
-        SELECT di.*, s.Name as Location
+        SELECT 
+            di.Storage_ID,
+            di.Document_ID,
+            di.Availability AS availability,
+            di.`Condition` AS `condition`,
+            di.StorageLocation AS location,
+            di.UpdatedOn AS updatedOn,
+            di.LostOn AS lostOn,
+            s.Name as Location
         FROM Document_Inventory di
         LEFT JOIN Storages s ON di.StorageLocation = s.ID
         WHERE di.Storage_ID = %s

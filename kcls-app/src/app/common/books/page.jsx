@@ -81,7 +81,8 @@ const BookManagementPage = () => {
                   : copy.Location_ID !== null && copy.Location_ID !== undefined
                   ? String(copy.Location_ID)
                   : '',
-              updatedOn: copy.UpdatedOn || copy.updatedOn || copy.updated_on || copy.Updated_On || null
+              updatedOn: copy.UpdatedOn || copy.updatedOn || copy.updated_on || copy.Updated_On || null,
+              lostOn: copy.LostOn || copy.lostOn || copy.Lost_On || copy.lost_on || null
             }));
             return { ...book, inventory };
           } catch {
@@ -414,6 +415,7 @@ const BookManagementPage = () => {
                                       <TableCell>Location</TableCell>
                                       <TableCell>Accession</TableCell>
                                       <TableCell>Updated</TableCell>
+                                      <TableCell>Lost On</TableCell>
                                     </TableRow>
                                   </TableHead>
                                   <TableBody>
@@ -426,6 +428,7 @@ const BookManagementPage = () => {
                                           copy.accessionNumber || copy.AccessionNumber || copy.Accession_No || copy.Accession || copy.Copy_Number || copy.CopyNo || copy.Copy_ID || '—'
                                         }</TableCell>
                                         <TableCell>{copy.updatedOn ? formatDate(copy.updatedOn) : '—'}</TableCell>
+                                        <TableCell>{copy.lostOn ? formatDate(copy.lostOn) : '—'}</TableCell>
                                       </TableRow>
                                     ))}
                                   </TableBody>

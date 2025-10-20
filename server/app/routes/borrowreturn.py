@@ -726,10 +726,10 @@ def mark_items_lost():
 
         if book_ids:
             fmtb = ','.join(['%s'] * len(book_ids))
-            cursor.execute(f"UPDATE Book_Inventory SET Availability='Lost', UpdatedOn=NOW() WHERE Copy_ID IN ({fmtb})", tuple(book_ids))
+            cursor.execute(f"UPDATE Book_Inventory SET Availability='Lost', UpdatedOn=NOW(), LostOn=NOW() WHERE Copy_ID IN ({fmtb})", tuple(book_ids))
         if doc_storage_ids:
             fmtd = ','.join(['%s'] * len(doc_storage_ids))
-            cursor.execute(f"UPDATE Document_Inventory SET Availability='Lost', UpdatedOn=NOW() WHERE Storage_ID IN ({fmtd})", tuple(doc_storage_ids))
+            cursor.execute(f"UPDATE Document_Inventory SET Availability='Lost', UpdatedOn=NOW(), LostOn=NOW() WHERE Storage_ID IN ({fmtd})", tuple(doc_storage_ids))
 
         # Create a ReturnTransactions row to log the lost event and fines (if any)
         remarks = (data.get('remarks') or '').strip()
