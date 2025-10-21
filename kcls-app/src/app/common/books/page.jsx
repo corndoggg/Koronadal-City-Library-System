@@ -43,7 +43,7 @@ const BookManagementPage = () => {
   const [books, setBooks] = useState([]);
   const [filteredBooks, setFilteredBooks] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const rowsPerPage = 8;
+  const rowsPerPage = 24;
   const [modalOpen, setModalOpen] = useState(false);
   const [isEdit, setIsEdit] = useState(false);
   const [editId, setEditId] = useState(null);

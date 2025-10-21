@@ -259,7 +259,7 @@ const UserManagementPage = () => {
             <Tabs
               value={tab}
               onChange={(_, v) => setTab(v)}
-              sx={{
+                sx={{
                 '& .MuiTab-root': {
                   minHeight: 38,
                   fontWeight: 600,
@@ -280,7 +280,10 @@ const UserManagementPage = () => {
                   height: 3,
                   borderRadius: 8,
                   backgroundColor: theme.palette.primary.main
-                }
+                  },
+                  // allow tabs to take available space so search can align to the right
+                  flex: '1 1 auto',
+                  minWidth: 0
               }}
             >
               <Tab
@@ -301,6 +304,7 @@ const UserManagementPage = () => {
               onChange={e => setSearch(e.target.value)}
               sx={{
                 width: { xs: '100%', sm: 260, md: 320 },
+                ml: { md: 'auto' },
                 '& .MuiOutlinedInput-root': { borderRadius: 1 }
               }}
               InputProps={{

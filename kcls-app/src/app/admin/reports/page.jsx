@@ -23,21 +23,13 @@ import {
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import { Bar, Doughnut } from 'react-chartjs-2';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Tooltip as ChartTooltip,
-  Legend
-} from 'chart.js';
 import { Download, Eye, FileText, Printer, RefreshCw } from 'lucide-react';
 import axios from 'axios';
 import autoTable from 'jspdf-autotable';
 import jsPDF from 'jspdf';
 import { formatDate, nowDateTime } from '../../../utils/date';
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, ChartTooltip, Legend);
+// No visualization required: table-only reports
 
 const surfacePaper = (extra = {}) => (theme) => ({
   borderRadius: 1.75,
@@ -47,7 +39,7 @@ const surfacePaper = (extra = {}) => (theme) => ({
 });
 
 const REPORT_TYPES = [
-  { key: 'borrowing_trends', label: 'Daily / Weekly / Monthly Borrowing' },
+  { key: 'borrowing_trends', label: 'Borrowing Report' },
   { key: 'returns', label: 'Return Report' },
   { key: 'overdue', label: 'Overdue Report' },
   { key: 'loss_or_damage', label: 'Lost or Damaged Items' },
@@ -581,6 +573,22 @@ const ReportsPage = () => {
       const rows = [];
       const conditionCounts = {};
 
+      const periodFor = (dateRaw) => {
+        const iso = toIsoDate(dateRaw);
+        if (!iso) return 'Unspecified';
+        const d = new Date(iso);
+        if (granularity === 'weekly') {
+          const start = new Date(d);
+          const day = start.getDay();
+          const diff = day === 0 ? -6 : 1 - day;
+          start.setDate(start.getDate() + diff);
+          const weekStartIso = toIsoDate(start);
+          return weekStartIso ? `Week of ${formatDate(weekStartIso)}` : 'Week';
+        }
+        if (granularity === 'monthly') return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        return formatDate(iso);
+      };
+
       returnedItemsDetailed.forEach(({ item, parent, borrowId, returnDate }) => {
         const borrow = borrowId ? borrowMap[borrowId] : undefined;
         const borrowerLabel = buildBorrowerDisplay(
@@ -611,7 +619,8 @@ const ReportsPage = () => {
 
         const remarks = item.ReturnRemarks || parent.Remarks || parent.Notes || detail.remarks;
 
-        rows.push([
+      rows.push([
+        periodFor(parent.ReturnDate),
           parent.ReturnID ? `#${parent.ReturnID}` : '—',
           returnDate,
           borrowId ? `#${borrowId}` : '—',
@@ -625,26 +634,14 @@ const ReportsPage = () => {
         ]);
       });
 
-      const labels = Object.keys(conditionCounts);
-      const chart = labels.length ? {
-        type: 'doughnut',
-        data: {
-          labels,
-          datasets: [{
-            label: 'Returned Items',
-            data: labels.map((label) => conditionCounts[label]),
-            backgroundColor: ['#2e7d32', '#ffa000', '#d32f2f', '#7b1fa2', '#0288d1']
-          }]
-        }
-      } : null;
-
       const rowsWithFallback = rows.length ? rows : [[
-        '—', '—', '—', '—', 'No returned items recorded', '—', '—', '—', '—', '—'
+        '—', '—', '—', '—', '—', 'No returned items recorded', '—', '—', '—', '—', '—'
       ]];
 
       return {
         title: 'Return Report',
         headers: [
+          'Period',
           'Return ID',
           'Return Date',
           'Borrow ID',
@@ -657,7 +654,8 @@ const ReportsPage = () => {
           'Remarks'
         ],
         rows: rowsWithFallback,
-        chart
+        chart: null,
+        meta: { granularity }
       };
     },
 
@@ -666,6 +664,22 @@ const ReportsPage = () => {
       const msPerDay = 1000 * 60 * 60 * 24;
       const rows = [];
       const bucket = { pending: 0, overdue: 0 };
+
+      const periodFor = (dateRaw) => {
+        const iso = toIsoDate(dateRaw);
+        if (!iso) return 'Unspecified';
+        const d = new Date(iso);
+        if (granularity === 'weekly') {
+          const start = new Date(d);
+          const day = start.getDay();
+          const diff = day === 0 ? -6 : 1 - day;
+          start.setDate(start.getDate() + diff);
+          const weekStartIso = toIsoDate(start);
+          return weekStartIso ? `Week of ${formatDate(weekStartIso)}` : 'Week';
+        }
+        if (granularity === 'monthly') return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        return formatDate(iso);
+      };
 
       filteredBorrows.forEach((tx) => {
         if (String(tx.ReturnStatus || '').toLowerCase() === 'returned') return;
@@ -699,6 +713,7 @@ const ReportsPage = () => {
         const remarks = tx.Remarks || tx.Notes || '—';
 
         rows.push([
+          periodFor(tx.BorrowDate),
           tx.BorrowID ? `#${tx.BorrowID}` : '—',
           formatDisplayDate(tx.BorrowDate),
           borrowerLabel,
@@ -712,20 +727,6 @@ const ReportsPage = () => {
         ]);
       });
 
-      const chart = rows.length ? {
-        type: 'bar',
-        data: {
-          labels: ['Overdue Loans'],
-          datasets: [{
-            label: 'Count',
-            data: [rows.length],
-            backgroundColor: '#d32f2f',
-            borderRadius: 6,
-            maxBarThickness: 48
-          }]
-        }
-      } : null;
-
       const rowsWithFallback = rows.length ? rows : [[
         '—', '—', '—', '—', '—', '—', '—', '—', 'No overdue items found', '—'
       ]];
@@ -733,6 +734,7 @@ const ReportsPage = () => {
       return {
         title: 'Overdue Borrowed Items',
         headers: [
+          'Period',
           'Borrow ID',
           'Borrow Date',
           'Borrower',
@@ -745,7 +747,8 @@ const ReportsPage = () => {
           'Remarks'
         ],
         rows: rowsWithFallback,
-        chart
+        chart: null,
+        meta: { granularity }
       };
     },
 
@@ -899,7 +902,6 @@ const ReportsPage = () => {
   const startIdx = (page - 1) * rowsPerPage;
   const endIdx = Math.min(totalRows, startIdx + rowsPerPage);
   const pagedRows = currentReport.rows.slice(startIdx, endIdx);
-  const chartData = currentReport.chart || null;
 
   const exportCSV = () => {
     const rows = exportScope === 'page' ? pagedRows : currentReport.rows;
@@ -924,31 +926,84 @@ const ReportsPage = () => {
   const previewPDF = async () => {
     try {
       const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
-      doc.setFont('Helvetica', 'bold');
-      doc.setFontSize(16);
-      doc.text(currentReport.title, 40, 40);
-      doc.setFontSize(10);
-      doc.setFont('Helvetica', 'normal');
-      doc.text(`Generated: ${nowDateTime()} by ${adminName}`, 40, 60);
-      doc.text(`Filters: ${fromDate || 'Start'} → ${toDate || 'End'}`, 40, 76);
 
+      // Page dimensions and layout helpers
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 36; // 0.5 inch
+      const contentWidth = pageWidth - margin * 2;
+
+      // Header: colored band with title and metadata
+      const headerHeight = 48;
+      doc.setFillColor(2, 136, 209);
+      doc.rect(0, 0, pageWidth, headerHeight, 'F');
+      doc.setFont('Helvetica', 'bold');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(16);
+      doc.text(currentReport.title, margin, 32);
+
+      // Right-aligned generated info
+      doc.setFontSize(9);
+      doc.setFont('Helvetica', 'normal');
+      const generatedText = `Generated: ${nowDateTime()} by ${adminName}`;
+      const genTextWidth = doc.getTextWidth(generatedText);
+      doc.text(generatedText, pageWidth - margin - genTextWidth, 32);
+
+      // Filters line under header (only show when at least one filter or grouping is present)
+      doc.setTextColor(60, 60, 60);
+      doc.setFontSize(9);
+      const filterParts = [];
+      if (fromDate) filterParts.push(`From ${formatDate(toIsoDate(fromDate) || fromDate)}`);
+      if (toDate) filterParts.push(`To ${formatDate(toIsoDate(toDate) || toDate)}`);
+      const filtersText = filterParts.length ? `Filters: ${filterParts.join(' → ')}` : '';
+
+      // Include grouping/granularity for certain reports
+      let groupingLabel = '';
+      if (reportType === 'borrowing_trends' || reportType === 'returns' || reportType === 'overdue') {
+        const gLabel = GRANULARITY_OPTIONS.find((opt) => opt.value === granularity)?.label || granularity;
+        groupingLabel = `Grouping: ${gLabel}`;
+      }
+
+      const headerMetaText = [filtersText, groupingLabel].filter(Boolean).join(' • ');
+      if (headerMetaText) doc.text(headerMetaText, margin, headerHeight + 18);
+
+      // Table start position
+      const startY = headerHeight + 28;
+
+      // autoTable with improved styling
       autoTable(doc, {
-        startY: 96,
+        startY,
         head: [currentReport.headers],
         body: currentReport.rows,
-        styles: { fontSize: 8, cellPadding: 4 },
-        headStyles: { fillColor: [2, 136, 209], textColor: [255, 255, 255] },
-        alternateRowStyles: { fillColor: [245, 245, 245] },
-        columnStyles: {
-          0: { cellWidth: 100 },
-          1: { cellWidth: 80 }
+        styles: {
+          font: 'Helvetica',
+          fontSize: 9,
+          cellPadding: 6,
+          overflow: 'linebreak',
+          valign: 'middle'
+        },
+        headStyles: {
+          fillColor: [2, 136, 209],
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          halign: 'left'
+        },
+        alternateRowStyles: { fillColor: [250, 250, 250] },
+        tableWidth: contentWidth,
+        margin: { left: margin, right: margin },
+        didDrawPage: () => {
+          // Footer: page numbers and small timestamp
+          const footerY = doc.internal.pageSize.getHeight() - 24;
+          doc.setFontSize(8);
+          doc.setTextColor(120, 120, 120);
+          const leftText = `Generated on ${nowDateTime()}`;
+          doc.text(leftText, margin, footerY);
+          const rightText = `Page ${doc.internal.getCurrentPageInfo().pageNumber} of ${doc.internal.getNumberOfPages()}`;
+          const rightWidth = doc.getTextWidth(rightText);
+          doc.text(rightText, pageWidth - margin - rightWidth, footerY);
         }
       });
 
-      if (currentReport.meta) {
-        doc.setFontSize(8);
-        doc.text(`Notes: ${JSON.stringify(currentReport.meta)}`, 40, doc.lastAutoTable.finalY + 24);
-      }
+      // (Notes/meta section intentionally removed to keep PDF concise)
 
       const blob = doc.output('blob');
       const url = URL.createObjectURL(blob);
@@ -1002,7 +1057,7 @@ const ReportsPage = () => {
             size="small"
             sx={{ fontWeight: 600, ml: { xs: 0, md: 'auto' } }}
           />
-          {reportType === 'borrowing_trends' && (
+          {(reportType === 'borrowing_trends' || reportType === 'returns' || reportType === 'overdue') && (
             <Chip
               label={`Grouping: ${GRANULARITY_OPTIONS.find((opt) => opt.value === granularity)?.label || 'Daily'}`}
               size="small"
@@ -1123,7 +1178,7 @@ const ReportsPage = () => {
             onChange={(e) => setToDate(e.target.value)}
             InputLabelProps={{ shrink: true }}
           />
-          {reportType === 'borrowing_trends' && (
+          {(reportType === 'borrowing_trends' || reportType === 'returns' || reportType === 'overdue') && (
             <TextField
               label="Grouping"
               size="small"
@@ -1175,7 +1230,7 @@ const ReportsPage = () => {
         )}
 
         <Grid container spacing={2.5}>
-          <Grid item xs={12} md={chartData ? 7 : 12}>
+          <Grid item xs={12} md={12}>
             <Paper
               sx={surfacePaper({
                 p: { xs: 2, md: 2.5 },
@@ -1302,51 +1357,7 @@ const ReportsPage = () => {
             </Paper>
           </Grid>
 
-          {chartData && (
-            <Grid item xs={12} md={5}>
-              <Paper
-                sx={surfacePaper({
-                  p: { xs: 2, md: 2.5 },
-                  display: 'flex',
-                  flexDirection: 'column',
-                  height: '100%'
-                })}
-              >
-                <Typography fontWeight={800} fontSize={15}>Visualization</Typography>
-                <Divider sx={{ my: 1 }} />
-                {loading ? (
-                  <Skeleton variant="rounded" height={320} />
-                ) : (
-                  <Box sx={{ flexGrow: 1, minHeight: 320 }}>
-                    {chartData.type === 'bar' && (
-                      <Bar
-                        data={chartData.data}
-                        options={{
-                          responsive: true,
-                          maintainAspectRatio: false,
-                          plugins: { legend: { display: false } },
-                          scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
-                        }}
-                      />
-                    )}
-                    {chartData.type === 'doughnut' && (
-                      <Doughnut
-                        data={chartData.data}
-                        options={{
-                          responsive: true,
-                          maintainAspectRatio: false,
-                          plugins: { legend: { position: 'bottom' } }
-                        }}
-                      />
-                    )}
-                  </Box>
-                )}
-                <Typography variant="caption" color="text.secondary" mt={1}>
-                  Auto-generated chart for quick insight.
-                </Typography>
-              </Paper>
-            </Grid>
-          )}
+          
         </Grid>
       </Stack>
 

@@ -648,14 +648,14 @@ const SettingsPage = () => {
                       This list reflects the files currently stored on disk. Use the controls to refresh or open a document.
                     </Typography>
                     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                      <Button
+                      {/*<Button
                         variant="contained"
                         startIcon={<CloudUploadIcon />}
                         onClick={handleUploadClick}
                         disabled={uploading}
                       >
                         {uploading ? 'Uploading…' : 'Upload PDFs'}
-                      </Button>
+                      </Button>*/}
                       <Button
                         variant="outlined"
                         startIcon={<RefreshIcon />}

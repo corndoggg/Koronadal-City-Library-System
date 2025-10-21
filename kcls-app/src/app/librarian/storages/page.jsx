@@ -4,7 +4,8 @@ import {
   Box, Typography, Button, TextField, Dialog, DialogTitle, DialogContent, DialogActions,
   Snackbar, Alert, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper,
   IconButton, Tooltip, useTheme, Chip, Stack, CircularProgress, InputAdornment,
-  Skeleton, MenuItem
+  Skeleton, MenuItem, Tabs, Tab
+  , Checkbox
 } from "@mui/material";
 import { Add, Edit, Search, Visibility, Refresh, Delete as DeleteIcon, WarningAmber } from "@mui/icons-material";
 import { formatDate } from '../../../utils/date';
@@ -24,6 +25,12 @@ const StorageManagementPage = () => {
   const [loading, setLoading] = useState(false);
   const [docsBooks, setDocsBooks] = useState([]);
   const [search, setSearch] = useState("");
+  const [tab, setTab] = useState(2); // default to Storages view
+  const [selectedLost, setSelectedLost] = useState(new Set());
+  const [selectedAttention, setSelectedAttention] = useState(new Set());
+  const [batchDialogOpen, setBatchDialogOpen] = useState(false);
+  const [batchAction, setBatchAction] = useState(null); // 'recover' | 'move'
+  const [batchTargetStorage, setBatchTargetStorage] = useState("");
   const [editItem, setEditItem] = useState(null);
   const [editInv, setEditInv] = useState(null);
   const [openEditInv, setOpenEditInv] = useState(false);
@@ -342,6 +349,165 @@ const StorageManagementPage = () => {
     });
   }, [attentionItems, search]);
 
+  const filteredLostItems = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return lostItems;
+    return lostItems.filter(item => {
+      const title = (item.title || "").toLowerCase();
+      const accession = (item.accessionNumber || "").toLowerCase();
+      const availability = (item.availability || "").toLowerCase();
+      const condition = (item.condition || "").toLowerCase();
+      const storageName = (item.storageName || "").toLowerCase();
+      const type = (item.type || "").toLowerCase();
+      const lostOn = (item.lostOn || "").toLowerCase();
+      return (
+        title.includes(q) ||
+        accession.includes(q) ||
+        availability.includes(q) ||
+        condition.includes(q) ||
+        storageName.includes(q) ||
+        type.includes(q) ||
+        lostOn.includes(q)
+      );
+    });
+  }, [lostItems, search]);
+
+  const clearSelections = () => {
+    setSelectedLost(new Set());
+    setSelectedAttention(new Set());
+  };
+
+  const toggleLostSelection = (id) => {
+    setSelectedLost(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAttentionSelection = (key) => {
+    setSelectedAttention(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+  const selectAllLost = (checked) => {
+    if (!checked) return setSelectedLost(new Set());
+    setSelectedLost(new Set((filteredLostItems || []).map(it => `${it.type}-${it.id}-${it.inv?.ID ?? it.inv?.Copy_ID ?? it.inv?.id ?? ''}`)));
+  };
+
+  const selectAllAttention = (checked) => {
+    if (!checked) return setSelectedAttention(new Set());
+    setSelectedAttention(new Set((filteredAttentionItems || []).map(it => `${it.type}-${it.id}-${it.inv?.ID ?? it.inv?.Copy_ID ?? it.inv?.id ?? ''}`)));
+  };
+
+  const openBatchDialog = (action) => {
+    setBatchAction(action);
+    setBatchTargetStorage("");
+    setBatchDialogOpen(true);
+  };
+
+  const closeBatchDialog = () => {
+    setBatchDialogOpen(false);
+    setBatchAction(null);
+    setBatchTargetStorage("");
+  };
+
+  // Helper to perform per-item update
+  const performInventoryUpdate = async (item, invKey, payload) => {
+    if (item.type === 'Book') {
+      return axios.put(`${API_BASE}/books/inventory/${item.id}/${invKey}`, payload);
+    }
+    const docInvKey = invKey;
+    return axios.put(`${API_BASE}/documents/inventory/${item.id}/${docInvKey}`, payload);
+  };
+
+  const handleConfirmBatch = async () => {
+    if (!batchAction) return closeBatchDialog();
+    try {
+      if (batchAction === 'recover') {
+        const ids = Array.from(selectedLost);
+        if (!ids.length) { setToast({ open: true, message: 'No items selected.', severity: 'info' }); return; }
+        let success = 0, failed = 0;
+        for (const key of ids) {
+          // key format: type-id-invId
+          const parts = key.split('-');
+          const type = parts[0];
+          const id = parts[1];
+          const invId = parts.slice(2).join('-');
+          // find the item from lostItems
+          const item = lostItems.find(it => String(it.type) === String(type) && String(it.id) === String(id) && String(it.inv?.ID ?? it.inv?.Copy_ID ?? it.inv?.id ?? '') === String(invId));
+          if (!item) { failed++; continue; }
+          // If borrowed, skip
+          if ((item.availability || '').toLowerCase() === 'borrowed') { failed++; continue; }
+          const invKey = item.inv?.Copy_ID || item.inv?.id || item.inv?.ID || item.inv?.Storage_ID || item.inv?.storageId || '';
+          const payload = { availability: 'Available' };
+          if (batchTargetStorage) payload.location = Number.isNaN(Number(batchTargetStorage)) ? batchTargetStorage : Number(batchTargetStorage);
+          try {
+            await performInventoryUpdate(item, invKey, payload);
+            success++;
+          } catch { failed++; }
+        }
+        setToast({ open: true, message: `Recovered ${success} items${failed ? `, ${failed} failed` : ''}.`, severity: failed ? 'warning' : 'success' });
+        clearSelections();
+        closeBatchDialog();
+        fetchDocsBooks();
+        return;
+      }
+
+      if (batchAction === 'move') {
+        const ids = Array.from(selectedAttention);
+        if (!ids.length) { setToast({ open: true, message: 'No items selected.', severity: 'info' }); return; }
+        if (!batchTargetStorage) { setToast({ open: true, message: 'Select a target storage.', severity: 'error' }); return; }
+        // capacity check: count how many items need moving (not already in target)
+        const targetId = batchTargetStorage;
+        const itemsToMove = ids.map(key => {
+          const parts = key.split('-');
+          const type = parts[0];
+          const id = parts[1];
+          const invId = parts.slice(2).join('-');
+          return attentionItems.find(it => String(it.type) === String(type) && String(it.id) === String(id) && String(it.inv?.ID ?? it.inv?.Copy_ID ?? it.inv?.id ?? '') === String(invId));
+        }).filter(Boolean);
+        const movesNeeded = itemsToMove.filter(it => String(it.storageId) !== String(targetId)).length;
+        const loc = storages.find(s => String(s.ID) === String(targetId));
+        const capacity = Number(loc?.Capacity ?? 0);
+        if (capacity > 0) {
+          try {
+            const res = await axios.get(`${API_BASE}/storages/${targetId}/usage`);
+            const used = Number(res.data?.used ?? 0);
+            if (used + movesNeeded > capacity) {
+              setToast({ open: true, message: `Cannot move: target capacity ${capacity} would be exceeded. (${used}/${capacity} used)`, severity: 'error' });
+              return;
+            }
+          } catch (err) { console.warn('capacity check failed', err); }
+        }
+
+        let success = 0, failed = 0;
+        for (const item of itemsToMove) {
+          if (!item) { failed++; continue; }
+          if ((item.availability || '').toLowerCase() === 'borrowed') { failed++; continue; }
+          const invKey = item.inv?.Copy_ID || item.inv?.id || item.inv?.ID || item.inv?.Storage_ID || item.inv?.storageId || '';
+          const payload = { location: Number.isNaN(Number(targetId)) ? targetId : Number(targetId) };
+          try {
+            await performInventoryUpdate(item, invKey, payload);
+            success++;
+          } catch { failed++; }
+        }
+        setToast({ open: true, message: `Moved ${success} items${failed ? `, ${failed} failed` : ''}.`, severity: failed ? 'warning' : 'success' });
+        clearSelections();
+        closeBatchDialog();
+        fetchDocsBooks();
+        return;
+      }
+    } catch {
+      setToast({ open: true, message: 'Batch operation failed.', severity: 'error' });
+    }
+  };
+
+  const handleTabChange = (e, newValue) => setTab(newValue);
+
   const filteredStorages = useMemo(() => {
     const q = search.toLowerCase();
     return storages.filter(s =>
@@ -418,7 +584,13 @@ const StorageManagementPage = () => {
               >
                 <TextField
                   size="small"
-                  placeholder="Search storage, items, or accession"
+                  placeholder={
+                    tab === 0
+                      ? 'Search lost items (title / accession / storage / date)'
+                      : tab === 1
+                        ? 'Search items (title / accession / availability / condition)'
+                        : 'Search storage, items, or accession'
+                  }
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   InputProps={{
@@ -497,340 +669,376 @@ const StorageManagementPage = () => {
           </Stack>
         </Paper>
 
-        {/* Lost items block */}
-        <Paper
-          variant="outlined"
-          sx={{
-            borderRadius: 2,
-            p: { xs: 2, md: 2.5 }
-          }}
-        >
-          <Stack spacing={2}>
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }} justifyContent="space-between">
-              <Box>
-                <Typography variant="subtitle1" fontWeight={700}>Lost items</Typography>
-                <Typography variant="body2" color="text.secondary">Items that were recorded as lost. Use this view to reconcile or record fines.</Typography>
-              </Box>
-              <Chip label={`Lost: ${lostItems.length}`} size="small" color={lostItems.length ? 'error' : 'default'} sx={{ borderRadius: 1, fontWeight: 600 }} />
-            </Stack>
-            {lostItems.length === 0 ? (
-              <Typography variant="body2" color="text.secondary">No lost items recorded.</Typography>
-            ) : (
-              <TableContainer sx={{ maxHeight: '40vh' }}>
-                <Table size="small" stickyHeader>
-                  <TableHead>
-                    <TableRow sx={{ '& th': { fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 } }}>
-                      <TableCell>Item</TableCell>
-                      <TableCell width={120}>Accession</TableCell>
-                      <TableCell width={120}>Storage</TableCell>
-                      <TableCell width={140}>Lost On</TableCell>
-                      <TableCell width={120} align="right">Action</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {lostItems.map((item, idx) => (
-                      <TableRow key={`${item.type}-${item.id}-lost-${idx}`} hover>
-                        <TableCell>
-                          <Stack spacing={0.25}>
-                            <Typography variant="body2" fontWeight={600}>{item.type === 'Book' ? `Book · ${item.title}` : `Document · ${item.title}`}</Typography>
-                            <Typography variant="caption" color="text.secondary">Storage: {item.storageName}</Typography>
-                          </Stack>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2" color="text.secondary">{item.accessionNumber || '—'}</Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2">{item.storageName}</Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2">{item.lostOn ? formatDate(item.lostOn) : '—'}</Typography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Button size="small" variant="outlined" onClick={() => handleEditInventory({ type: item.type, title: item.title, id: item.id }, item.inv)} sx={{ borderRadius: 1, fontWeight: 600 }}>Update</Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
-          </Stack>
-        </Paper>
+        <Box sx={{ bgcolor: 'background.paper' }}>
+          <Tabs value={tab} onChange={handleTabChange} sx={{ mb: 2 }} variant="fullWidth">
+            <Tab label={`Lost (${lostItems.length})`} />
+            <Tab label={`Attention (${attentionItems.length})`} />
+            <Tab label={`Storages (${storages.length})`} />
+          </Tabs>
 
-        {/* End Lost items block */}
-
-        <Paper
-          variant="outlined"
-          sx={{
-            borderRadius: 2,
-            p: { xs: 2, md: 2.5 }
-          }}
-        >
-          <Stack spacing={2}>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'flex-start', sm: 'center' }} justifyContent="space-between">
-              <Box>
-                <Typography variant="subtitle1" fontWeight={700}>
-                  Items needing attention
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Lost, damaged, or poor-condition records appear here so you can move them quickly.
-                </Typography>
-              </Box>
-              <Chip
-                icon={<WarningAmber fontSize="small" />}
-                label={search.trim()
-                  ? `${filteredAttentionItems.length} of ${attentionItems.length} flagged`
-                  : `${attentionItems.length} flagged`}
-                size="small"
-                color={attentionItems.length ? 'warning' : 'default'}
-                sx={{ borderRadius: 1, fontWeight: 600 }}
-              />
-            </Stack>
-            {filteredAttentionItems.length === 0 ? (
-              <Typography variant="body2" color="text.secondary">
-                {attentionItems.length && search.trim()
-                  ? 'No flagged items match this search.'
-                  : 'All items are currently in good standing.'}
-              </Typography>
-            ) : (
-              <TableContainer sx={{ maxHeight: '40vh' }}>
-                <Table size="small" stickyHeader>
-                  <TableHead>
-                    <TableRow
-                      sx={{ '& th': { fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, bgcolor: theme.palette.background.paper } }}
-                    >
-                      <TableCell>Item</TableCell>
-                      <TableCell width={120}>Condition</TableCell>
-                      <TableCell width={120}>Availability</TableCell>
-                      <TableCell width={160}>Storage</TableCell>
-                      <TableCell width={120} align="right">Action</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {filteredAttentionItems.map((item, index) => {
-                      const availability = (item.availability || '').toLowerCase();
-                      const conditionLabel = item.condition || '—';
-                      const normalizedCondition = (item.condition || '').toLowerCase();
-                      return (
-                        <TableRow key={`${item.type}-${item.id}-${index}`} hover>
-                          <TableCell>
-                            <Stack spacing={0.25}>
-                              <Typography variant="body2" fontWeight={600}>
-                                {item.type === 'Book' ? `Book · ${item.title}` : `Document · ${item.title}`}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                Accession: {item.accessionNumber || '—'}
-                              </Typography>
-                            </Stack>
-                          </TableCell>
-                          <TableCell>
-                            <Chip
-                              size="small"
-                              label={conditionLabel}
-                              color={normalizedCondition === 'lost' ? 'error' : normalizedCondition === 'bad' ? 'error' : 'warning'}
-                              sx={{ borderRadius: 0.75, fontWeight: 600 }}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Chip
-                              size="small"
-                              label={item.availability || '—'}
-                              color={availability === 'lost' ? 'error' : availability === 'borrowed' ? 'warning' : 'default'}
-                              sx={{ borderRadius: 0.75, fontWeight: 600 }}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="body2" fontWeight={600}>
-                              {item.storageName}
-                            </Typography>
-                          </TableCell>
-                          <TableCell align="right">
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              onClick={() => handleEditInventory({ type: item.type, title: item.title, id: item.id }, item.inv)}
-                              sx={{ borderRadius: 1, fontWeight: 600 }}
-                            >
-                              Move item
-                            </Button>
-                          </TableCell>
+          {/* Lost items tab */}
+          {tab === 0 && (
+            <Paper variant="outlined" sx={{ borderRadius: 2, p: { xs: 2, md: 2.5 } }}>
+              <Stack spacing={2}>
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }} justifyContent="space-between">
+                  <Box>
+                    <Typography variant="subtitle1" fontWeight={700}>Lost items</Typography>
+                    <Typography variant="body2" color="text.secondary">Items that were recorded as lost. Use this view to reconcile or record fines.</Typography>
+                  </Box>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Button size="small" variant="outlined" disabled={!selectedLost.size} onClick={() => openBatchDialog('recover')} sx={{ borderRadius: 1 }}>Recover selected</Button>
+                    <Chip label={`Lost: ${lostItems.length}`} size="small" color={lostItems.length ? 'error' : 'default'} sx={{ borderRadius: 1, fontWeight: 600 }} />
+                  </Stack>
+                </Stack>
+                {filteredLostItems.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">No lost items recorded.</Typography>
+                ) : (
+                  <TableContainer sx={{ maxHeight: '40vh' }}>
+                    <Table size="small" stickyHeader>
+                      <TableHead>
+                        <TableRow sx={{ '& th': { fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 } }}>
+                            <TableCell padding="checkbox">
+                              <Checkbox
+                                size="small"
+                                indeterminate={selectedLost.size > 0 && selectedLost.size < filteredLostItems.length}
+                                checked={filteredLostItems.length > 0 && selectedLost.size === filteredLostItems.length}
+                                onChange={e => selectAllLost(e.target.checked)}
+                              />
+                            </TableCell>
+                            <TableCell>Item</TableCell>
+                          <TableCell width={120}>Accession</TableCell>
+                          <TableCell width={120}>Storage</TableCell>
+                          <TableCell width={140}>Lost On</TableCell>
+                          <TableCell width={120} align="right">Action</TableCell>
                         </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
-          </Stack>
-        </Paper>
+                      </TableHead>
+                      <TableBody>
+                        {filteredLostItems.map((item, idx) => {
+                          const key = `${item.type}-${item.id}-${item.inv?.ID ?? item.inv?.Copy_ID ?? item.inv?.id ?? ''}`;
+                          return (
+                            <TableRow key={`${item.type}-${item.id}-lost-${idx}`} hover>
+                              <TableCell padding="checkbox">
+                                <Checkbox size="small" checked={selectedLost.has(key)} onChange={() => toggleLostSelection(key)} />
+                              </TableCell>
+                              <TableCell>
+                                <Stack spacing={0.25}>
+                                  <Typography variant="body2" fontWeight={600}>{item.type === 'Book' ? `Book · ${item.title}` : `Document · ${item.title}`}</Typography>
+                                  <Typography variant="caption" color="text.secondary">Storage: {item.storageName}</Typography>
+                                </Stack>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" color="text.secondary">{item.accessionNumber || '—'}</Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2">{item.storageName}</Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2">{item.lostOn ? formatDate(item.lostOn) : '—'}</Typography>
+                              </TableCell>
+                              <TableCell align="right">
+                                <Button size="small" variant="outlined" onClick={() => handleEditInventory({ type: item.type, title: item.title, id: item.id }, item.inv)} sx={{ borderRadius: 1, fontWeight: 600 }}>Update</Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
+              </Stack>
+            </Paper>
+          )}
 
-        {loading ? (
-          <Paper
-            variant="outlined"
-            sx={{
-              p: 4,
-              textAlign: 'center',
-              borderRadius: 2,
-              borderColor: theme.palette.divider,
-              bgcolor: 'background.paper'
-            }}
-          >
-            <CircularProgress size={46} />
-            <Typography mt={2} variant="caption" color="text.secondary" display="block" fontWeight={600}>
-              Loading inventory…
-            </Typography>
-            <Box mt={3} display="flex" flexDirection="column" gap={1}>
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} variant="rounded" height={46} />
-              ))}
-            </Box>
-          </Paper>
-        ) : (
-          <Paper
-            variant="outlined"
-            sx={{
-              borderRadius: 2,
-              borderColor: theme.palette.divider,
-              overflow: 'hidden',
-              bgcolor: 'background.paper'
-            }}
-          >
-            <TableContainer
-              sx={{
-                maxHeight: '65vh',
-                '&::-webkit-scrollbar': { width: 8 },
-                '&::-webkit-scrollbar-thumb': {
-                  background: theme.palette.divider,
-                  borderRadius: 4
-                }
-              }}
-            >
-              <Table stickyHeader size="small">
-                <TableHead>
-                  <TableRow
+          {/* Attention tab */}
+          {tab === 1 && (
+            <Paper variant="outlined" sx={{ borderRadius: 2, p: { xs: 2, md: 2.5 } }}>
+              <Stack spacing={2}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'flex-start', sm: 'center' }} justifyContent="space-between">
+                  <Box>
+                    <Typography variant="subtitle1" fontWeight={700}>
+                      Items needing attention
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Lost, damaged, or poor-condition records appear here so you can move them quickly.
+                    </Typography>
+                  </Box>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Button size="small" variant="outlined" disabled={!selectedAttention.size} onClick={() => openBatchDialog('move')} sx={{ borderRadius: 1 }}>Move selected</Button>
+                    <Chip
+                      icon={<WarningAmber fontSize="small" />}
+                      label={search.trim()
+                        ? `${filteredAttentionItems.length} of ${attentionItems.length} flagged`
+                        : `${attentionItems.length} flagged`}
+                      size="small"
+                      color={attentionItems.length ? 'warning' : 'default'}
+                      sx={{ borderRadius: 1, fontWeight: 600 }}
+                    />
+                  </Stack>
+                </Stack>
+                {filteredAttentionItems.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    {attentionItems.length && search.trim()
+                      ? 'No flagged items match this search.'
+                      : 'All items are currently in good standing.'}
+                  </Typography>
+                ) : (
+                  <TableContainer sx={{ maxHeight: '40vh' }}>
+                    <Table size="small" stickyHeader>
+                      <TableHead>
+                        <TableRow
+                            sx={{ '& th': { fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, bgcolor: theme.palette.background.paper } }}
+                          >
+                            <TableCell padding="checkbox">
+                              <Checkbox
+                                size="small"
+                                indeterminate={selectedAttention.size > 0 && selectedAttention.size < filteredAttentionItems.length}
+                                checked={filteredAttentionItems.length > 0 && selectedAttention.size === filteredAttentionItems.length}
+                                onChange={e => selectAllAttention(e.target.checked)}
+                              />
+                            </TableCell>
+                            <TableCell>Item</TableCell>
+                            <TableCell width={120}>Condition</TableCell>
+                            <TableCell width={120}>Availability</TableCell>
+                            <TableCell width={160}>Storage</TableCell>
+                            <TableCell width={120} align="right">Action</TableCell>
+                          </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {filteredAttentionItems.map((item, index) => {
+                          const key = `${item.type}-${item.id}-${item.inv?.ID ?? item.inv?.Copy_ID ?? item.inv?.id ?? ''}`;
+                          const availability = (item.availability || '').toLowerCase();
+                          const conditionLabel = item.condition || '—';
+                          const normalizedCondition = (item.condition || '').toLowerCase();
+                          return (
+                            <TableRow key={`${item.type}-${item.id}-${index}`} hover>
+                              <TableCell padding="checkbox">
+                                <Checkbox size="small" checked={selectedAttention.has(key)} onChange={() => toggleAttentionSelection(key)} />
+                              </TableCell>
+                              <TableCell>
+                                <Stack spacing={0.25}>
+                                  <Typography variant="body2" fontWeight={600}>
+                                    {item.type === 'Book' ? `Book · ${item.title}` : `Document · ${item.title}`}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    Accession: {item.accessionNumber || '—'}
+                                  </Typography>
+                                </Stack>
+                              </TableCell>
+                              <TableCell>
+                                <Chip
+                                  size="small"
+                                  label={conditionLabel}
+                                  color={normalizedCondition === 'lost' ? 'error' : normalizedCondition === 'bad' ? 'error' : 'warning'}
+                                  sx={{ borderRadius: 0.75, fontWeight: 600 }}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Chip
+                                  size="small"
+                                  label={item.availability || '—'}
+                                  color={availability === 'lost' ? 'error' : availability === 'borrowed' ? 'warning' : 'default'}
+                                  sx={{ borderRadius: 0.75, fontWeight: 600 }}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" fontWeight={600}>
+                                  {item.storageName}
+                                </Typography>
+                              </TableCell>
+                              <TableCell align="right">
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  onClick={() => handleEditInventory({ type: item.type, title: item.title, id: item.id }, item.inv)}
+                                  sx={{ borderRadius: 1, fontWeight: 600 }}
+                                >
+                                  Move item
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
+              </Stack>
+            </Paper>
+          )}
+
+          {/* Storages tab */}
+          {tab === 2 && (
+            <>
+              {loading ? (
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 4,
+                    textAlign: 'center',
+                    borderRadius: 2,
+                    borderColor: theme.palette.divider,
+                    bgcolor: 'background.paper'
+                  }}
+                >
+                  <CircularProgress size={46} />
+                  <Typography mt={2} variant="caption" color="text.secondary" display="block" fontWeight={600}>
+                    Loading inventory…
+                  </Typography>
+                  <Box mt={3} display="flex" flexDirection="column" gap={1}>
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <Skeleton key={i} variant="rounded" height={46} />
+                    ))}
+                  </Box>
+                </Paper>
+              ) : (
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    borderRadius: 2,
+                    borderColor: theme.palette.divider,
+                    overflow: 'hidden',
+                    bgcolor: 'background.paper'
+                  }}
+                >
+                  <TableContainer
                     sx={{
-                      '& th': {
-                        fontWeight: 700,
-                        fontSize: 12,
-                        letterSpacing: 0.6,
-                        bgcolor: theme.palette.background.default,
-                        borderBottom: `2px solid ${theme.palette.divider}`,
-                        textTransform: 'uppercase'
+                      maxHeight: '65vh',
+                      '&::-webkit-scrollbar': { width: 8 },
+                      '&::-webkit-scrollbar-thumb': {
+                        background: theme.palette.divider,
+                        borderRadius: 4
                       }
                     }}
                   >
-                    <TableCell width="35%">Storage</TableCell>
-                    <TableCell width="15%" align="center">Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody
-                  sx={{
-                    '& tr:hover': { backgroundColor: theme.palette.action.hover },
-                    '& td': { borderBottom: `1px solid ${theme.palette.divider}` }
-                  }}
-                >
-                  {filteredStorages.map(storage => {
-                    const itemsInStorage = itemsByStorage.get(String(storage.ID)) || [];
-                    const storageAvailable = itemsInStorage.filter(i => (i.availability || '').toLowerCase() === 'available').length;
-                    const usedCount = itemsInStorage.length;
-                    const capacity = Number(storage.Capacity ?? 0);
-                    const overCapacity = capacity > 0 && usedCount > capacity;
-                    return (
-                      <TableRow key={storage.ID}>
-                        <TableCell>
-                          <Stack spacing={0.75}>
-                            <Typography fontWeight={800} fontSize={13} lineHeight={1.1}>
-                              {storage.Name}
-                            </Typography>
-                            <Stack direction="row" spacing={0.5} flexWrap="wrap">
-                              <Chip
-                                size="small"
-                                label={`Items: ${usedCount}`}
-                                sx={{ fontSize: 10, fontWeight: 700, borderRadius: 0.75 }}
-                              />
-                              <Chip
-                                size="small"
-                                color="success"
-                                label={`Available: ${storageAvailable}`}
-                                sx={{ fontSize: 10, fontWeight: 700, borderRadius: 0.75 }}
-                              />
-                              <Chip
-                                size="small"
-                                color={overCapacity ? 'error' : 'default'}
-                                label={`Capacity: ${capacity || '∞'}${capacity ? ` • Used: ${usedCount}/${capacity}` : ''}`}
-                                sx={{ fontSize: 10, fontWeight: 700, borderRadius: 0.75 }}
-                              />
-                            </Stack>
-                          </Stack>
-                        </TableCell>
-                        <TableCell align="center">
-                          <Tooltip title={`View Items (${itemsInStorage.length})`}>
-                            <span>
-                              <IconButton
-                                size="small"
-                                disabled={!itemsInStorage.length}
-                                onClick={() => handleViewAll(storage.ID)}
-                                sx={{
-                                  mr: 1,
-                                  border: `1px solid ${theme.palette.divider}`,
-                                  borderRadius: 0.75,
-                                  '&:hover': { bgcolor: theme.palette.action.hover }
-                                }}
-                              >
-                                <Visibility fontSize="small" />
-                              </IconButton>
-                            </span>
-                          </Tooltip>
-                          <Tooltip title="Edit Storage">
-                            <IconButton
-                              size="small"
-                              color="primary"
-                              onClick={() => handleEdit(storage)}
-                              sx={{
-                                border: `1px solid ${theme.palette.divider}`,
-                                borderRadius: 0.75,
-                                '&:hover': { bgcolor: theme.palette.action.hover }
-                              }}
-                            >
-                              <Edit fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title={itemsInStorage.length ? "Remove all items from this location first" : "Delete Storage"}>
-                            <span>
-                              <IconButton
-                                size="small"
-                                color="error"
-                                disabled={itemsInStorage.length > 0}
-                                onClick={() => { setDeleteTarget(storage); setDeleteOpen(true); }}
-                                sx={{
-                                  ml: 1,
-                                  border: `1px solid ${theme.palette.divider}`,
-                                  borderRadius: 0.75,
-                                  '&:hover': { bgcolor: theme.palette.action.hover }
-                                }}
-                              >
-                                <DeleteIcon fontSize="small" />
-                              </IconButton>
-                            </span>
-                          </Tooltip>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  {filteredStorages.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={2} align="center" sx={{ py: 6 }}>
-                        <Typography variant="body2" color="text.secondary">
-                          No storage locations found{search ? ' for this search.' : '.'}
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Paper>
-        )}
+                    <Table stickyHeader size="small">
+                      <TableHead>
+                        <TableRow
+                          sx={{
+                            '& th': {
+                              fontWeight: 700,
+                              fontSize: 12,
+                              letterSpacing: 0.6,
+                              bgcolor: theme.palette.background.default,
+                              borderBottom: `2px solid ${theme.palette.divider}`,
+                              textTransform: 'uppercase'
+                            }
+                          }}
+                        >
+                          <TableCell width="35%">Storage</TableCell>
+                          <TableCell width="15%" align="center">Actions</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody
+                        sx={{
+                          '& tr:hover': { backgroundColor: theme.palette.action.hover },
+                          '& td': { borderBottom: `1px solid ${theme.palette.divider}` }
+                        }}
+                      >
+                        {filteredStorages.map(storage => {
+                          const itemsInStorage = itemsByStorage.get(String(storage.ID)) || [];
+                          const storageAvailable = itemsInStorage.filter(i => (i.availability || '').toLowerCase() === 'available').length;
+                          const usedCount = itemsInStorage.length;
+                          const capacity = Number(storage.Capacity ?? 0);
+                          const overCapacity = capacity > 0 && usedCount > capacity;
+                          return (
+                            <TableRow key={storage.ID}>
+                              <TableCell>
+                                <Stack spacing={0.75}>
+                                  <Typography fontWeight={800} fontSize={13} lineHeight={1.1}>
+                                    {storage.Name}
+                                  </Typography>
+                                  <Stack direction="row" spacing={0.5} flexWrap="wrap">
+                                    <Chip
+                                      size="small"
+                                      label={`Items: ${usedCount}`}
+                                      sx={{ fontSize: 10, fontWeight: 700, borderRadius: 0.75 }}
+                                    />
+                                    <Chip
+                                      size="small"
+                                      color="success"
+                                      label={`Available: ${storageAvailable}`}
+                                      sx={{ fontSize: 10, fontWeight: 700, borderRadius: 0.75 }}
+                                    />
+                                    <Chip
+                                      size="small"
+                                      color={overCapacity ? 'error' : 'default'}
+                                      label={`Capacity: ${capacity || '∞'}${capacity ? ` • Used: ${usedCount}/${capacity}` : ''}`}
+                                      sx={{ fontSize: 10, fontWeight: 700, borderRadius: 0.75 }}
+                                    />
+                                  </Stack>
+                                </Stack>
+                              </TableCell>
+                              <TableCell align="center">
+                                <Tooltip title={`View Items (${itemsInStorage.length})`}>
+                                  <span>
+                                    <IconButton
+                                      size="small"
+                                      disabled={!itemsInStorage.length}
+                                      onClick={() => handleViewAll(storage.ID)}
+                                      sx={{
+                                        mr: 1,
+                                        border: `1px solid ${theme.palette.divider}`,
+                                        borderRadius: 0.75,
+                                        '&:hover': { bgcolor: theme.palette.action.hover }
+                                      }}
+                                    >
+                                      <Visibility fontSize="small" />
+                                    </IconButton>
+                                  </span>
+                                </Tooltip>
+                                <Tooltip title="Edit Storage">
+                                  <IconButton
+                                    size="small"
+                                    color="primary"
+                                    onClick={() => handleEdit(storage)}
+                                    sx={{
+                                      border: `1px solid ${theme.palette.divider}`,
+                                      borderRadius: 0.75,
+                                      '&:hover': { bgcolor: theme.palette.action.hover }
+                                    }}
+                                  >
+                                    <Edit fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title={itemsInStorage.length ? "Remove all items from this location first" : "Delete Storage"}>
+                                  <span>
+                                    <IconButton
+                                      size="small"
+                                      color="error"
+                                      disabled={itemsInStorage.length > 0}
+                                      onClick={() => { setDeleteTarget(storage); setDeleteOpen(true); }}
+                                      sx={{
+                                        ml: 1,
+                                        border: `1px solid ${theme.palette.divider}`,
+                                        borderRadius: 0.75,
+                                        '&:hover': { bgcolor: theme.palette.action.hover }
+                                      }}
+                                    >
+                                      <DeleteIcon fontSize="small" />
+                                    </IconButton>
+                                  </span>
+                                </Tooltip>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                        {filteredStorages.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={2} align="center" sx={{ py: 6 }}>
+                              <Typography variant="body2" color="text.secondary">
+                                No storage locations found{search ? ' for this search.' : '.'}
+                              </Typography>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              )}
+            </>
+          )}
+        </Box>
       </Stack>
 
       {/* View All Items Modal */}
@@ -1001,6 +1209,46 @@ const StorageManagementPage = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+        {/* Batch Actions Dialog */}
+        <Dialog
+          open={batchDialogOpen}
+          onClose={closeBatchDialog}
+          maxWidth="sm"
+          fullWidth
+          PaperProps={{ sx: { borderRadius: 1, border: `2px solid ${theme.palette.divider}` } }}
+        >
+          <DialogTitle sx={{ fontWeight: 800, py: 1, borderBottom: `1px solid ${theme.palette.divider}` }}>
+            {batchAction === 'recover' ? 'Recover selected items' : 'Move selected items'}
+          </DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ pt: 1 }}>
+              {batchAction === 'recover' ? (
+                <Typography variant="body2">This will mark the selected lost items as Available. You may optionally assign them to a storage below.</Typography>
+              ) : (
+                <Typography variant="body2">Select a destination storage to move the selected items into. Borrowed items cannot be moved.</Typography>
+              )}
+
+              <TextField
+                select
+                label="Target storage (optional)"
+                value={batchTargetStorage}
+                onChange={e => setBatchTargetStorage(e.target.value)}
+                fullWidth
+                size="small"
+              >
+                <MenuItem value="">Unassigned / Keep current</MenuItem>
+                {storages.map(s => (
+                  <MenuItem key={s.ID} value={String(s.ID)}>{s.Name}</MenuItem>
+                ))}
+              </TextField>
+            </Stack>
+          </DialogContent>
+          <DialogActions sx={{ borderTop: `1px solid ${theme.palette.divider}`, py: 1 }}>
+            <Button size="small" variant="outlined" onClick={closeBatchDialog}>Cancel</Button>
+            <Button size="small" variant="contained" onClick={handleConfirmBatch} sx={{ fontWeight: 700 }}>Confirm</Button>
+          </DialogActions>
+        </Dialog>
 
       {/* Edit Inventory Modal */}
       <Dialog
