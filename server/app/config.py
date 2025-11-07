@@ -33,7 +33,8 @@ class Config:
         "https://koronadal-library.site",
         "https://api.koronadal-library.site",
         "http://localhost:5000",
-        "http://localhost:5173"
+        "http://localhost:5173",
+        "https://koronadal-city-library-system.vercel.app"
     ]
     UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', os.path.join(os.getcwd(), 'uploads'))
 
