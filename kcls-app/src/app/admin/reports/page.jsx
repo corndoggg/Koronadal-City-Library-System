@@ -22,7 +22,6 @@ import {
   Typography
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
-import { Bar, Doughnut } from 'react-chartjs-2';
 import { Download, Eye, FileText, Printer, RefreshCw } from 'lucide-react';
 import axios from 'axios';
 import autoTable from 'jspdf-autotable';
@@ -566,7 +565,7 @@ const ReportsPage = () => {
         rows: rowsWithFallback,
         chart,
         meta: { granularity }
-  }
+      };
     },
 
     returns: () => {
@@ -613,10 +612,6 @@ const ReportsPage = () => {
           ? (finePaid.includes('yes') || finePaid.includes('paid') ? 'Fine Paid' : 'Fine Outstanding')
           : 'No Fine';
 
-        const staffId = parent.ProcessedBy ?? parent.ReceivedBy ?? parent.StaffID ?? parent.StaffUserID;
-        const staffMeta = Number.isFinite(Number(staffId)) ? userMetaMap[Number(staffId)] : null;
-        const staffName = parent.ProcessedByName || parent.ReceivedByName || parent.StaffName || staffMeta?.name || '—';
-
         const remarks = item.ReturnRemarks || parent.Remarks || parent.Notes || detail.remarks;
 
       rows.push([
@@ -629,13 +624,12 @@ const ReportsPage = () => {
           condition,
           formatCurrency(fine),
           paymentStatus,
-          staffName,
           remarks || '—'
         ]);
       });
 
       const rowsWithFallback = rows.length ? rows : [[
-        '—', '—', '—', '—', '—', 'No returned items recorded', '—', '—', '—', '—', '—'
+        '—', '—', '—', '—', '—', 'No returned items recorded', '—', '—', '—', '—'
       ]];
 
       return {
@@ -650,7 +644,6 @@ const ReportsPage = () => {
           'Condition',
           'Fine',
           'Payment Status',
-          'Receiving Staff',
           'Remarks'
         ],
         rows: rowsWithFallback,
@@ -755,6 +748,8 @@ const ReportsPage = () => {
     loss_or_damage: () => {
       const rows = [];
       const conditionCounts = {};
+      const borrowRelatedBookCopyIds = new Set();
+      const borrowRelatedDocStorageIds = new Set();
 
       returnedItemsDetailed.forEach(({ item, parent, borrowId }) => {
         const conditionRaw = String(item.ReturnCondition || item.Condition || '').toLowerCase();
@@ -777,6 +772,43 @@ const ReportsPage = () => {
         const conditionLabel = isLost ? 'Lost' : 'Damaged';
         conditionCounts[conditionLabel] = (conditionCounts[conditionLabel] || 0) + 1;
 
+        const copyId = item.BookCopyID ?? item.CopyID ?? item.Copy_Id ?? item.copyId ?? item.copy_id;
+        if (copyId != null) borrowRelatedBookCopyIds.add(String(copyId));
+        const storageId = item.DocumentStorageID ?? item.StorageID ?? item.StorageLocationID ?? item.storageId;
+        if (storageId != null) borrowRelatedDocStorageIds.add(String(storageId));
+
+        let lostOnValue = null;
+        let foundOnValue = null;
+        if (detail.kind === 'Book') {
+          const resolvedCopyId = copyId != null ? String(copyId) : null;
+          const linkedBookId = resolvedCopyId != null ? copyToBookMap[resolvedCopyId] : null;
+          if (linkedBookId != null) {
+            const invList = bookInvMap[linkedBookId] || [];
+            const copyEntry = invList.find((row) => {
+              const candidate = row.Copy_ID ?? row.CopyID ?? row.copy_id ?? row.copyId;
+              return String(candidate) === resolvedCopyId;
+            });
+            if (copyEntry) {
+              lostOnValue = copyEntry.lostOn ?? copyEntry.LostOn ?? lostOnValue;
+              foundOnValue = copyEntry.foundOn ?? copyEntry.FoundOn ?? foundOnValue;
+            }
+          }
+        } else if (detail.kind === 'Document') {
+          const resolvedStorageId = storageId != null ? String(storageId) : null;
+          const linkedDocId = resolvedStorageId != null ? storageToDocumentMap[resolvedStorageId] : null;
+          if (linkedDocId != null) {
+            const invList = docInvMap[linkedDocId] || [];
+            const storageEntry = invList.find((row) => {
+              const candidate = row.Storage_ID ?? row.storage_id ?? row.StorageID ?? row.storageId;
+              return String(candidate) === resolvedStorageId;
+            });
+            if (storageEntry) {
+              lostOnValue = storageEntry.lostOn ?? storageEntry.LostOn ?? lostOnValue;
+              foundOnValue = storageEntry.foundOn ?? storageEntry.FoundOn ?? foundOnValue;
+            }
+          }
+        }
+
         const fine = item.Fine ?? borrow?.FineAmount;
         const finePaid = String(item.FinePaid || borrow?.FineStatus || '').toLowerCase();
         const paymentStatus = fine
@@ -797,9 +829,95 @@ const ReportsPage = () => {
           conditionLabel,
           formatCurrency(fine),
           paymentStatus,
+          formatDisplayDate(lostOnValue),
+          formatDisplayDate(foundOnValue),
           staffName,
           remarks || '—'
         ]);
+      });
+
+      const markInventoryConditionCounts = (label) => {
+        conditionCounts[label] = (conditionCounts[label] || 0) + 1;
+      };
+
+      Object.entries(bookInvMap || {}).forEach(([bookId, copies]) => {
+        const book = bookMap[Number(bookId)] || {};
+        (copies || []).forEach((copy) => {
+          const copyId = copy.Copy_ID ?? copy.copyId ?? copy.copy_id ?? copy.CopyID;
+          if (copyId != null && borrowRelatedBookCopyIds.has(String(copyId))) return;
+          const availability = String(copy.availability || copy.Availability || '').toLowerCase();
+          const condition = String(copy.condition || copy.Condition || '').toLowerCase();
+          const lostOn = copy.lostOn ?? copy.LostOn;
+          const flaggedLost = availability === 'lost' || (lostOn != null && String(lostOn).trim() !== '');
+          const flaggedDamaged = condition.includes('damaged') || condition.includes('damage') || condition.includes('broken');
+          if (!flaggedLost && !flaggedDamaged) return;
+          const conditionLabel = flaggedLost ? 'Lost' : 'Damaged';
+          markInventoryConditionCounts(conditionLabel);
+          const remarksParts = [];
+          if (copy.locationName || copy.location || copy.Location) {
+            remarksParts.push(`Location: ${copy.locationName || copy.location || copy.Location}`);
+          }
+          if (lostOn) {
+            remarksParts.push(`Marked on ${formatDisplayDate(lostOn)}`);
+          }
+          const foundOn = copy.foundOn ?? copy.FoundOn;
+          if (foundOn) {
+            remarksParts.push(`Found on ${formatDisplayDate(foundOn)}`);
+          }
+          rows.push([
+            '—',
+            '—',
+            book?.Title || `Book Copy #${copyId ?? '—'}`,
+            'Book',
+            conditionLabel,
+            '—',
+            'Not linked to borrow',
+            formatDisplayDate(lostOn),
+            formatDisplayDate(foundOn),
+            'Inventory audit',
+            remarksParts.join('\n') || '—'
+          ]);
+        });
+      });
+
+      Object.entries(docInvMap || {}).forEach(([docId, storages]) => {
+        const doc = documentMap[Number(docId)] || {};
+        (storages || []).forEach((storage) => {
+          const storageId = storage.Storage_ID ?? storage.storage_id ?? storage.StorageID ?? storage.storageId;
+          if (storageId != null && borrowRelatedDocStorageIds.has(String(storageId))) return;
+          const availability = String(storage.availability || storage.Availability || '').toLowerCase();
+          const condition = String(storage.condition || storage.Condition || '').toLowerCase();
+          const lostOn = storage.lostOn ?? storage.LostOn;
+          const flaggedLost = availability === 'lost' || (lostOn != null && String(lostOn).trim() !== '');
+          const flaggedDamaged = condition.includes('damaged') || condition.includes('damage') || condition.includes('broken');
+          if (!flaggedLost && !flaggedDamaged) return;
+          const conditionLabel = flaggedLost ? 'Lost' : 'Damaged';
+          markInventoryConditionCounts(conditionLabel);
+          const remarksParts = [];
+          if (storage.locationName || storage.StorageLocation || storage.location) {
+            remarksParts.push(`Location: ${storage.locationName || storage.StorageLocation || storage.location}`);
+          }
+          if (lostOn) {
+            remarksParts.push(`Marked on ${formatDisplayDate(lostOn)}`);
+          }
+          const foundOn = storage.foundOn ?? storage.FoundOn;
+          if (foundOn) {
+            remarksParts.push(`Found on ${formatDisplayDate(foundOn)}`);
+          }
+          rows.push([
+            '—',
+            '—',
+            doc?.Title || `Document Copy #${storageId ?? '—'}`,
+            'Document',
+            conditionLabel,
+            '—',
+            'Not linked to borrow',
+            formatDisplayDate(lostOn),
+            formatDisplayDate(foundOn),
+            'Inventory audit',
+            remarksParts.join('\n') || '—'
+          ]);
+        });
       });
 
       const labels = Object.keys(conditionCounts);
@@ -816,7 +934,7 @@ const ReportsPage = () => {
       } : null;
 
       const rowsWithFallback = rows.length ? rows : [[
-        '—', '—', '—', '—', '—', '—', '—', '—', 'No lost or damaged items recorded'
+        '—', '—', '—', '—', '—', '—', '—', '—', '—', '—', 'No lost or damaged items recorded'
       ]];
 
       return {
@@ -829,6 +947,8 @@ const ReportsPage = () => {
           'Reported Condition',
           'Fine Assessed',
           'Payment Status',
+          'Lost On',
+          'Found On',
           'Handled By',
           'Remarks'
         ],
