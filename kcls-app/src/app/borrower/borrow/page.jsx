@@ -24,7 +24,11 @@ import {
   TableCell,
   TableContainer,
   TableHead,
-  TableRow
+  TableRow,
+  Stepper,
+  Step,
+  StepLabel,
+  Alert
 } from "@mui/material";
 import {
   Book,
@@ -43,6 +47,40 @@ const pesoFormatter = new Intl.NumberFormat("en-PH", {
   style: "currency",
   currency: "PHP"
 });
+
+const getLatestReturnForItem = (item) => {
+  if (!item) return null;
+  if (item.latestReturn) return item.latestReturn;
+  const history = Array.isArray(item.returnHistory) ? item.returnHistory : [];
+  return history.length ? history[0] : null;
+};
+
+const parseFineAmount = (value) => {
+  if (value === null || value === undefined) return 0;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : 0;
+};
+
+const summarizeRecordedFines = (items = []) => {
+  return items.reduce(
+    (acc, item) => {
+      const latest = getLatestReturnForItem(item);
+      if (!latest) return acc;
+      const fineAmount = parseFineAmount(latest.Fine ?? latest.fine);
+      if (fineAmount > 0) {
+        acc.total += fineAmount;
+        const paidValue = String(latest.FinePaid ?? latest.finePaid ?? "")
+          .toLowerCase()
+          .trim();
+        if (paidValue !== "yes") {
+          acc.unpaid += 1;
+        }
+      }
+      return acc;
+    },
+    { total: 0, unpaid: 0 }
+  );
+};
 
 const BorrowerBorrowPage = () => {
   const API_BASE = import.meta.env.VITE_API_BASE;
@@ -267,6 +305,11 @@ const BorrowerBorrowPage = () => {
     return sorted.slice(start, start + ITEMS_PER_PAGE);
   }, [sorted, page]);
 
+  const selectedFineSummary = useMemo(() => {
+    if (!selectedTx?.items) return { total: 0, unpaid: 0 };
+    return summarizeRecordedFines(selectedTx.items);
+  }, [selectedTx]);
+
   // summaries
   const summary = useMemo(() => {
     const totals = {
@@ -317,6 +360,134 @@ const BorrowerBorrowPage = () => {
         <b>{k}:</b> {v}
       </Typography>
     ) : null;
+
+  const TransactionProgress = ({ tx }) => {
+    if (!tx) return null;
+
+    const status = deriveStatus(tx);
+    const digitalOnly = isDigitalOnlyTx(tx);
+    const dueRaw = dueDates[tx.BorrowID];
+    const dueText = dueRaw ? formatDate(dueRaw) : null;
+    const isOverdue = status.label.startsWith("Overdue") || status.label === "Expired";
+
+    const containerProps = {
+      variant: "outlined",
+      sx: {
+        p: 1.25,
+        borderRadius: 1,
+        border: (t) => `1.5px solid ${t.palette.divider}`,
+        bgcolor: "background.paper"
+      }
+    };
+
+    if (status.label === "Rejected") {
+      return (
+        <Paper {...containerProps}>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            fontWeight={700}
+            sx={{ letterSpacing: 0.4, mb: 1 }}
+          >
+            Progress
+          </Typography>
+          <Alert severity="error" variant="outlined" sx={{ borderRadius: 1 }}>
+            This request was rejected and will not proceed further.
+          </Alert>
+        </Paper>
+      );
+    }
+
+    const digitalSteps = [
+      { key: "pending", label: "Pending Approval" },
+      { key: "active", label: "Digital Access" },
+      { key: "expired", label: "Expired / Returned" }
+    ];
+
+    const physicalSteps = [
+      { key: "pending", label: "Pending Approval" },
+      { key: "approved", label: "Awaiting Pickup" },
+      { key: "retrieved", label: "Borrowed" },
+      { key: "returned", label: "Returned" }
+    ];
+
+    const steps = digitalOnly ? digitalSteps : physicalSteps;
+
+    let stageIdx = 0;
+    if (digitalOnly) {
+      if (status.label === "Active (Digital)") {
+        stageIdx = 1;
+      } else if (status.label === "Expired" || tx.ReturnStatus === "Returned") {
+        stageIdx = steps.length;
+      }
+    } else {
+      if (tx.ReturnStatus === "Returned") {
+        stageIdx = steps.length;
+      } else if (tx.RetrievalStatus === "Retrieved") {
+        stageIdx = 2;
+      } else if (tx.ApprovalStatus === "Approved") {
+        stageIdx = 1;
+      }
+    }
+
+    const activeStep = Math.min(stageIdx, steps.length);
+
+    const optionalLabel = (stepKey) => {
+      if (!dueText) return undefined;
+      if (digitalOnly && stepKey === "active") {
+        return (
+          <Typography variant="caption" color={isOverdue ? "error.main" : "text.secondary"}>
+            Expires {dueText}
+          </Typography>
+        );
+      }
+      if (!digitalOnly && stepKey === "retrieved") {
+        return (
+          <Typography variant="caption" color={isOverdue ? "error.main" : "text.secondary"}>
+            Due {dueText}
+          </Typography>
+        );
+      }
+      return undefined;
+    };
+
+    return (
+      <Paper {...containerProps}>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          fontWeight={700}
+          sx={{ letterSpacing: 0.4, mb: 1 }}
+        >
+          Progress
+        </Typography>
+        <Stepper
+          activeStep={activeStep}
+          alternativeLabel
+          sx={{
+            '& .MuiStepConnector-line': {
+              borderTopWidth: 2
+            },
+            '& .MuiStepLabel-label': {
+              fontSize: 12,
+              fontWeight: 600
+            }
+          }}
+        >
+          {steps.map((step) => (
+            <Step key={step.key}>
+              <StepLabel
+                error={!digitalOnly && step.key === "retrieved" && isOverdue}
+                optional={optionalLabel(step.key)}
+              >
+                {step.label}
+              </StepLabel>
+            </Step>
+          ))}
+        </Stepper>
+      </Paper>
+    );
+  };
 
   return (
     <Box p={{ xs: 2, md: 3 }} sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
@@ -698,6 +869,7 @@ const BorrowerBorrowPage = () => {
                   k={isDigitalOnlyTx(selectedTx) ? "Expires" : "Due"}
                   v={dueDates[selectedTx.BorrowID] ? formatDate(dueDates[selectedTx.BorrowID]) : ''}
                 />
+                <MetaLine k="Returned" v={selectedTx.ReturnDate ? formatDate(selectedTx.ReturnDate) : ''} />
                 <MetaLine k="Purpose" v={selectedTx.Purpose} />
                 <MetaLine k="Status" v={deriveStatus(selectedTx).label} />
                 {(() => {
@@ -706,7 +878,18 @@ const BorrowerBorrowPage = () => {
                     <MetaLine k="Expected fine" v={pesoFormatter.format(fineValue)} />
                   ) : null;
                 })()}
+                {selectedFineSummary.total > 0 ? (
+                  <MetaLine k="Recorded fines" v={pesoFormatter.format(selectedFineSummary.total)} />
+                ) : null}
+                {selectedFineSummary.unpaid > 0 ? (
+                  <MetaLine
+                    k="Outstanding fines"
+                    v={`${selectedFineSummary.unpaid} item${selectedFineSummary.unpaid === 1 ? '' : 's'}`}
+                  />
+                ) : null}
               </Paper>
+
+              <TransactionProgress tx={selectedTx} />
 
               {selectedTx.Remarks && (
                 <Paper
@@ -760,6 +943,15 @@ const BorrowerBorrowPage = () => {
                               ? docDetails[item.DocumentStorageID]
                               : (did && docMetaById[did]));
                         const filePath = meta?.File_Path || meta?.file_path || meta?.FilePath;
+                        const latestReturn = getLatestReturnForItem(item);
+                        const fineAmount = latestReturn ? parseFineAmount(latestReturn.Fine ?? latestReturn.fine) : 0;
+                        const finePaid = latestReturn
+                          ? String(latestReturn.FinePaid ?? latestReturn.finePaid ?? "").toLowerCase().trim() === "yes"
+                          : false;
+                        const initialCondition = item.InitialCondition ?? item.initialCondition ?? '';
+                        const returnCondition = latestReturn
+                          ? latestReturn.ReturnCondition ?? latestReturn.returnCondition ?? ''
+                          : '';
                         return (
                           <Paper
                             key={item.BorrowedItemID}
@@ -838,6 +1030,25 @@ const BorrowerBorrowPage = () => {
                                     <MetaLine k="Condition (Out)" v={meta.Condition || meta.condition} />
                                   </>
                                 )}
+                                <MetaLine k="Initial condition" v={initialCondition || '—'} />
+                                {latestReturn ? (
+                                  <>
+                                    <MetaLine k="Return condition" v={returnCondition || '—'} />
+                                    <MetaLine
+                                      k="Recorded fine"
+                                      v={fineAmount > 0 ? pesoFormatter.format(fineAmount) : 'None'}
+                                    />
+                                    <MetaLine
+                                      k="Fine status"
+                                      v={fineAmount > 0 ? (finePaid ? 'Paid' : 'Unpaid') : '—'}
+                                    />
+                                    <MetaLine
+                                      k="Returned"
+                                      v={latestReturn.ReturnDate ? formatDate(latestReturn.ReturnDate) : ''}
+                                    />
+                                    <MetaLine k="Return remarks" v={latestReturn.ReturnRemarks} />
+                                  </>
+                                ) : null}
                               </Stack>
                             ) : (
                               <Typography variant="caption" color="text.secondary" mt={1} pl={0.5}>

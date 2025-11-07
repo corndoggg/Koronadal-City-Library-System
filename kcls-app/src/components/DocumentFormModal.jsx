@@ -744,27 +744,24 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
             }}
           >
             <Stack spacing={2.5} sx={{ p: { xs: 2, md: 2.75 } }}>
-              <Box
+              <Paper
+                variant="outlined"
                 sx={{
-                  position: "relative",
                   borderRadius: 2,
                   p: { xs: 2, md: 3 },
-                  backgroundImage: theme => `linear-gradient(135deg, ${theme.palette.mode === "dark" ? theme.palette.primary.dark : theme.palette.primary.light} 0%, ${theme.palette.mode === "dark" ? theme.palette.primary.main : theme.palette.primary.dark} 100%)`,
-                  color: theme => theme.palette.common.white,
-                  border: theme => `1px solid ${theme.palette.primary.main}`,
-                  boxShadow: theme => `0 18px 36px ${theme.palette.mode === "dark" ? "rgba(0,0,0,0.35)" : "rgba(47, 128, 237, 0.25)"}`
+                  bgcolor: "background.paper"
                 }}
               >
                 <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems={{ xs: "flex-start", md: "center" }} justifyContent="space-between">
                   <Box>
-                    <Typography variant="overline" sx={{ opacity: 0.85, letterSpacing: 0.6 }}>
+                    <Typography variant="subtitle2" color="text.secondary" sx={{ textTransform: "uppercase", letterSpacing: 0.6 }}>
                       {isEdit ? "Update document" : "New document"}
                     </Typography>
-                    <Typography variant="h5" fontWeight={800} letterSpacing={0.45}>
-                      Library document configuration
+                    <Typography variant="h6" fontWeight={700} sx={{ mt: 0.5 }}>
+                      Document metadata and copies
                     </Typography>
-                    <Typography variant="body2" sx={{ mt: 0.75, maxWidth: 520, opacity: 0.88 }}>
-                      Attach the latest PDF, verify catalog metadata, and manage physical copies with a structured, Devias-inspired workspace.
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+                      Attach the PDF, review the catalog fields, and ensure storage availability before saving.
                     </Typography>
                   </Box>
                   <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "flex-start", sm: "center" }}>
@@ -772,20 +769,20 @@ function DocumentFormModal({ open, onClose, onSave, isEdit, documentData, locati
                       size="small"
                       label={validate() ? "Form complete" : "Action needed"}
                       color={validate() ? "success" : "warning"}
-                      sx={{ fontWeight: 700, borderRadius: 1 }}
+                      sx={{ fontWeight: 600, borderRadius: 1 }}
                     />
                     <Chip
                       size="small"
                       label={`Copies: ${invStats.total}`}
                       color={invStats.total ? "primary" : "default"}
-                      sx={{ fontWeight: 700, borderRadius: 1 }}
+                      sx={{ fontWeight: 600, borderRadius: 1 }}
                     />
                     {aiLoading && (
-                      <Chip size="small" color="info" label="Analyzing PDF…" sx={{ fontWeight: 700, borderRadius: 1 }} />
+                      <Chip size="small" color="info" label="Analyzing PDF…" sx={{ fontWeight: 600, borderRadius: 1 }} />
                     )}
                   </Stack>
                 </Stack>
-              </Box>
+              </Paper>
 
               <Paper
                 variant="outlined"

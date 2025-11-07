@@ -327,10 +327,6 @@ const BookManagementPage = () => {
                 sx={{ minWidth: { sm: 220, md: 320 }, '& .MuiOutlinedInput-root': { borderRadius: 1 } }}
               />
               <Stack direction="row" spacing={1} alignItems="center">
-                <Chip label={`Titles: ${totalBooks}`} size="small" variant="outlined" sx={{ fontWeight: 700 }} />
-                <Chip label={`Copies: ${totalCopies}`} size="small" variant="outlined" sx={{ fontWeight: 700 }} />
-                <Chip label={`Borrowed: ${borrowedCopies}`} size="small" color={borrowedCopies ? 'warning' : 'default'} variant={borrowedCopies ? 'filled' : 'outlined'} sx={{ fontWeight: 700 }} />
-                <Chip label={`Lost: ${lostCopies}`} size="small" color={lostCopies ? 'error' : 'default'} variant={lostCopies ? 'filled' : 'outlined'} sx={{ fontWeight: 700 }} />
                 <Tooltip title="Refresh books"><IconButton size="small" onClick={() => { fetchBooks(); fetchLocations(); }} sx={{ borderRadius: 1, border: `1px solid ${alpha(theme.palette.divider, 0.75)}` }}><Refresh fontSize="small" /></IconButton></Tooltip>
                 <Button variant="contained" size="small" startIcon={<Add />} onClick={openAddModal} sx={{ borderRadius: 1, fontWeight: 700 }}>Add</Button>
               </Stack>

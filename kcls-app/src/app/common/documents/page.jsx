@@ -276,10 +276,6 @@ const DocumentManagementPage = () => {
                 sx={{ minWidth: { sm: 220, md: 320 }, '& .MuiOutlinedInput-root': { borderRadius: 1 } }}
               />
               <Stack direction="row" spacing={1} alignItems="center">
-                <Chip label={`Docs: ${totalDocuments}`} size="small" variant="outlined" sx={{ fontWeight: 700 }} />
-                <Chip label={`Copies: ${totalCopies}`} size="small" variant="outlined" sx={{ fontWeight: 700 }} />
-                <Chip label={`Borrowed: ${borrowedCopies}`} size="small" color={borrowedCopies ? 'warning' : 'default'} variant={borrowedCopies ? 'filled' : 'outlined'} sx={{ fontWeight: 700 }} />
-                <Chip label={`Lost: ${lostCopies}`} size="small" color={lostCopies ? 'error' : 'default'} variant={lostCopies ? 'filled' : 'outlined'} sx={{ fontWeight: 700 }} />
                 <Tooltip title="Refresh documents"><IconButton size="small" onClick={() => { fetchDocuments(); fetchLocations(); }} sx={{ borderRadius: 1, border: `1px solid ${alpha(theme.palette.divider, 0.75)}` }}><Refresh fontSize="small" /></IconButton></Tooltip>
                 <Button variant="contained" size="small" startIcon={<Add />} onClick={handleOpenAdd} sx={{ borderRadius: 1, fontWeight: 700 }}>Add</Button>
               </Stack>

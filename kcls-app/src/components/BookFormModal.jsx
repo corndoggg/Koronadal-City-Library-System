@@ -309,15 +309,12 @@ const BookFormModal = ({
           }}
         >
           <Stack spacing={2.5} sx={{ p: { xs: 2, md: 2.75 } }}>
-            <Box
+            <Paper
+              variant="outlined"
               sx={{
-                position: 'relative',
                 borderRadius: 2,
                 p: { xs: 2, md: 3 },
-                backgroundImage: theme => `linear-gradient(135deg, ${theme.palette.mode === 'dark' ? theme.palette.primary.dark : theme.palette.primary.light} 0%, ${theme.palette.mode === 'dark' ? theme.palette.primary.main : theme.palette.primary.dark} 100%)`,
-                color: theme => theme.palette.common.white,
-                border: theme => `1px solid ${theme.palette.primary.main}`,
-                boxShadow: theme => `0 18px 36px ${theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.35)' : 'rgba(47, 128, 237, 0.25)'}`
+                bgcolor: 'background.paper'
               }}
             >
               <Stack
@@ -327,14 +324,14 @@ const BookFormModal = ({
                 justifyContent="space-between"
               >
                 <Box>
-                  <Typography variant="overline" sx={{ opacity: 0.85, letterSpacing: 0.6 }}>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.6 }}>
                     {isEdit ? 'Update book record' : 'New book record'}
                   </Typography>
-                  <Typography variant="h5" fontWeight={800} letterSpacing={0.45}>
-                    Library book catalog workspace
+                  <Typography variant="h6" fontWeight={700} sx={{ mt: 0.5 }}>
+                    Bibliographic details and copies
                   </Typography>
-                  <Typography variant="body2" sx={{ mt: 0.75, maxWidth: 520, opacity: 0.88 }}>
-                    Capture bibliographic details and manage physical copies in a focused, Devias-inspired flow tailored for librarians.
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+                    Review required fields and confirm the number of copies before saving.
                   </Typography>
                 </Box>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'flex-start', sm: 'center' }}>
@@ -342,20 +339,20 @@ const BookFormModal = ({
                     size="small"
                     label={requiredBookKeys.every(k => bookForm[k]) ? 'Details complete' : 'Details missing'}
                     color={requiredBookKeys.every(k => bookForm[k]) ? 'success' : 'warning'}
-                    sx={{ fontWeight: 700, borderRadius: 1 }}
+                    sx={{ fontWeight: 600, borderRadius: 1 }}
                   />
                   <Chip
                     size="small"
                     label={`Copies: ${copies.length}`}
                     color={copies.length ? 'primary' : 'default'}
-                    sx={{ fontWeight: 700, borderRadius: 1 }}
+                    sx={{ fontWeight: 600, borderRadius: 1 }}
                   />
                   {unsaved && (
-                    <Chip size="small" color="warning" label="Unsaved" sx={{ fontWeight: 700, borderRadius: 1 }} />
+                    <Chip size="small" color="warning" label="Unsaved" sx={{ fontWeight: 600, borderRadius: 1 }} />
                   )}
                 </Stack>
               </Stack>
-            </Box>
+            </Paper>
 
             <Paper
               variant="outlined"

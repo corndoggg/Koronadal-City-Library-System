@@ -9,6 +9,7 @@ from app.services.audit import log_event  # NEW
 from decimal import Decimal, InvalidOperation  # NEW
 from datetime import datetime  # NEW
 import logging  # NEW
+from typing import Any, Dict, List, Optional, cast  # NEW
 
 borrowreturn_bp = Blueprint('borrowreturn', __name__)
 
@@ -78,7 +79,7 @@ def add_borrow_transaction():
         logger.warning("Borrow creation attempted with no items. payload=%s", data)  # NEW
         return jsonify({'error': 'No items provided.'}), 400
 
-    conn = get_db_connection()
+    conn: Any = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
         conn.start_transaction()
@@ -171,41 +172,68 @@ def add_borrow_transaction():
 def list_borrow_transactions():
     role = (request.args.get('role') or '').lower()
 
-    conn = get_db_connection()
+    conn: Any = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
         cursor.execute("SELECT * FROM BorrowTransactions")
-        transactions = cursor.fetchall() or []
+        transactions = cast(List[Dict[str, Any]], cursor.fetchall() or [])
 
-        borrow_ids = [tx['BorrowID'] for tx in transactions]
-        items_by_borrow = {}
-        returns_by_borrow = {}
+        borrow_ids = [tx.get('BorrowID') for tx in transactions if tx.get('BorrowID') is not None]
+        items_by_borrow: Dict[Optional[int], List[Dict[str, Any]]] = {}
+        returns_by_borrow: Dict[Optional[int], Dict[str, Any]] = {}
+        returned_items_by_borrowed: Dict[Optional[int], List[Dict[str, Any]]] = {}
 
         if borrow_ids:
             fmt = ','.join(['%s'] * len(borrow_ids))
             cursor.execute(f"SELECT * FROM BorrowedItems WHERE BorrowID IN ({fmt})", tuple(borrow_ids))
-            for item in cursor.fetchall() or []:
-                items_by_borrow.setdefault(item['BorrowID'], []).append(item)
+            for item in cast(List[Dict[str, Any]], cursor.fetchall() or []):
+                items_by_borrow.setdefault(item.get('BorrowID'), []).append(item)
             cursor.execute(f"""
                 SELECT BorrowID, ReturnID, ReturnDate, Remarks
                 FROM ReturnTransactions
                 WHERE BorrowID IN ({fmt})
                 ORDER BY BorrowID ASC, ReturnDate DESC, ReturnID DESC
             """, tuple(borrow_ids))
-            for ret in cursor.fetchall() or []:
-                returns_by_borrow.setdefault(ret['BorrowID'], ret)
+            for ret in cast(List[Dict[str, Any]], cursor.fetchall() or []):
+                returns_by_borrow.setdefault(ret.get('BorrowID'), ret)
+            cursor.execute(f"""
+                SELECT
+                    ri.ReturnedItemID,
+                    ri.ReturnID,
+                    ri.BorrowedItemID,
+                    ri.ReturnCondition,
+                    ri.Fine,
+                    ri.FinePaid,
+                    rt.BorrowID,
+                    rt.ReturnDate,
+                    rt.Remarks AS ReturnRemarks
+                FROM ReturnedItems ri
+                JOIN ReturnTransactions rt ON rt.ReturnID = ri.ReturnID
+                WHERE rt.BorrowID IN ({fmt})
+                ORDER BY rt.ReturnDate DESC, ri.ReturnedItemID DESC
+            """, tuple(borrow_ids))
+            for row in cast(List[Dict[str, Any]], cursor.fetchall() or []):
+                fine_value = row.get('Fine')
+                if isinstance(fine_value, Decimal):
+                    row['Fine'] = float(fine_value)
+                returned_items_by_borrowed.setdefault(row.get('BorrowedItemID'), []).append(row)
 
         # Role filtering
         if role == 'librarian':
             transactions = [tx for tx in transactions
-                            if not any((it.get('ItemType') == 'Document') for it in items_by_borrow.get(tx['BorrowID'], []))]
+                             if not any((it.get('ItemType') == 'Document') for it in items_by_borrow.get(tx.get('BorrowID'), []))]
         elif role == 'admin':
             transactions = [tx for tx in transactions
-                            if any((it.get('ItemType') == 'Document') for it in items_by_borrow.get(tx['BorrowID'], []))]
+                             if any((it.get('ItemType') == 'Document') for it in items_by_borrow.get(tx.get('BorrowID'), []))]
 
         for tx in transactions:
-            tx['items'] = items_by_borrow.get(tx['BorrowID'], [])
-            latest_return = returns_by_borrow.get(tx['BorrowID']) or {}
+            item_list = items_by_borrow.get(tx.get('BorrowID'), [])
+            for item in item_list:
+                history = returned_items_by_borrowed.get(item.get('BorrowedItemID'), [])
+                item['returnHistory'] = history
+                item['latestReturn'] = history[0] if history else None
+            tx['items'] = item_list
+            latest_return = returns_by_borrow.get(tx.get('BorrowID')) or {}
             tx['ReturnDate'] = latest_return.get('ReturnDate')
             tx['ReturnRemarks'] = latest_return.get('Remarks')
 
@@ -218,21 +246,22 @@ def list_borrow_transactions():
 # --- Get all borrow transactions for a specific borrower ---
 @borrowreturn_bp.route('/borrow/borrower/<int:borrower_id>', methods=['GET'])
 def get_borrower_transactions(borrower_id):
-    conn = get_db_connection()
+    conn: Any = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
         cursor.execute("SELECT * FROM BorrowTransactions WHERE BorrowerID=%s", (borrower_id,))
-        transactions = cursor.fetchall() or []
+        transactions = cast(List[Dict[str, Any]], cursor.fetchall() or [])
 
-        borrow_ids = [tx['BorrowID'] for tx in transactions]
-        items_by_borrow = {}
-        returns_by_borrow = {}
+        borrow_ids = [tx.get('BorrowID') for tx in transactions if tx.get('BorrowID') is not None]
+        items_by_borrow: Dict[Optional[int], List[Dict[str, Any]]] = {}
+        returns_by_borrow: Dict[Optional[int], Dict[str, Any]] = {}
+        returned_items_by_borrowed: Dict[Optional[int], List[Dict[str, Any]]] = {}
 
         if borrow_ids:
             fmt = ','.join(['%s'] * len(borrow_ids))
             cursor.execute(f"SELECT * FROM BorrowedItems WHERE BorrowID IN ({fmt})", tuple(borrow_ids))
-            for item in cursor.fetchall() or []:
-                items_by_borrow.setdefault(item['BorrowID'], []).append(item)
+            for item in cast(List[Dict[str, Any]], cursor.fetchall() or []):
+                items_by_borrow.setdefault(item.get('BorrowID'), []).append(item)
 
             cursor.execute(f"""
                 SELECT BorrowID, ReturnID, ReturnDate, Remarks
@@ -240,12 +269,39 @@ def get_borrower_transactions(borrower_id):
                 WHERE BorrowID IN ({fmt})
                 ORDER BY BorrowID ASC, ReturnDate DESC, ReturnID DESC
             """, tuple(borrow_ids))
-            for ret in cursor.fetchall() or []:
-                returns_by_borrow.setdefault(ret['BorrowID'], ret)
+            for ret in cast(List[Dict[str, Any]], cursor.fetchall() or []):
+                returns_by_borrow.setdefault(ret.get('BorrowID'), ret)
+
+            cursor.execute(f"""
+                SELECT
+                    ri.ReturnedItemID,
+                    ri.ReturnID,
+                    ri.BorrowedItemID,
+                    ri.ReturnCondition,
+                    ri.Fine,
+                    ri.FinePaid,
+                    rt.BorrowID,
+                    rt.ReturnDate,
+                    rt.Remarks AS ReturnRemarks
+                FROM ReturnedItems ri
+                JOIN ReturnTransactions rt ON rt.ReturnID = ri.ReturnID
+                WHERE rt.BorrowID IN ({fmt})
+                ORDER BY rt.ReturnDate DESC, ri.ReturnedItemID DESC
+            """, tuple(borrow_ids))
+            for row in cast(List[Dict[str, Any]], cursor.fetchall() or []):
+                fine_value = row.get('Fine')
+                if isinstance(fine_value, Decimal):
+                    row['Fine'] = float(fine_value)
+                returned_items_by_borrowed.setdefault(row.get('BorrowedItemID'), []).append(row)
 
         for tx in transactions:
-            tx['items'] = items_by_borrow.get(tx['BorrowID'], [])
-            latest_return = returns_by_borrow.get(tx['BorrowID']) or {}
+            item_list = items_by_borrow.get(tx.get('BorrowID'), [])
+            for item in item_list:
+                history = returned_items_by_borrowed.get(item.get('BorrowedItemID'), [])
+                item['returnHistory'] = history
+                item['latestReturn'] = history[0] if history else None
+            tx['items'] = item_list
+            latest_return = returns_by_borrow.get(tx.get('BorrowID')) or {}
             tx['ReturnDate'] = latest_return.get('ReturnDate')
             tx['ReturnRemarks'] = latest_return.get('Remarks')
 
