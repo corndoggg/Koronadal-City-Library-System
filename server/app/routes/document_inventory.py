@@ -7,6 +7,8 @@ document_inventory_bp = Blueprint('document_inventory', __name__)
 @document_inventory_bp.route('/documents/inventory/<int:document_id>', methods=['GET'])
 def get_inventory_by_document(document_id):
     conn = get_db_connection()
+    if conn is None:
+        return jsonify({'error': 'Database connection failed'}), 500
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
         SELECT 
@@ -17,6 +19,7 @@ def get_inventory_by_document(document_id):
             di.StorageLocation AS location,
             di.UpdatedOn AS updatedOn,
             di.LostOn AS lostOn,
+            di.FoundOn AS foundOn,
             s.Name as Location
         FROM Document_Inventory di
         LEFT JOIN Storages s ON di.StorageLocation = s.ID
@@ -34,10 +37,12 @@ def add_inventory(document_id):
     if not data:
         return jsonify({'error': 'Missing JSON body'}), 400
     conn = get_db_connection()
+    if conn is None:
+        return jsonify({'error': 'Database connection failed'}), 500
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO Document_Inventory (Document_ID, Availability, `Condition`, `StorageLocation`, UpdatedOn, LostOn)
-        VALUES (%s, %s, %s, %s, NOW(), CASE WHEN %s = 'Lost' THEN NOW() ELSE NULL END)
+        INSERT INTO Document_Inventory (Document_ID, Availability, `Condition`, `StorageLocation`, UpdatedOn, LostOn, FoundOn)
+        VALUES (%s, %s, %s, %s, NOW(), CASE WHEN %s = 'Lost' THEN NOW() ELSE NULL END, NULL)
     """, (
         document_id, data.get('availability'), data.get('condition'), data.get('location'), data.get('availability')
     ))
@@ -53,15 +58,42 @@ def update_inventory(document_id, storage_id):
     if not data:
         return jsonify({'error': 'Missing JSON body'}), 400
     conn = get_db_connection()
+    if conn is None:
+        return jsonify({'error': 'Database connection failed'}), 500
+
+    select_cursor = conn.cursor(dictionary=True)
+    select_cursor.execute(
+        """
+        SELECT Availability
+        FROM Document_Inventory
+        WHERE Document_ID = %s AND Storage_ID = %s
+        """,
+        (document_id, storage_id)
+    )
+    existing = select_cursor.fetchone()
+    select_cursor.close()
+
+    if not existing:
+        conn.close()
+        return jsonify({'error': 'Inventory entry not found'}), 404
+
     cursor = conn.cursor()
     cursor.execute("""
         UPDATE Document_Inventory
         SET Availability=%s, `Condition`=%s, `StorageLocation`=%s, UpdatedOn=NOW(),
-            LostOn = CASE WHEN %s = 'Lost' THEN NOW() ELSE LostOn END
+            LostOn = CASE 
+                WHEN %s = 'Lost' AND Availability <> 'Lost' THEN NOW()
+                ELSE LostOn
+            END,
+            FoundOn = CASE
+                WHEN %s = 'Lost' THEN NULL
+                WHEN %s <> 'Lost' AND Availability = 'Lost' THEN NOW()
+                ELSE FoundOn
+            END
         WHERE Document_ID=%s AND Storage_ID=%s
     """, (
         data.get('availability'), data.get('condition'), data.get('location'),
-        data.get('availability'),
+        data.get('availability'), data.get('availability'), data.get('availability'),
         document_id, storage_id
     ))
     conn.commit()
@@ -73,6 +105,8 @@ def update_inventory(document_id, storage_id):
 @document_inventory_bp.route('/documents/inventory/<int:document_id>/<int:storage_id>', methods=['DELETE'])
 def delete_inventory(document_id, storage_id):
     conn = get_db_connection()
+    if conn is None:
+        return jsonify({'error': 'Database connection failed'}), 500
     cursor = conn.cursor()
     cursor.execute("""
         DELETE FROM Document_Inventory
@@ -87,6 +121,8 @@ def delete_inventory(document_id, storage_id):
 @document_inventory_bp.route('/documents/inventory/storage/<int:storage_id>', methods=['GET'])
 def get_inventory_by_storage(storage_id):
     conn = get_db_connection()
+    if conn is None:
+        return jsonify({'error': 'Database connection failed'}), 500
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
         SELECT 
@@ -97,6 +133,7 @@ def get_inventory_by_storage(storage_id):
             di.StorageLocation AS location,
             di.UpdatedOn AS updatedOn,
             di.LostOn AS lostOn,
+            di.FoundOn AS foundOn,
             s.Name as Location
         FROM Document_Inventory di
         LEFT JOIN Storages s ON di.StorageLocation = s.ID

@@ -110,7 +110,16 @@ def add_borrow_transaction():
                                  if it.get('itemType') == 'Book' and _norm_book_copy_id(it)]
                 if book_copy_ids:
                     fmt = ','.join(['%s'] * len(book_copy_ids))
-                    cursor.execute(f"UPDATE Book_Inventory SET Availability='Borrowed' WHERE Copy_ID IN ({fmt})", tuple(book_copy_ids))
+                    cursor.execute(
+                        f"""
+                        UPDATE Book_Inventory
+                        SET Availability='Borrowed',
+                            UpdatedOn=NOW(),
+                            FoundOn = CASE WHEN Availability='Lost' THEN NOW() ELSE FoundOn END
+                        WHERE Copy_ID IN ({fmt})
+                        """,
+                        tuple(book_copy_ids)
+                    )
 
             if data.get('returnDate'):
                 cursor.execute("""
@@ -340,7 +349,16 @@ def reject_borrow_transaction(borrow_id):
         book_ids = [r['BookCopyID'] for r in book_rows if r.get('BookCopyID')]
         if book_ids:
             fmt = ','.join(['%s'] * len(book_ids))
-            cursor.execute(f"UPDATE Book_Inventory SET Availability='Available' WHERE Copy_ID IN ({fmt})", tuple(book_ids))
+            cursor.execute(
+                f"""
+                UPDATE Book_Inventory
+                SET Availability='Available',
+                    UpdatedOn=NOW(),
+                    FoundOn = CASE WHEN Availability='Lost' THEN NOW() ELSE FoundOn END
+                WHERE Copy_ID IN ({fmt})
+                """,
+                tuple(book_ids)
+            )
 
         # Free only physical documents (those with a storage id)
         cursor.execute("""
@@ -352,7 +370,16 @@ def reject_borrow_transaction(borrow_id):
         storage_ids = [r['DocumentStorageID'] for r in doc_rows if r.get('DocumentStorageID')]
         if storage_ids:
             fmt = ','.join(['%s'] * len(storage_ids))
-            cursor.execute(f"UPDATE Document_Inventory SET Availability='Available' WHERE Storage_ID IN ({fmt})", tuple(storage_ids))
+            cursor.execute(
+                f"""
+                UPDATE Document_Inventory
+                SET Availability='Available',
+                    UpdatedOn=NOW(),
+                    FoundOn = CASE WHEN Availability='Lost' THEN NOW() ELSE FoundOn END
+                WHERE Storage_ID IN ({fmt})
+                """,
+                tuple(storage_ids)
+            )
 
         notify_rejected(cursor, borrow_id)
         conn.commit()
@@ -726,10 +753,30 @@ def mark_items_lost():
 
         if book_ids:
             fmtb = ','.join(['%s'] * len(book_ids))
-            cursor.execute(f"UPDATE Book_Inventory SET Availability='Lost', UpdatedOn=NOW(), LostOn=NOW() WHERE Copy_ID IN ({fmtb})", tuple(book_ids))
+            cursor.execute(
+                f"""
+                UPDATE Book_Inventory
+                SET Availability='Lost',
+                    UpdatedOn=NOW(),
+                    LostOn = CASE WHEN Availability <> 'Lost' THEN NOW() ELSE LostOn END,
+                    FoundOn = NULL
+                WHERE Copy_ID IN ({fmtb})
+                """,
+                tuple(book_ids)
+            )
         if doc_storage_ids:
             fmtd = ','.join(['%s'] * len(doc_storage_ids))
-            cursor.execute(f"UPDATE Document_Inventory SET Availability='Lost', UpdatedOn=NOW(), LostOn=NOW() WHERE Storage_ID IN ({fmtd})", tuple(doc_storage_ids))
+            cursor.execute(
+                f"""
+                UPDATE Document_Inventory
+                SET Availability='Lost',
+                    UpdatedOn=NOW(),
+                    LostOn = CASE WHEN Availability <> 'Lost' THEN NOW() ELSE LostOn END,
+                    FoundOn = NULL
+                WHERE Storage_ID IN ({fmtd})
+                """,
+                tuple(doc_storage_ids)
+            )
 
         # Create a ReturnTransactions row to log the lost event and fines (if any)
         remarks = (data.get('remarks') or '').strip()

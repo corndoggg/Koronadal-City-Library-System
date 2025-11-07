@@ -22,14 +22,14 @@ import NotificationModal from './NotificationModal';
 import { useThemeContext } from '../contexts/ThemeContext';
 import { TOPBAR_HEIGHT } from '../constants/layout';
 import { useSidebar } from '../contexts/SidebarContext';
-import { Menu as MenuIcon, KeyboardDoubleArrowLeft, KeyboardDoubleArrowRight } from '@mui/icons-material';
+import { Menu as MenuIcon } from '@mui/icons-material';
 
 const API_BASE = import.meta.env.VITE_API_BASE;
 
 const Topbar = () => {
   const theme = useTheme();
   const { toggleColorMode } = useThemeContext();
-  const { isMobile, collapsed, toggleCollapse, openMobile } = useSidebar();
+  const { isMobile, openMobile } = useSidebar();
   const navigate = useNavigate();
 
   const user = useMemo(() => {
@@ -132,20 +132,10 @@ const Topbar = () => {
           }}
         >
           <Stack direction="row" spacing={1} alignItems="center">
-            {isMobile ? (
+            {isMobile && (
               <Tooltip title="Open menu">
                 <IconButton size="small" onClick={openMobile}>
                   <MenuIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            ) : (
-              <Tooltip title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
-                <IconButton size="small" onClick={toggleCollapse}>
-                  {collapsed ? (
-                    <KeyboardDoubleArrowRight fontSize="small" />
-                  ) : (
-                    <KeyboardDoubleArrowLeft fontSize="small" />
-                  )}
                 </IconButton>
               </Tooltip>
             )}

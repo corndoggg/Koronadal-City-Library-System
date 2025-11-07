@@ -82,7 +82,8 @@ const BookManagementPage = () => {
                   ? String(copy.Location_ID)
                   : '',
               updatedOn: copy.UpdatedOn || copy.updatedOn || copy.updated_on || copy.Updated_On || null,
-              lostOn: copy.LostOn || copy.lostOn || copy.Lost_On || copy.lost_on || null
+              lostOn: copy.LostOn || copy.lostOn || copy.Lost_On || copy.lost_on || null,
+              foundOn: copy.FoundOn || copy.foundOn || copy.Found_On || copy.found_on || null
             }));
             return { ...book, inventory };
           } catch {
@@ -414,8 +415,10 @@ const BookManagementPage = () => {
                                       <TableCell>Condition</TableCell>
                                       <TableCell>Location</TableCell>
                                       <TableCell>Accession</TableCell>
-                                      <TableCell>Updated</TableCell>
-                                      <TableCell>Lost On</TableCell>
+                                          <TableCell>Updated</TableCell>
+                                          <TableCell>Lost On</TableCell>
+                                          <TableCell>Found On</TableCell>
+                                          <TableCell>Action</TableCell>
                                     </TableRow>
                                   </TableHead>
                                   <TableBody>
@@ -429,6 +432,21 @@ const BookManagementPage = () => {
                                         }</TableCell>
                                         <TableCell>{copy.updatedOn ? formatDate(copy.updatedOn) : '—'}</TableCell>
                                         <TableCell>{copy.lostOn ? formatDate(copy.lostOn) : '—'}</TableCell>
+                                        <TableCell>{copy.foundOn ? formatDate(copy.foundOn) : '—'}</TableCell>
+                                        <TableCell>
+                                          {((copy.availability || copy.Availability || '').toLowerCase() === 'lost') && !copy.foundOn ? (
+                                            <Button size="small" color="success" variant="contained" onClick={async () => {
+                                              try {
+                                                const invKey = copy.Copy_ID || copy.CopyId || copy.ID || copy.id;
+                                                await axios.put(`${API_BASE}/books/inventory/${book.Book_ID}/${invKey}`, { availability: 'Available' });
+                                                showToast('Item marked as found');
+                                                fetchBooks();
+                                              } catch {
+                                                showToast('Failed to mark as found', 'error');
+                                              }
+                                            }}>Mark found</Button>
+                                          ) : null}
+                                        </TableCell>
                                       </TableRow>
                                     ))}
                                   </TableBody>

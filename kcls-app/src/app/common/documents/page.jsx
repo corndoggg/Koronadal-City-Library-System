@@ -56,7 +56,8 @@ const DocumentManagementPage = () => {
                 locationName: inv.Location ?? inv.location ?? "",
                 Storage_ID: storageId ?? null,
                 updatedOn: inv.UpdatedOn || inv.updatedOn || inv.updated_on || inv.Updated_On || inv.Updated || null,
-                lostOn: inv.LostOn || inv.lostOn || inv.Lost_On || inv.lost_on || null
+                lostOn: inv.LostOn || inv.lostOn || inv.Lost_On || inv.lost_on || null,
+                foundOn: inv.FoundOn || inv.foundOn || inv.Found_On || inv.found_on || null
               };
             });
             return { ...doc, inventory: normalizedInventory };
@@ -374,12 +375,14 @@ const DocumentManagementPage = () => {
                                     <Table size="small">
                                       <TableHead>
                                         <TableRow>
-                                          <TableCell>Availability</TableCell>
-                                          <TableCell>Condition</TableCell>
-                                          <TableCell>Location</TableCell>
-                                          <TableCell>Accession</TableCell>
-                                          <TableCell>Updated</TableCell>
-                                          <TableCell>Lost On</TableCell>
+                  <TableCell>Availability</TableCell>
+                  <TableCell>Condition</TableCell>
+                  <TableCell>Location</TableCell>
+                  <TableCell>Accession</TableCell>
+                  <TableCell>Updated</TableCell>
+                  <TableCell>Lost On</TableCell>
+                  <TableCell>Found On</TableCell>
+                  <TableCell>Action</TableCell>
                                         </TableRow>
                                       </TableHead>
                                       <TableBody>
@@ -393,6 +396,20 @@ const DocumentManagementPage = () => {
                                             }</TableCell>
                                             <TableCell>{inv.updatedOn ? formatDate(inv.updatedOn) : '—'}</TableCell>
                                             <TableCell>{inv.lostOn ? formatDate(inv.lostOn) : '—'}</TableCell>
+                                            <TableCell>{inv.foundOn ? formatDate(inv.foundOn) : '—'}</TableCell>
+                                            <TableCell>
+                                              {((inv.availability || '').toLowerCase() === 'lost') && !(inv.foundOn) ? (
+                                                <Button size="small" color="success" variant="contained" onClick={async () => {
+                                                  try {
+                                                    await axios.put(`${API_BASE}/documents/inventory/${doc.Document_ID}/${inv.Storage_ID || inv.StorageId || inv.StorageId}`, { availability: 'Available' });
+                                                    showToast('Item marked as found.');
+                                                    fetchDocuments();
+                                                  } catch {
+                                                      showToast('Failed to mark as found', 'error');
+                                                    }
+                                                }}>Mark found</Button>
+                                              ) : null}
+                                            </TableCell>
                                           </TableRow>
                                         ))}
                                       </TableBody>

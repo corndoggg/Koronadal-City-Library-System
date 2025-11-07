@@ -61,7 +61,8 @@ const StorageManagementPage = () => {
             availability: copy.availability ?? copy.Availability ?? "",
             condition: copy.condition ?? copy.Condition ?? "",
             updatedOn: copy.UpdatedOn || copy.updatedOn || copy.updated_on || null,
-            lostOn: copy.LostOn || copy.lostOn || copy.Lost_On || copy.lost_on || null
+            lostOn: copy.LostOn || copy.lostOn || copy.Lost_On || copy.lost_on || null,
+            foundOn: copy.FoundOn || copy.foundOn || copy.Found_On || copy.found_on || null
           }));
           return { type: "Book", title: b.Title, id: b.Book_ID, inventory };
         })
@@ -76,7 +77,8 @@ const StorageManagementPage = () => {
             availability: inv.availability ?? inv.Availability ?? "",
             condition: inv.condition ?? inv.Condition ?? "",
             updatedOn: inv.UpdatedOn || inv.updatedOn || inv.updated_on || null,
-            lostOn: inv.LostOn || inv.lostOn || inv.Lost_On || inv.lost_on || null
+            lostOn: inv.LostOn || inv.lostOn || inv.Lost_On || inv.lost_on || null,
+            foundOn: inv.FoundOn || inv.foundOn || inv.Found_On || inv.found_on || null
           }));
           return { type: "Document", title: d.Title, id: d.Document_ID, inventory };
         })
@@ -323,7 +325,8 @@ const StorageManagementPage = () => {
       .map(item => ({
         ...item,
         storageName: storageLookup.get(String(item.storageId ?? "")) || 'Unassigned',
-        lostOn: item.inv?.lostOn || item.inv?.LostOn || item.inv?.lost_on || null
+        lostOn: item.inv?.lostOn || item.inv?.LostOn || item.inv?.lost_on || null,
+        foundOn: item.inv?.foundOn || item.inv?.FoundOn || item.inv?.found_on || null
       }))
       .sort((a, b) => (b.lostOn || '').localeCompare(a.lostOn || ''));
   }, [allItems, storageLookup]);
@@ -733,10 +736,30 @@ const StorageManagementPage = () => {
                                 <Typography variant="body2">{item.storageName}</Typography>
                               </TableCell>
                               <TableCell>
-                                <Typography variant="body2">{item.lostOn ? formatDate(item.lostOn) : '—'}</Typography>
+                                <Stack>
+                                  <Typography variant="body2">{item.lostOn ? formatDate(item.lostOn) : '—'}</Typography>
+                                  {item.foundOn ? (
+                                    <Typography variant="caption" color="text.secondary">Found: {formatDate(item.foundOn)}</Typography>
+                                  ) : null}
+                                </Stack>
                               </TableCell>
                               <TableCell align="right">
-                                <Button size="small" variant="outlined" onClick={() => handleEditInventory({ type: item.type, title: item.title, id: item.id }, item.inv)} sx={{ borderRadius: 1, fontWeight: 600 }}>Update</Button>
+                                <Stack direction="row" spacing={1} justifyContent="flex-end">
+                                  <Button size="small" variant="outlined" onClick={() => handleEditInventory({ type: item.type, title: item.title, id: item.id }, item.inv)} sx={{ borderRadius: 1, fontWeight: 600 }}>Update</Button>
+                                  {((item.availability || '').toLowerCase() === 'lost') && !item.foundOn && (
+                                    <Button size="small" color="success" variant="contained" onClick={async () => {
+                                      try {
+                                        const invKey = item.inv?.Copy_ID || item.inv?.id || item.inv?.ID || item.inv?.Storage_ID || item.inv?.storageId || '';
+                                        await performInventoryUpdate(item, invKey, { availability: 'Available' });
+                                        setToast({ open: true, message: 'Item marked as found.', severity: 'success' });
+                                      } catch {
+                                        setToast({ open: true, message: 'Failed to mark item as found.', severity: 'error' });
+                                      } finally {
+                                        fetchDocsBooks();
+                                      }
+                                    }} sx={{ borderRadius: 1, fontWeight: 600 }}>Mark found</Button>
+                                  )}
+                                </Stack>
                               </TableCell>
                             </TableRow>
                           );
@@ -1147,14 +1170,29 @@ const StorageManagementPage = () => {
                           />
                         </TableCell>
                         <TableCell align="right">
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            onClick={() => handleEditInventory({ type: item.type, title: item.title, id: item.id }, item.inv)}
-                            sx={{ borderRadius: 1, fontWeight: 600 }}
-                          >
-                            Update
-                          </Button>
+                          <Stack direction="row" spacing={1} justifyContent="flex-end">
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={() => handleEditInventory({ type: item.type, title: item.title, id: item.id }, item.inv)}
+                              sx={{ borderRadius: 1, fontWeight: 600 }}
+                            >
+                              Update
+                            </Button>
+                            {availability === 'lost' && !(item.inv?.foundOn || item.inv?.FoundOn || item.inv?.found_on) && (
+                              <Button size="small" color="success" variant="contained" onClick={async () => {
+                                try {
+                                  const invKey = item.inv?.Copy_ID || item.inv?.id || item.inv?.ID || item.inv?.Storage_ID || item.inv?.storageId || '';
+                                  await performInventoryUpdate(item, invKey, { availability: 'Available' });
+                                  setToast({ open: true, message: 'Item marked as found.', severity: 'success' });
+                                } catch {
+                                  setToast({ open: true, message: 'Failed to mark item as found.', severity: 'error' });
+                                } finally {
+                                  fetchDocsBooks();
+                                }
+                              }} sx={{ borderRadius: 1, fontWeight: 600 }}>Mark found</Button>
+                            )}
+                          </Stack>
                         </TableCell>
                       </TableRow>
                     );
