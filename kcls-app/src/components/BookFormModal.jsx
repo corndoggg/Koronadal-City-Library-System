@@ -9,11 +9,13 @@ import {
   Delete as DeleteIcon, WarningAmber, AutoFixHigh
 } from '@mui/icons-material';
 import { formatDate } from '../utils/date';
+import { DEWEY_CLASSES, formatDeweyDisplay } from '../constants/dewey';
 
 const BookFormModal = ({
   open, onClose, isEdit, bookForm, handleBookChange,
   copyForm, handleCopyChange, initialCopyForm, handleSaveBook,
   editCopyIndex, copies, setCopyForm, setEditCopyIndex, setCopies, locations = [],
+  existingBooks = []
 }) => {
   // Standardized condition options (Good → Bad)
   const conditionOptions = ['Good', 'Fair', 'Average', 'Poor', 'Bad'];
@@ -35,7 +37,7 @@ const BookFormModal = ({
 
   const handleTabChange = (_, v) => setTabIndex(v);
 
-  const requiredBookKeys = ['title', 'author', 'year'];
+  const requiredBookKeys = ['title', 'author', 'year', 'subject'];
   const validateBookForm = () => {
     for (let key of requiredBookKeys) {
       if (!bookForm[key]) {
@@ -54,18 +56,76 @@ const BookFormModal = ({
   const accessionExists = (val, idx = null) =>
     copies.some((c, i) => c.accessionNumber === val && i !== idx);
 
+  const existingAccessionNumbers = useMemo(() => {
+    const numbers = [];
+    existingBooks.forEach(book => {
+      const inventory = book?.inventory || [];
+      inventory.forEach(copy => {
+        const val =
+          copy?.accessionNumber ??
+          copy?.AccessionNumber ??
+          copy?.Accession_No ??
+          copy?.Accession ??
+          copy?.Copy_Number ??
+          copy?.CopyNo ??
+          copy?.Copy_ID ??
+          '';
+        if (val) {
+          numbers.push(String(val));
+        }
+      });
+    });
+    return numbers;
+  }, [existingBooks]);
+
+  const extractDeweyCode = (subjectValue) => {
+    const match = subjectValue?.match?.(/^(\d{3})/);
+    return match ? match[1] : null;
+  };
+
   const generateAccession = () => {
-    // Simple pattern: YEAR + random 5
-    const base = (bookForm.year || new Date().getFullYear()).toString();
-    let acc;
-    let tries = 0;
-    do {
-      acc = base + '-' + Math.random().toString(36).substring(2, 7).toUpperCase();
-      tries++;
-      if (tries > 25) break;
-    } while (accessionExists(acc));
-    setCopyForm({ ...copyForm, accessionNumber: acc });
-    showToast('Accession generated.', 'info');
+    const subjectCode = extractDeweyCode(bookForm.subject);
+    if (!subjectCode) {
+      showToast('Select a subject before auto generating.', 'error');
+      return;
+    }
+
+    const pool = [
+      ...existingAccessionNumbers,
+      ...copies.map(c => String(c.accessionNumber || ''))
+    ].filter(Boolean);
+
+    const prefix = subjectCode;
+    let nextIndex = 1;
+
+    const matching = pool.filter(val => val.startsWith(prefix));
+    if (matching.length) {
+      const suffixes = matching
+        .map(val => {
+          const remainder = val.slice(prefix.length);
+          if (!remainder) return 0;
+          if (!remainder.startsWith('.')) return null;
+          const numericPart = remainder.slice(1);
+          if (!numericPart) return null;
+          const parsed = parseInt(numericPart, 10);
+          return Number.isNaN(parsed) ? null : parsed;
+        })
+        .filter(value => value !== null);
+      if (suffixes.length) {
+        nextIndex = Math.max(...suffixes) + 1;
+      }
+    }
+
+    let candidate = `${prefix}.${nextIndex}`;
+    const taken = new Set(pool);
+    while (taken.has(candidate)) {
+      nextIndex += 1;
+      candidate = `${prefix}.${nextIndex}`;
+    }
+
+    setCopyForm(prev => ({ ...prev, accessionNumber: candidate }));
+    setUnsaved(true);
+    showToast(`Accession ${candidate} generated.`, 'info');
   };
 
   const checkStorageCapacity = async (locationId) => {
@@ -94,11 +154,11 @@ const BookFormModal = ({
         return;
       }
       if (editCopyIndex !== null) {
-      const current = copies[editCopyIndex];
-      if (current?.availability === 'Borrowed') {
-        showToast('Borrowed copies cannot be modified from this modal.', 'warning');
-        return;
-      }
+        const current = copies[editCopyIndex];
+        if (current?.availability === 'Borrowed') {
+          showToast('Borrowed copies cannot be modified from this modal.', 'warning');
+          return;
+        }
       }
     })();
     for (let key of ['accessionNumber', 'location']) {
@@ -170,13 +230,18 @@ const BookFormModal = ({
     return found ? found.Name : id || '-';
   };
 
+  const deweyOptions = DEWEY_CLASSES.map(item => ({
+    value: formatDeweyDisplay(item),
+    display: `${item.code} · ${item.label}`
+  }));
+
   const bookFields = [
     { key: 'title', label: 'Title', required: true },
     { key: 'author', label: 'Author', required: true },
     { key: 'edition', label: 'Edition' },
     { key: 'publisher', label: 'Publisher' },
     { key: 'year', label: 'Year', required: true, type: 'number' },
-    { key: 'subject', label: 'Subject' },
+    { key: 'subject', label: 'Subject', required: true, select: true, options: deweyOptions },
     { key: 'language', label: 'Language' },
     { key: 'isbn', label: 'ISBN' }
   ];
@@ -422,24 +487,69 @@ const BookFormModal = ({
                   </Box>
 
                   <Grid container spacing={2.25}>
-                    {bookFields.map(({ key, label, required, type }) => (
+                    {bookFields.map(({ key, label, required, type, select, options }) => (
                       <Grid item xs={12} sm={6} key={key}>
-                        <TextField
-                          label={label}
-                          name={key}
-                          value={bookForm[key]}
-                          onChange={e => {
-                            handleBookChange(e);
-                            setUnsaved(true);
-                          }}
-                          fullWidth
-                          size="medium"
-                          required={required}
-                          type={type || 'text'}
-                          InputLabelProps={type === 'number' ? { shrink: true } : undefined}
-                          autoComplete="off"
-                          InputProps={{ sx: { borderRadius: 1.5, minHeight: 56 } }}
-                        />
+                        {select ? (
+                          <TextField
+                            select
+                            label={label}
+                            name={key}
+                            value={bookForm[key]}
+                            onChange={e => {
+                              handleBookChange(e);
+                              setUnsaved(true);
+                            }}
+                            fullWidth
+                            size="medium"
+                            required={required}
+                            InputLabelProps={{ shrink: true }}
+                            InputProps={{ sx: { borderRadius: 1.5, minHeight: 56 } }}
+                            SelectProps={{
+                              displayEmpty: true,
+                              renderValue: value =>
+                                value ? (
+                                  value
+                                ) : (
+                                  <Typography component="span" color="text.disabled" sx={{ fontStyle: 'italic' }}>
+                                    Select a subject
+                                  </Typography>
+                                )
+                            }}
+                          >
+                            <MenuItem value="" disabled>
+                              <Typography color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                                Select a subject
+                              </Typography>
+                            </MenuItem>
+                            {options.map(option => (
+                              <MenuItem key={option.value} value={option.value}>
+                                {option.display}
+                              </MenuItem>
+                            ))}
+                            {bookForm[key] && !options.some(option => option.value === bookForm[key]) && (
+                              <MenuItem value={bookForm[key]}>
+                                {bookForm[key]}
+                              </MenuItem>
+                            )}
+                          </TextField>
+                        ) : (
+                          <TextField
+                            label={label}
+                            name={key}
+                            value={bookForm[key]}
+                            onChange={e => {
+                              handleBookChange(e);
+                              setUnsaved(true);
+                            }}
+                            fullWidth
+                            size="medium"
+                            required={required}
+                            type={type || 'text'}
+                            InputLabelProps={type === 'number' ? { shrink: true } : undefined}
+                            autoComplete="off"
+                            InputProps={{ sx: { borderRadius: 1.5, minHeight: 56 } }}
+                          />
+                        )}
                       </Grid>
                     ))}
                   </Grid>

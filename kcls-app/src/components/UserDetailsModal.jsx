@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { formatDate } from '../utils/date';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Typography, Box, Grid, Chip, Button, Divider, Stack, useTheme
 } from '@mui/material';
+import DocumentPDFViewer from './DocumentPDFViewer.jsx';
 
 /*
   UserDetailsModal
@@ -49,6 +50,74 @@ const Section = ({ title, subtitle, children }) => {
 
 const UserDetailsModal = ({ open, onClose, user, onEdit }) => {
   const theme = useTheme();
+  const borrower = user?.borrower;
+  const hasAttachment = Boolean(borrower?.AttachmentPdfBase64 || borrower?.AttachmentPath);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerUrl, setViewerUrl] = useState('');
+  const [viewerTitle, setViewerTitle] = useState('');
+  const [viewerObjectUrl, setViewerObjectUrl] = useState(null);
+
+  useEffect(() => {
+    return () => {
+      if (viewerObjectUrl) {
+        URL.revokeObjectURL(viewerObjectUrl);
+      }
+    };
+  }, [viewerObjectUrl]);
+
+  const handleCloseViewer = useCallback(() => {
+    setViewerOpen(false);
+    setViewerUrl('');
+    if (viewerObjectUrl) {
+      URL.revokeObjectURL(viewerObjectUrl);
+      setViewerObjectUrl(null);
+    }
+  }, [viewerObjectUrl]);
+
+  useEffect(() => {
+    if (!open) {
+      handleCloseViewer();
+    }
+  }, [open, handleCloseViewer]);
+
+  const handleOpenAttachment = useCallback(() => {
+    if (!borrower) return;
+    try {
+      let nextUrl = '';
+      let nextObjectUrl = null;
+      if (borrower.AttachmentPdfBase64) {
+        const binaryString = window.atob(borrower.AttachmentPdfBase64);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i += 1) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        const blob = new Blob([bytes], { type: 'application/pdf' });
+        nextObjectUrl = URL.createObjectURL(blob);
+        nextUrl = nextObjectUrl;
+      } else if (borrower.AttachmentPath) {
+        const base = (import.meta.env?.VITE_API_BASE || '').replace(/\/+$/, '');
+        const relative = borrower.AttachmentPath.replace(/^\/+/, '');
+        nextUrl = base ? `${base}/${relative}` : `/${relative}`;
+      }
+
+      if (nextUrl) {
+        if (viewerObjectUrl) {
+          URL.revokeObjectURL(viewerObjectUrl);
+        }
+        setViewerObjectUrl(nextObjectUrl);
+        setViewerUrl(nextUrl);
+        const attachmentLabel = borrower.AttachmentPath?.split('/').pop() || 'Borrower Attachment';
+        setViewerTitle(attachmentLabel);
+        setViewerOpen(true);
+      }
+    } catch (error) {
+      if (import.meta.env?.DEV) {
+        console.error('Unable to open attachment preview', error);
+      }
+    }
+  }, [borrower, viewerObjectUrl]);
+
   if (!user) return null;
 
   const fullName = [user.Firstname, user.Middlename, user.Lastname].filter(Boolean).join(' ');
@@ -63,8 +132,8 @@ const UserDetailsModal = ({ open, onClose, user, onEdit }) => {
         elevation: 0,
         sx: {
           borderRadius: 1,
-            border: `2px solid ${theme.palette.divider}`,
-            backgroundImage: 'none'
+          border: `2px solid ${theme.palette.divider}`,
+          backgroundImage: 'none'
         }
       }}
     >
@@ -155,6 +224,29 @@ const UserDetailsModal = ({ open, onClose, user, onEdit }) => {
                   </Stack>
                 </Box>
               </Grid>
+              <Grid item xs={12}>
+                <Box mt={0.5}>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: .5 }}>
+                    Identification Attachment
+                  </Typography>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} mt={0.75} alignItems={{ xs: 'flex-start', sm: 'center' }}>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={handleOpenAttachment}
+                      disabled={!hasAttachment}
+                      sx={{ borderRadius: 1, fontWeight: 600, textTransform: 'none' }}
+                    >
+                      {hasAttachment ? 'View attachment' : 'No attachment uploaded'}
+                    </Button>
+                    {user.borrower.AttachmentPath && (
+                      <Typography variant="caption" color="text.secondary">
+                        {user.borrower.AttachmentPath.split('/').pop()}
+                      </Typography>
+                    )}
+                  </Stack>
+                </Box>
+              </Grid>
             </Grid>
           </Section>
         )}
@@ -188,6 +280,14 @@ const UserDetailsModal = ({ open, onClose, user, onEdit }) => {
           </Button>
         )}
       </DialogActions>
+      <DocumentPDFViewer
+        open={viewerOpen}
+        onClose={handleCloseViewer}
+        fileUrl={viewerUrl}
+        documentId={borrower?.BorrowerID ?? user.UserID}
+        title={viewerTitle || 'Borrower Attachment'}
+        note="Identification attachment preview."
+      />
     </Dialog>
   );
 };

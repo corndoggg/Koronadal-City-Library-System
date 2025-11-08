@@ -494,6 +494,7 @@ const BookManagementPage = () => {
           setEditCopyIndex={setEditCopyIndex}
           handleSaveBook={handleSaveBook}
           locations={locations}
+          existingBooks={books}
         />
 
         <Snackbar

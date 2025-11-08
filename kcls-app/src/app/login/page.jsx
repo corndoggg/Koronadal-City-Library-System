@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box, Typography, TextField, Button, Paper, CircularProgress, Alert,
   useTheme, Checkbox, FormControlLabel, Stack, Link, Divider
@@ -19,8 +19,10 @@ const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true); // NEW: initial auto-login check
   const [error, setError] = useState('');
+  const [errorSeverity, setErrorSeverity] = useState('error');
   const [borrowerStatus, setBorrowerStatus] = useState(null); // null | "Pending" | "Rejected"
   const [termsOpen, setTermsOpen] = useState(false);
+  const [lockoutUntil, setLockoutUntil] = useState(null);
 
   // Helper: choose route from stored user object
   const routeFromUser = (u) => {
@@ -30,6 +32,36 @@ const LoginPage = () => {
     if (u.Role === 'Staff') return '/admin';
     return '/';
   };
+
+  const formatLockoutDuration = useCallback((totalSeconds) => {
+    const seconds = Math.max(0, totalSeconds);
+    const minutes = Math.floor(seconds / 60);
+    const remainder = seconds % 60;
+    if (minutes > 0) {
+      return `${minutes}m ${remainder.toString().padStart(2, '0')}s`;
+    }
+    return `${remainder}s`;
+  }, []);
+
+  useEffect(() => {
+    if (lockoutUntil == null) return undefined;
+
+    const updateNotice = () => {
+      const remainingSeconds = Math.max(0, Math.ceil((lockoutUntil - Date.now()) / 1000));
+      if (remainingSeconds <= 0) {
+        setLockoutUntil(null);
+        setError('');
+        setErrorSeverity('error');
+        return;
+      }
+      setErrorSeverity('warning');
+      setError(`Too many failed attempts. Try again in ${formatLockoutDuration(remainingSeconds)}.`);
+    };
+
+    updateNotice();
+    const timer = setInterval(updateNotice, 1000);
+    return () => clearInterval(timer);
+  }, [lockoutUntil, formatLockoutDuration]);
 
   useEffect(() => {
     const remembered = localStorage.getItem('rememberedUsername');
@@ -76,48 +108,102 @@ const LoginPage = () => {
   const clearStoredSession = () => { // NEW
     localStorage.removeItem('user');
     sessionStorage.removeItem('user');
+    setError('');
+    setErrorSeverity('error');
+    setLockoutUntil(null);
   };
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
+    setErrorSeverity('error');
     setBorrowerStatus(null);
+
+    if (lockoutUntil && lockoutUntil > Date.now()) {
+      const remainingSeconds = Math.max(1, Math.ceil((lockoutUntil - Date.now()) / 1000));
+      setErrorSeverity('warning');
+      setError(`Too many failed attempts. Try again in ${formatLockoutDuration(remainingSeconds)}.`);
+      return;
+    }
+
+    setLoading(true);
 
     // Log attempt (no userId yet; backend will still record)
     logAudit('LOGIN_ATTEMPT', 'User', null, { username });
 
     try {
-      const res = await fetch(`${API_BASE}/users/login`, {
+      const res = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
       });
       const data = await res.json();
+
       if (!res.ok) {
-        setError(data.error || 'Invalid credentials');
-        logAudit('LOGIN_FAILURE', 'User', null, { username, reason: data.error || 'Invalid credentials' });
-      } else {
-        // If borrower is pending/rejected, do NOT store session; show status
-        if (data.Role === 'Borrower') {
-          const status = data.borrower?.AccountStatus;
-          if (status === 'Pending' || status === 'Rejected') {
-            setBorrowerStatus(status);
-            setLoading(false);
-            return;
-          }
+        const code = data.code;
+
+        if (code === 'account_locked') {
+          const serverLock = data.lockedUntil ? new Date(data.lockedUntil).getTime() : null;
+          const fallback = typeof data.retryAfterSeconds === 'number'
+            ? Date.now() + Math.max(1, data.retryAfterSeconds) * 1000
+            : Date.now() + 5 * 60 * 1000;
+          const untilTs = Number.isFinite(serverLock) ? serverLock : fallback;
+          setLockoutUntil(untilTs);
+          const remainingSeconds = Math.max(1, Math.ceil((untilTs - Date.now()) / 1000));
+          setErrorSeverity('warning');
+          setError(`Too many failed attempts. Try again in ${formatLockoutDuration(remainingSeconds)}.`);
+          logAudit('LOGIN_FAILURE', 'User', null, { username, reason: code });
+          setLoading(false);
+          return;
         }
 
-        // Store session only for allowed users and redirect
-        storeUserSession(data);
-        logAudit('LOGIN_SUCCESS', 'User', data.UserID || data.userId || data.id, { username });
-        navigate(routeFromUser(data));
+        if (code === 'invalid_credentials') {
+          const attempts = typeof data.remainingAttempts === 'number' ? data.remainingAttempts : undefined;
+          const message = typeof attempts === 'number'
+            ? `Invalid username or password. ${attempts} attempt${attempts === 1 ? '' : 's'} remaining.`
+            : (data.error || 'Invalid credentials');
+          setErrorSeverity('error');
+          setError(message);
+        } else if (code === 'credentials_required') {
+          setErrorSeverity('error');
+          setError(data.error || 'Username and password are required.');
+        } else {
+          setErrorSeverity('error');
+          setError(data.error || 'Invalid credentials');
+        }
+
+        logAudit('LOGIN_FAILURE', 'User', null, { username, reason: code || data.error || 'INVALID' });
+        setLoading(false);
+        return;
       }
+
+      // If borrower is pending/rejected, do NOT store session; show status
+      if (data.Role === 'Borrower') {
+        const status = data.borrower?.AccountStatus;
+        if (status === 'Pending' || status === 'Rejected') {
+          setBorrowerStatus(status);
+          setLockoutUntil(null);
+          setLoading(false);
+          return;
+        }
+      }
+
+      // Store session only for allowed users and redirect
+      storeUserSession(data);
+      setLockoutUntil(null);
+      setError('');
+      setErrorSeverity('error');
+      setLoading(false);
+      logAudit('LOGIN_SUCCESS', 'User', data.UserID || data.userId || data.id, { username });
+      navigate(routeFromUser(data));
+      return;
     } catch {
+      setErrorSeverity('error');
       setError('Unable to connect to server');
       logAudit('LOGIN_FAILURE', 'User', null, { username, reason: 'NETWORK' });
+      setLoading(false);
+      return;
     }
-    setLoading(false);
   };
 
   // Show status page for pending/rejected borrower
@@ -354,7 +440,7 @@ const LoginPage = () => {
 
             {error && (
               <Alert
-                severity="error"
+                severity={errorSeverity}
                 variant="filled"
                 sx={{
                   borderRadius: 1.5,
@@ -371,7 +457,7 @@ const LoginPage = () => {
               variant="contained"
               color="primary"
               fullWidth
-              disabled={loading}
+              disabled={loading || (lockoutUntil && lockoutUntil > Date.now())}
               sx={{
                 mt: 0.5,
                 fontWeight: 700,

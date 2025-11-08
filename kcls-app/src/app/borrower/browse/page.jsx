@@ -28,12 +28,39 @@ const BrowseLibraryPage = () => {
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const borrowerId = user?.borrower?.BorrowerID || user?.BorrowerID || null;
   const { settings: systemSettings } = useSystemSettings();
+  const rawBorrowerType =
+    user?.borrower?.Type ||
+    user?.borrower?.BorrowerType ||
+    user?.BorrowerType ||
+    user?.borrowerType ||
+    user?.Role ||
+    "";
+  const borrowerType = typeof rawBorrowerType === "string" ? rawBorrowerType.trim() : "";
+  const isResearcherBorrower = borrowerType.toLowerCase() === "researcher";
 
   const borrowLimit = useMemo(() => {
     const val = Number(systemSettings?.borrow_limit ?? 3);
     if (!Number.isFinite(val) || val <= 0) return 3;
     return Math.trunc(val);
   }, [systemSettings]);
+
+  const isDocumentConfidential = useCallback((doc) => {
+    if (!doc) return false;
+    const label =
+      doc.Sensitivity ??
+      doc.sensitivity ??
+      doc.SensitivityLevel ??
+      doc.sensitivityLevel ??
+      doc.Sensitivity_Label ??
+      doc.sensitivity_label ??
+      "";
+    return String(label).trim().toLowerCase() === "confidential";
+  }, []);
+
+  const isDocumentRestrictedForBorrower = useCallback(
+    (doc) => isResearcherBorrower && isDocumentConfidential(doc),
+    [isResearcherBorrower, isDocumentConfidential]
+  );
 
   // Data state
   const [books, setBooks] = useState([]);
@@ -98,12 +125,13 @@ const BrowseLibraryPage = () => {
         })
       );
       setBooks(enrichedBooks);
-      setDocuments(enrichedDocs);
+      const accessibleDocs = enrichedDocs.filter(doc => !isDocumentRestrictedForBorrower(doc));
+      setDocuments(accessibleDocs);
     } catch {
       setBooks([]); setDocuments([]);
     }
     setLoading(false);
-  }, [API_BASE]);
+  }, [API_BASE, isDocumentRestrictedForBorrower]);
 
   const fetchBorrowed = useCallback(async () => {
     if (!borrowerId) return;
@@ -180,6 +208,9 @@ const BrowseLibraryPage = () => {
           : `Borrow limit reached (${borrowLimit}). You already have ${cart.length} queued and ${activeBorrowCount} active.`;
       return notify(message, overCapacity ? "error" : "warning");
     }
+    if (!isBook && isDocumentRestrictedForBorrower(item)) {
+      return notify("This document is not available for your borrower type.", "warning");
+    }
     if (isBook) {
       const available = (item.inventory || []).find(inv => (inv.availability || inv.Availability) === "Available");
       if (!available) return notify("No available copy.", "info");
@@ -202,8 +233,12 @@ const BrowseLibraryPage = () => {
       return notify(message, overCapacity ? "error" : "warning");
     }
     if (!selectedDoc) return;
+    if (isDocumentRestrictedForBorrower(selectedDoc)) {
+      setDocTypeDialogOpen(false);
+      return notify("This document is not available for your borrower type.", "warning");
+    }
     const types = getAvailableDocTypes(selectedDoc);
-  if (!types.length) return notify("No copies available.", "info");
+    if (!types.length) return notify("No copies available.", "info");
 
     let available = null;
     if (selectedDocType === "Physical") {

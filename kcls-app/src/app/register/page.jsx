@@ -19,6 +19,7 @@ import {
   Step,
   StepLabel,
   InputAdornment,
+  FormHelperText,
   useTheme,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
@@ -88,6 +89,7 @@ const RegisterBorrowerPage = () => {
   const [termsOpen, setTermsOpen] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [emailError, setEmailError] = useState('');
+  const [attachmentError, setAttachmentError] = useState('');
   const [usernameStatus, setUsernameStatus] = useState({ state: 'idle', message: '' });
   const [form, setForm] = useState({
     username: '',
@@ -106,6 +108,7 @@ const RegisterBorrowerPage = () => {
     borrowerType: '',
     department: '',
   });
+  const [attachmentFile, setAttachmentFile] = useState(null);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -193,7 +196,8 @@ const RegisterBorrowerPage = () => {
     form.borrowerType &&
     form.department &&
     termsAccepted &&
-    usernameStatus.state === 'available';
+    usernameStatus.state === 'available' &&
+    Boolean(attachmentFile);
 
   const isUsernameError = ['taken', 'error', 'invalid', 'short'].includes(usernameStatus.state);
   const isUsernameChecking = usernameStatus.state === 'checking';
@@ -223,8 +227,14 @@ const RegisterBorrowerPage = () => {
   const submit = async () => {
     setError('');
     setEmailError('');
+    setAttachmentError('');
     if (usernameStatus.state !== 'available') {
       setError('Please choose an available username before submitting.');
+      return;
+    }
+    if (!attachmentFile) {
+      setAttachmentError('Please attach a valid identification document.');
+      setStep(2);
       return;
     }
     setLoading(true);
@@ -251,10 +261,15 @@ const RegisterBorrowerPage = () => {
           accountstatus: 'Pending',
         },
       };
+      const body = new FormData();
+      body.append('payload', JSON.stringify(payload));
+      if (attachmentFile) {
+        body.append('attachment', attachmentFile);
+      }
+
       const res = await fetch(`${API_BASE}/users`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body,
       });
       const data = await res.json();
       if (!res.ok) {
@@ -267,6 +282,12 @@ const RegisterBorrowerPage = () => {
           setEmailError('Email is required.');
           setError('Email is required.');
           setStep(1);
+        } else if (res.status === 400 && data?.error === 'attachment_missing_filename') {
+          setAttachmentError('Attachment is required.');
+          setStep(2);
+        } else if (res.status === 400 && data?.error === 'unsupported_attachment_format') {
+          setAttachmentError('Unsupported file format. Upload a PDF or image.');
+          setStep(2);
         } else {
           setError(data?.error || 'Registration failed');
         }
@@ -275,10 +296,22 @@ const RegisterBorrowerPage = () => {
       }
       setSuccess(true);
       setTermsAccepted(false);
+      setAttachmentFile(null);
     } catch (err) {
       setError(err.message || 'Registration failed');
     }
     setLoading(false);
+  };
+
+  const handleAttachmentChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      setAttachmentFile(null);
+      setAttachmentError('');
+      return;
+    }
+    setAttachmentFile(file);
+    setAttachmentError('');
   };
 
   const resetToLogin = () => navigate('/login');
@@ -647,6 +680,32 @@ const RegisterBorrowerPage = () => {
                     />
                   </Grid>
                 </Grid>
+              </Box>
+
+              <Box>
+                <SectionHeading
+                  title="Identification attachment"
+                  subtitle="Upload a photo ID or supporting document. It will be stored as PDF."
+                />
+                <Stack spacing={1.5}>
+                  <Button
+                    variant="outlined"
+                    component="label"
+                    sx={{ alignSelf: 'flex-start', fontWeight: 600 }}
+                  >
+                    {attachmentFile ? 'Replace attachment' : 'Upload attachment'}
+                    <input
+                      type="file"
+                      hidden
+                      accept=".pdf,image/*"
+                      onChange={handleAttachmentChange}
+                    />
+                  </Button>
+                  <Typography variant="body2" color="text.secondary">
+                    {attachmentFile ? `Selected file: ${attachmentFile.name}` : 'No file selected yet.'}
+                  </Typography>
+                  {attachmentError && <FormHelperText error>{attachmentError}</FormHelperText>}
+                </Stack>
               </Box>
 
               <Box>

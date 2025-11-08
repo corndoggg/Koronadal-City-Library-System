@@ -114,7 +114,8 @@ CREATE TABLE `Borrowers` (
   `UserID` int(11) NOT NULL,
   `Type` enum('Researcher','Government Agency') NOT NULL,
   `Department` varchar(100) DEFAULT NULL,
-  `AccountStatus` enum('Pending','Registered','Suspended','Rejected') NOT NULL
+  `AccountStatus` enum('Pending','Registered','Suspended','Rejected') NOT NULL,
+  `AttachmentPath` varchar(500) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 
 -- --------------------------------------------------------
