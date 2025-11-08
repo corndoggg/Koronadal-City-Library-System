@@ -107,6 +107,18 @@ const StorageManagementPage = () => {
     if (dup) {
       return setToast({ open: true, message: "A storage with this name already exists.", severity: "error" });
     }
+    if (isEdit) {
+      const itemsInStorage = itemsByStorage.get(String(editId)) || [];
+      const usedCount = itemsInStorage.length;
+      if (capacityNum > 0 && usedCount > capacityNum) {
+        setToast({
+          open: true,
+          message: `This storage currently holds ${usedCount} item${usedCount === 1 ? "" : "s"}. Increase the capacity above that value or move items first.`,
+          severity: "error"
+        });
+        return;
+      }
+    }
     try {
       if (isEdit) {
         await axios.put(`${API_BASE}/storages/${editId}`, { name, capacity: capacityNum });
