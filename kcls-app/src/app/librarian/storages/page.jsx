@@ -1446,7 +1446,7 @@ const StorageManagementPage = () => {
               sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1 } }}
             />
             <TextField
-              label="Capacity (optional)"
+              label="Capacity"
               name="capacity"
               type="number"
               inputProps={{ min: 0, step: 1 }}
