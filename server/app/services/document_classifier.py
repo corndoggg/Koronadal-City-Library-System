@@ -34,7 +34,14 @@ def get_zero_shot():
 
 # Restricted classification labels (business rule)
 CLASSIFICATION_LABELS = ["Public Resources", "Government Document", "Historical Files"]
-CATEGORY_LABELS = ["Thesis","Research","Case Study","Feasibility Study","Capstone","Other"]
+CATEGORY_LABELS = [
+    "Public Records",
+    "Government Report",
+    "Policy Brief",
+    "Administrative Order",
+    "Legislative Act",
+    "N/A"
+]
 DEPARTMENT_LABELS = [
     "Administration","Finance Department","Legal Department","Research Department",
     "Library Services","IT Department","Human Resources","Academic Affairs"

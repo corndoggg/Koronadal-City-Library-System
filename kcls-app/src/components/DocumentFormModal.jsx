@@ -41,7 +41,14 @@ const initialForm = {
   year: "", sensitivity: "", file: null, filePath: ""
 };
 const initialInventory = { availability: "", condition: "", location: "", locationName: "", Storage_ID: null };
-const categories = ["Thesis", "Research", "Case Study", "Feasibility Study", "Capstone", "N/A"];
+const categories = [
+  "Public Records",
+  "Government Report",
+  "Policy Brief",
+  "Administrative Order",
+  "Legislative Act",
+  "N/A"
+];
 const sensitivities = ["Public", "Restricted", "Confidential"];
 const classificationOptions = ["Public Resource", "Government Document", "Historical File"];
 const availabilityOptions = ["Available", "Borrowed", "Reserved", "Lost"];
