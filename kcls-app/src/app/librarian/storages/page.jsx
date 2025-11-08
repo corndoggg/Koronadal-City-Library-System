@@ -71,15 +71,18 @@ const StorageManagementPage = () => {
       const docsWithInventory = await Promise.all(
         (docsRes.data || []).map(async (d) => {
           const invRes = await axios.get(`${API_BASE}/documents/inventory/${d.Document_ID}`);
-          const inventory = (invRes.data || []).map(inv => ({
-            ...inv,
-            location: inv.StorageLocation != null ? String(inv.StorageLocation) : '',
-            availability: inv.availability ?? inv.Availability ?? "",
-            condition: inv.condition ?? inv.Condition ?? "",
-            updatedOn: inv.UpdatedOn || inv.updatedOn || inv.updated_on || null,
-            lostOn: inv.LostOn || inv.lostOn || inv.Lost_On || inv.lost_on || null,
-            foundOn: inv.FoundOn || inv.foundOn || inv.Found_On || inv.found_on || null
-          }));
+          const inventory = (invRes.data || []).map(inv => {
+            const rawLocation = inv.StorageLocation ?? inv.location ?? inv.Location ?? null;
+            return {
+              ...inv,
+              location: rawLocation != null ? String(rawLocation) : "",
+              availability: inv.availability ?? inv.Availability ?? "",
+              condition: inv.condition ?? inv.Condition ?? "",
+              updatedOn: inv.UpdatedOn || inv.updatedOn || inv.updated_on || null,
+              lostOn: inv.LostOn || inv.lostOn || inv.Lost_On || inv.lost_on || null,
+              foundOn: inv.FoundOn || inv.foundOn || inv.Found_On || inv.found_on || null
+            };
+          });
           return { type: "Document", title: d.Title, id: d.Document_ID, inventory };
         })
       );
@@ -1281,7 +1284,7 @@ const StorageManagementPage = () => {
 
               <TextField
                 select
-                label="Target storage (optional)"
+                label="Target storage"
                 value={batchTargetStorage}
                 onChange={e => setBatchTargetStorage(e.target.value)}
                 fullWidth
