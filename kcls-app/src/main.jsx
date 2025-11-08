@@ -67,6 +67,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
                   <Route path="storage" element={<StorageManagementPage />} />
                   <Route path="borrows" element={<LibrarianBorrowPage />} />
                   <Route path="fines" element={<CommonFinesPage />} />
+                  <Route path="reports" element={<ReportsPage />} />
                 </Route>
               </Route>
               {/* Borrower routes */}

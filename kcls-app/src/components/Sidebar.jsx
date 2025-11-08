@@ -50,6 +50,12 @@ const navSectionsByRole = {
         { href: '/librarian/borrows', icon: ClipboardList, label: 'Borrows' },
         { href: '/librarian/fines', icon: BadgeDollarSign, label: 'Fines' },
       ]
+    },
+    {
+      title: 'Administration',
+      items: [
+        { href: '/librarian/reports', icon: BarChart3, label: 'Reports' },
+      ]
     }
   ],
   admin: [
